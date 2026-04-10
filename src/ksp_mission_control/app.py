@@ -1,18 +1,106 @@
 """KSP Mission Control - Terminal mission control for Kerbal Space Program."""
 
-from textual.app import App
+from textual.app import App, ComposeResult
+from textual.containers import Center, Middle
+from textual.widgets import Footer, Header, Static
+
+
+LOGO = r"""
+ _  ______  ___   __  __ _         _               ___          _           _
+| |/ / ___||_ _| |  \/  (_)___ ___(_) ___  _ __   / __|___ _ _ | |_ _ _ ___| |
+| ' <\___ \ | |  | |\/| | (_-<(_-<| |/ _ \| '_ \ | (__/ _ \ ' \|  _| '_/ _ \ |
+|_|\_\____||___| |_|  |_|_/__//__/|_|\___/| .__/  \___\___/_||_|\__|_| \___/_|
+                                           |_|
+"""
+
+
+class WelcomeScreen(Static):
+    """Welcome screen shown on startup."""
+
+    def compose(self) -> ComposeResult:
+        yield Static(LOGO, id="logo")
+        yield Static("v0.1.0", id="version")
+        yield Static("")
+        yield Static("[b]Terminal Mission Control for Kerbal Space Program[/b]", id="tagline")
+        yield Static("")
+        yield Static(
+            "Press [b]d[/b] for demo mode  |  "
+            "Press [b]c[/b] to connect to KSP  |  "
+            "Press [b]q[/b] to quit",
+            id="instructions",
+        )
 
 
 class MissionControlApp(App[None]):
     """Main application for KSP Mission Control."""
 
     TITLE = "KSP Mission Control"
+    BINDINGS = [
+        ("q", "quit", "Quit"),
+        ("d", "demo", "Demo Mode"),
+        ("c", "connect", "Connect to KSP"),
+    ]
     CSS = """
     Screen {
         background: #0a0a0a;
         color: #00ff41;
     }
+
+    Header {
+        background: #0a0a0a;
+        color: #00ff41;
+        dock: top;
+    }
+
+    Footer {
+        background: #0a0a0a;
+        color: #005f1a;
+    }
+
+    WelcomeScreen {
+        width: 100%;
+        height: 100%;
+        content-align: center middle;
+        text-align: center;
+    }
+
+    #logo {
+        color: #00ff41;
+        text-align: center;
+        width: 100%;
+    }
+
+    #version {
+        color: #005f1a;
+        text-align: center;
+        width: 100%;
+    }
+
+    #tagline {
+        color: #00cc33;
+        text-align: center;
+        width: 100%;
+    }
+
+    #instructions {
+        color: #007a1f;
+        text-align: center;
+        width: 100%;
+    }
     """
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield Middle(Center(WelcomeScreen()))
+        yield Footer()
+
+    def action_demo(self) -> None:
+        """Launch demo mode (placeholder)."""
+        self.notify("Demo mode coming soon...")
+
+    def action_connect(self) -> None:
+        """Connect to KSP (placeholder)."""
+        self.notify("Connection screen coming soon...")
 
 
 def main() -> None:
