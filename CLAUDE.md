@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to AI Agents when working with code in this repository.
 
 KSP Mission Control is a Python TUI application that connects to Kerbal Space Program via the kRPC mod. It provides a terminal-based mission control console with live telemetry, vessel control, maneuver planning, and mission logging. Built with Textual (TUI framework) and kRPC (game bridge).
 
