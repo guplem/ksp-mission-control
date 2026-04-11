@@ -11,7 +11,7 @@ from textual.widgets import Footer, Header, Static
 class ControlScreen(Screen[None]):
     """Main control room screen for live telemetry and vessel control."""
 
-    CSS_PATH = "../styles/control.tcss"
+    CSS_PATH = "style.tcss"
 
     BINDINGS = [
         ("escape", "go_back", "Back to Setup"),

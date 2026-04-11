@@ -6,7 +6,7 @@ import pytest
 from textual.app import App, ComposeResult
 from textual.widgets import ListItem, Static
 
-from ksp_mission_control.screens.setup import SetupScreen
+from ksp_mission_control.setup.screen import SetupScreen
 from ksp_mission_control.setup.checks import CheckResult, SetupCheck
 
 # ---------------------------------------------------------------------------

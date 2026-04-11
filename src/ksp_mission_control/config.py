@@ -55,8 +55,8 @@ class ConfigManager:
     """
 
     def __init__(self, config_dir: Path | None = None) -> None:
-        self._config_dir = config_dir or get_config_dir()
-        self._config_path = self._config_dir / "config.json"
+        self._config_dir: Path = config_dir or get_config_dir()
+        self._config_path: Path = self._config_dir / "config.json"
         self._config: AppConfig = self._load()
 
     @property

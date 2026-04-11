@@ -12,17 +12,19 @@ class MissionControlApp(App[None]):
     """Main application for KSP Mission Control."""
 
     TITLE = "KSP Mission Control"
-    CSS_PATH = "styles/app.tcss"
+    CSS_PATH = "style.tcss"
 
     def __init__(self) -> None:
         super().__init__()
-        self.config_manager = ConfigManager()
+        self.config_manager = (
+            ConfigManager()  # Initialize config manager so screens can access it on mount
+        )
 
     def on_mount(self) -> None:
         self.register_theme(mission_control_theme)
         self.theme = "mission-control"
 
-        from ksp_mission_control.screens.setup import SetupScreen
+        from ksp_mission_control.setup.screen import SetupScreen
 
         self.push_screen(SetupScreen())
 

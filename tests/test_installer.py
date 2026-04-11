@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from ksp_mission_control.setup.installer import (
+from ksp_mission_control.setup.kRPC_installer.manager import (
     KRPC_GITHUB_REPO,
     KrpcInstallError,
     extract_krpc_zip,

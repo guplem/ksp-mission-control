@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 from textual.app import ComposeResult
 from textual.containers import Center, HorizontalGroup, Middle, VerticalGroup
@@ -10,18 +11,20 @@ from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Input, Static
 from textual.worker import Worker, WorkerState
 
-from ksp_mission_control.setup.detector import (
+from ksp_mission_control.app import MissionControlApp
+from ksp_mission_control.config import ConfigManager
+from ksp_mission_control.setup.kRPC_installer.detector import (
     find_ksp_install,
     is_krpc_installed,
     is_valid_ksp_install,
 )
-from ksp_mission_control.setup.installer import KrpcInstallError, install_krpc
+from ksp_mission_control.setup.kRPC_installer.manager import KrpcInstallError, install_krpc
 
 
 class KrpcSetupScreen(Screen[None]):
     """Screen that guides the user through kRPC mod installation."""
 
-    CSS_PATH = "../styles/krpc_setup.tcss"
+    CSS_PATH = "style.tcss"
 
     BINDINGS = [
         ("escape", "go_back", "Back"),
@@ -48,14 +51,14 @@ class KrpcSetupScreen(Screen[None]):
             )
             yield Button("Use Path", id="validate-btn", variant="default")
             with Center(), HorizontalGroup(id="button-row"):
-                    yield Button("Detect KSP", id="detect-btn", variant="primary")
-                    yield Button(
-                        "Install kRPC",
-                        id="install-btn",
-                        variant="success",
-                        disabled=True,
-                    )
-                    yield Button("Back", id="back-btn", variant="default")
+                yield Button("Detect KSP", id="detect-btn", variant="primary")
+                yield Button(
+                    "Install kRPC",
+                    id="install-btn",
+                    variant="success",
+                    disabled=True,
+                )
+                yield Button("Back", id="back-btn", variant="default")
             yield Center(Static("", id="setup-status"))
 
         yield Footer()
@@ -78,9 +81,8 @@ class KrpcSetupScreen(Screen[None]):
 
     def _save_ksp_path(self, path: Path) -> None:
         """Persist the KSP path to the application config."""
-        from ksp_mission_control.config import ConfigManager  # noqa: PLC0415
 
-        config_manager: ConfigManager = self.app.config_manager  # type: ignore[attr-defined]
+        config_manager: ConfigManager = cast(MissionControlApp, self.app).config_manager
         config_manager.config.ksp_path = str(path)
         config_manager.save()
 

@@ -10,7 +10,7 @@ import pytest
 from textual.app import App, ComposeResult
 
 from ksp_mission_control.config import ConfigManager
-from ksp_mission_control.screens.krpc_setup import KrpcSetupScreen
+from ksp_mission_control.setup.kRPC_installer.screen import KrpcSetupScreen
 
 
 class KrpcSetupTestApp(App[None]):
