@@ -1,26 +1,14 @@
-KrpcSetupScreen {
-    background: #0a0a0a;
-}
-
 #setup-title {
     text-style: bold;
     margin-bottom: 1;
 }
 
-#setup-description {
-    margin-bottom: 2;
-}
 
 #setup-container {
-    margin: 1 4;
+    margin: 4;
 }
 
-#validate-btn {
-    margin-top: 1;
-    margin-bottom: 1;
-}
-
-#button-row {
+.button-row {
     margin-top: 1;
 }
 
@@ -33,5 +21,10 @@ KrpcSetupScreen {
 }
 
 #setup-status {
-    margin-top: 1;
+    margin-top: 3;
+}
+
+.step-label {
+    margin-bottom: 1;
+    margin-top: 2;
 }

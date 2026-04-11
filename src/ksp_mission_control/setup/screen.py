@@ -14,7 +14,7 @@ from ksp_mission_control.app import MissionControlApp
 from ksp_mission_control.config import ConfigManager
 from ksp_mission_control.control.screen import ControlScreen
 from ksp_mission_control.setup.checks import CheckResult, SetupCheck, get_default_checks
-from ksp_mission_control.widgets.welcome_view import WelcomeView
+from ksp_mission_control.setup.widgets.welcome_widget import WelcomeWidget
 
 
 class SetupScreen(Screen[None]):
@@ -48,7 +48,7 @@ class SetupScreen(Screen[None]):
     def compose(self) -> ComposeResult:
         yield Header()
         with Middle(), Center(), VerticalGroup(id="setup-container"):
-            yield WelcomeView()
+            yield WelcomeWidget()
             yield Static("")
             with ListView(id="checklist"):
                 for check in self._checks:
@@ -111,7 +111,7 @@ class SetupScreen(Screen[None]):
         if result is None:  # in progress or not started yet
             mark = "[~]" if running else "[ ]"
         elif result.passed:
-            mark = "[x]"
+            mark = "[✓]"
         else:  # failed
             mark = "[ ]"
             error_details = result.message

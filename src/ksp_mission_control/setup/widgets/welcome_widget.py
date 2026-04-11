@@ -17,11 +17,11 @@ LOGO = r"""
 """  # noqa: E501
 
 
-class WelcomeView(Static):
+class WelcomeWidget(Static):
     """Welcome screen shown on startup."""
 
     DEFAULT_CSS = """
-        WelcomeView Static {
+        WelcomeWidget Static {
             width: auto;
         }
     """

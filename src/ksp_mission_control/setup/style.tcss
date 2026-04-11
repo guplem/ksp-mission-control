@@ -1,20 +1,5 @@
-SetupScreen {
-    background: #0a0a0a;
-}
-
-#setup-container {
-    margin: 0 4;
-}
-
-#version {
-    margin-bottom: 1;
-}
-
-#tagline {
-    margin-bottom: 2;
-}
-
 #checklist {
-    margin-left: 2;
     height: auto;
+    padding: 1 2;
+    margin: 2 1;
 }

@@ -1,8 +1,9 @@
-"""Download and install the kRPC mod into a KSP installation."""
+"""Download, install, and uninstall the kRPC mod in a KSP installation."""
 
 from __future__ import annotations
 
 import re
+import shutil
 import tempfile
 import zipfile
 from pathlib import Path
@@ -133,3 +134,20 @@ async def install_krpc(
             await client.aclose()  # type: ignore[union-attr]
 
     return version
+
+
+def uninstall_krpc(ksp_path: Path) -> None:
+    """Remove the kRPC mod from *ksp_path*.
+
+    Deletes the ``GameData/kRPC/`` directory.
+
+    Raises:
+        KrpcInstallError: If the kRPC directory does not exist or removal fails.
+    """
+    krpc_dir = ksp_path / "GameData" / "kRPC"
+    if not krpc_dir.is_dir():
+        raise KrpcInstallError("kRPC is not installed")
+    try:
+        shutil.rmtree(krpc_dir)
+    except OSError as exc:
+        raise KrpcInstallError(f"Failed to remove kRPC: {exc}") from exc
