@@ -61,7 +61,10 @@ src/ksp_mission_control/
 │   │   ├── screen.py   # KrpcSetupScreen (guided installer UI)
 │   │   └── style.tcss
 │   ├── kRPC_comms/     # kRPC server connectivity check
-│   │   └── check.py    # KrpcCommsCheck
+│   │   ├── check.py    # KrpcCommsCheck
+│   │   ├── parser.py   # Parse kRPC settings.cfg for server connection details
+│   │   ├── screen.py   # KrpcCommsScreen (connectivity help + test button)
+│   │   └── style.tcss
 │   └── vessel/         # Active vessel detection check
 │       └── check.py    # VesselDetectedCheck
 ├── connection/         # kRPC bridge layer

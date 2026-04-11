@@ -11,6 +11,7 @@ from textual.widgets import Button, Footer, Header, Static
 from textual import work
 from textual.worker import Worker, WorkerState
 
+from ksp_mission_control.app import MissionControlApp
 from ksp_mission_control.setup.checks import CheckResult
 
 
@@ -42,7 +43,8 @@ class KrpcCommsScreen(Screen[None]):
                         "",
                         "  1. Open KSP and load a save (main menu is not enough).",
                         "  2. In the Space Center or Flight view, find the kRPC toolbar icon.",
-                        "  3. Click it and press 'Start Server'.",
+                        "  3. Click 'Add Server' to create a server entry (first time only).",
+                        "  4. Click 'Start Server'.",
                         "",
                         "Once the server is running, click the button below to verify.",
                     ]
@@ -73,7 +75,8 @@ class KrpcCommsScreen(Screen[None]):
     def _run_check(self) -> CheckResult:
         from ksp_mission_control.setup.kRPC_comms.check import KrpcCommsCheck
 
-        return KrpcCommsCheck().run()
+        config_manager = cast(MissionControlApp, self.app).config_manager
+        return KrpcCommsCheck(config_manager=config_manager).run()
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         if event.worker.name != "_run_check":

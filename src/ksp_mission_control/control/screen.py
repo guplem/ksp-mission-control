@@ -2,10 +2,19 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import cast
+
 from textual.app import ComposeResult
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Static
 from textual import work
+
+from ksp_mission_control.setup.checks import KRPC_DEFAULT_RPC_PORT, KRPC_DEFAULT_STREAM_PORT
+from ksp_mission_control.setup.kRPC_comms.parser import (
+    KrpcSettingsParseError,
+    parse_krpc_settings,
+)
 
 
 class ControlScreen(Screen[None]):
@@ -41,7 +50,13 @@ class ControlScreen(Screen[None]):
         import time
 
         try:
-            self._conn = krpc.connect(name="KSP-MC Debug")
+            host, rpc_port, stream_port = self._resolve_connection()
+            self._conn = krpc.connect(
+                name="KSP-MC Debug",
+                address=host,
+                rpc_port=rpc_port,
+                stream_port=stream_port,
+            )
             conn = self._conn
         except Exception as exc:
             self.app.call_from_thread(self._update_output, f"Connection failed: {exc}")
@@ -101,6 +116,19 @@ class ControlScreen(Screen[None]):
 
     def _update_output(self, text: str) -> None:
         self.query_one("#debug-output", Static).update(text)
+
+    def _resolve_connection(self) -> tuple[str, int, int]:
+        """Read connection details from kRPC settings, falling back to defaults."""
+        from ksp_mission_control.app import MissionControlApp  # noqa: PLC0415
+
+        stored_path = cast(MissionControlApp, self.app).config_manager.config.ksp_path
+        if stored_path is not None:
+            try:
+                settings = parse_krpc_settings(Path(stored_path))
+                return settings.address, settings.rpc_port, settings.stream_port
+            except KrpcSettingsParseError:
+                pass
+        return "127.0.0.1", KRPC_DEFAULT_RPC_PORT, KRPC_DEFAULT_STREAM_PORT
 
     def action_go_back(self) -> None:
         """Return to the setup screen."""
