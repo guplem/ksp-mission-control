@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import contextlib
+import threading
 from pathlib import Path
 from typing import cast
 
 from textual import work
 from textual.app import ComposeResult
-from textual.containers import Horizontal
+from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Static
 
@@ -38,12 +39,15 @@ class ControlScreen(Screen[None]):
         self._demo = demo
         self._conn: object | None = None
         self._runner = ActionRunner()
+        self._stop_event = threading.Event()
 
     def compose(self) -> ComposeResult:
         yield Header()
         with Horizontal(id="control-split"):
             mode = "DEMO" if self._demo else "LIVE"
-            yield Static(f"[b]Control View[/b] ({mode})\nConnecting...", id="debug-output")
+            with Vertical(id="debug-output"):
+                yield Static(f"[b]Control View[/b] ({mode})", id="debug-title")
+                yield Static("Connecting...", id="debug-content")
             yield ActionListWidget(id="action-list")
         yield Footer()
 
@@ -72,7 +76,7 @@ class ControlScreen(Screen[None]):
             self.app.call_from_thread(self._update_output, f"Connection failed: {exc}")
             return
 
-        while self.is_current:
+        while not self._stop_event.is_set():
             try:
                 vessel_state = self._read_vessel_state(conn)
                 controls = self._runner.step(vessel_state, dt=0.5)
@@ -82,7 +86,7 @@ class ControlScreen(Screen[None]):
                 self.app.call_from_thread(self._update_ui, text, snapshot)
             except Exception as exc:
                 self.app.call_from_thread(self._update_output, f"Error reading data: {exc}")
-            time.sleep(0.5)
+            self._stop_event.wait(0.5)
 
     def _start_demo_polling(self) -> None:
         from ksp_mission_control.control.demo.provider import generate_demo_vessel_state
@@ -147,7 +151,7 @@ class ControlScreen(Screen[None]):
         action_list.update_running(snapshot.action_id)
 
     def _update_output(self, text: str) -> None:
-        self.query_one("#debug-output", Static).update(text)
+        self.query_one("#debug-content", Static).update(text)
 
     def on_action_list_widget_selected(self, event: ActionListWidget.Selected) -> None:
         """Start the selected action with default parameters."""
@@ -159,7 +163,6 @@ class ControlScreen(Screen[None]):
     def action_abort_action(self) -> None:
         """Abort the currently running action."""
         controls = self._runner.abort()
-        # Apply cleanup controls in live mode
         if not self._demo and self._conn is not None:
             with contextlib.suppress(Exception):
                 self._apply_controls(self._conn, controls)
@@ -179,46 +182,63 @@ class ControlScreen(Screen[None]):
                 pass
         return "127.0.0.1", KRPC_DEFAULT_RPC_PORT, KRPC_DEFAULT_STREAM_PORT
 
-    def action_go_back(self) -> None:
-        """Return to the setup screen."""
-        # Abort any running action
+    def _shutdown(self) -> None:
+        """Signal the polling thread to stop and close the kRPC connection."""
+        self._stop_event.set()
         if self._runner.snapshot().action_id is not None:
-            self.action_abort_action()
+            controls = self._runner.abort()
+            if not self._demo and self._conn is not None:
+                with contextlib.suppress(Exception):
+                    self._apply_controls(self._conn, controls)
         if self._conn is not None:
             with contextlib.suppress(Exception):
                 self._conn.close()  # type: ignore[attr-defined]
+
+    def on_screen_suspend(self) -> None:
+        """Called when this screen is no longer current (popped or replaced)."""
+        self._shutdown()
+
+    def on_unmount(self) -> None:
+        """Called when the screen is removed from the DOM (app quit)."""
+        self._shutdown()
+
+    def action_go_back(self) -> None:
+        """Return to the setup screen."""
+        self._shutdown()
         self.app.pop_screen()
 
 
 def _format_vessel_state(state: VesselState, mode: str) -> str:
     """Format a VesselState into a human-readable debug string."""
-    return "\n".join([
-        f"[b]Control View ({mode})[/b]",
-        "",
-        f"Vessel:          {state.vessel_name}",
-        f"Situation:       {state.situation}",
-        f"MET:             {state.met:.1f}s",
-        "",
-        "--- Flight ---",
-        f"Altitude (sea):  {state.altitude_sea:.0f} m",
-        f"Altitude (srf):  {state.altitude_surface:.0f} m",
-        f"Speed (orbit):   {state.orbital_speed:.1f} m/s",
-        f"Speed (surface): {state.surface_speed:.1f} m/s",
-        f"Vertical speed:  {state.vertical_speed:.1f} m/s",
-        f"Latitude:        {state.latitude:.4f}",
-        f"Longitude:       {state.longitude:.4f}",
-        "",
-        "--- Orbit ---",
-        f"Body:            {state.body}",
-        f"Apoapsis:        {state.apoapsis:.0f} m",
-        f"Periapsis:       {state.periapsis:.0f} m",
-        f"Inclination:     {state.inclination:.2f} deg",
-        f"Eccentricity:    {state.eccentricity:.4f}",
-        f"Period:          {state.period:.1f} s",
-        "",
-        "--- Resources ---",
-        f"Electric charge: {state.electric_charge:.1f}",
-        f"Liquid fuel:     {state.liquid_fuel:.1f}",
-        f"Oxidizer:        {state.oxidizer:.1f}",
-        f"Mono propellant: {state.mono_propellant:.1f}",
-    ])
+    return "\n".join(
+        [
+            f"[b]Control View ({mode})[/b]",
+            "",
+            f"Vessel:          {state.vessel_name}",
+            f"Situation:       {state.situation}",
+            f"MET:             {state.met:.1f}s",
+            "",
+            "--- Flight ---",
+            f"Altitude (sea):  {state.altitude_sea:.0f} m",
+            f"Altitude (srf):  {state.altitude_surface:.0f} m",
+            f"Speed (orbit):   {state.orbital_speed:.1f} m/s",
+            f"Speed (surface): {state.surface_speed:.1f} m/s",
+            f"Vertical speed:  {state.vertical_speed:.1f} m/s",
+            f"Latitude:        {state.latitude:.4f}",
+            f"Longitude:       {state.longitude:.4f}",
+            "",
+            "--- Orbit ---",
+            f"Body:            {state.body}",
+            f"Apoapsis:        {state.apoapsis:.0f} m",
+            f"Periapsis:       {state.periapsis:.0f} m",
+            f"Inclination:     {state.inclination:.2f} deg",
+            f"Eccentricity:    {state.eccentricity:.4f}",
+            f"Period:          {state.period:.1f} s",
+            "",
+            "--- Resources ---",
+            f"Electric charge: {state.electric_charge:.1f}",
+            f"Liquid fuel:     {state.liquid_fuel:.1f}",
+            f"Oxidizer:        {state.oxidizer:.1f}",
+            f"Mono propellant: {state.mono_propellant:.1f}",
+        ]
+    )
