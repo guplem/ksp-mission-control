@@ -49,7 +49,17 @@ src/ksp_mission_control/
 ├── style.tcss          # App-level global styles
 ├── control/            # Control room feature
 │   ├── screen.py       # ControlScreen (live telemetry, vessel control)
-│   └── style.tcss      # Control-screen styles
+│   ├── style.tcss      # Control-screen styles
+│   ├── actions/        # Action execution system (ADR 0006)
+│   │   ├── base.py     # Action ABC, VesselState, VesselControls, ActionParam, enums
+│   │   ├── runner.py   # ActionRunner (step-based executor)
+│   │   ├── registry.py # get_available_actions() factory
+│   │   └── hover/      # Hover altitude-hold action
+│   │       └── action.py # HoverAction
+│   ├── widgets/        # Control-screen widgets
+│   │   └── action_list.py # ActionListWidget (available actions display)
+│   └── demo/           # Demo mode data
+│       └── provider.py # generate_demo_vessel_state()
 ├── setup/              # Setup/checklist feature
 │   ├── screen.py       # SetupScreen (system readiness checklist)
 │   ├── style.tcss      # Setup-screen styles
@@ -166,6 +176,7 @@ Format: `adr/NNNN-short-title.md` with Context, Decision, Consequences sections.
 | [0003](adr/0003-uv-package-manager.md) | uv as the package manager |
 | [0004](adr/0004-protocol-based-client.md) | Protocol-based client abstraction for testability |
 | [0005](adr/0005-tdd-workflow.md) | Test-driven development workflow |
+| [0006](adr/0006-action-execution-system.md) | Tick-based action execution system |
 
 When to create a new ADR: any decision involving trade-offs between alternatives, especially around dependencies, architecture boundaries, or data flow.
 

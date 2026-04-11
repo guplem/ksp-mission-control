@@ -1,0 +1,23 @@
+#control-split {
+    height: 1fr;
+}
+
+#debug-output {
+    width: 2fr;
+    padding: 1 2;
+    overflow-y: auto;
+}
+
+#action-list {
+    width: 1fr;
+    padding: 1 2;
+    border-left: solid $accent;
+}
+
+#action-list-title {
+    padding: 0 0 1 0;
+}
+
+#action-listview {
+    height: auto;
+}

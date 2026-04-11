@@ -1,32 +1,43 @@
-"""Control screen - barebones debug view showing raw kRPC data."""
+"""Control screen - live telemetry and action execution."""
 
 from __future__ import annotations
 
+import contextlib
+
+from textual import work
 from textual.app import ComposeResult
+from textual.containers import Horizontal
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Static
-from textual import work
+
+from ksp_mission_control.control.actions.base import VesselControls, VesselState
+from ksp_mission_control.control.actions.runner import ActionRunner, RunnerSnapshot
+from ksp_mission_control.control.widgets.action_list import ActionListWidget
 
 
 class ControlScreen(Screen[None]):
-    """Debug screen that dumps raw kRPC telemetry to verify data reception."""
+    """Control screen with live telemetry and vessel action execution."""
 
     CSS_PATH = "style.tcss"
 
     BINDINGS = [
         ("escape", "go_back", "Back to Setup"),
         ("q", "app.quit", "Quit"),
+        ("a", "abort_action", "Abort Action"),
     ]
 
     def __init__(self, demo: bool = False) -> None:
         super().__init__()
         self._demo = demo
         self._conn: object | None = None
+        self._runner = ActionRunner()
 
     def compose(self) -> ComposeResult:
         yield Header()
-        mode = "DEMO" if self._demo else "LIVE"
-        yield Static(f"[b]Debug View[/b] ({mode})\nConnecting...", id="debug-output")
+        with Horizontal(id="control-split"):
+            mode = "DEMO" if self._demo else "LIVE"
+            yield Static(f"[b]Control View[/b] ({mode})\nConnecting...", id="debug-output")
+            yield ActionListWidget(id="action-list")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -37,11 +48,12 @@ class ControlScreen(Screen[None]):
 
     @work(thread=True)
     def _connect_and_poll(self) -> None:
+        import time  # noqa: PLC0415
+
         import krpc  # noqa: PLC0415
-        import time
 
         try:
-            self._conn = krpc.connect(name="KSP-MC Debug")
+            self._conn = krpc.connect(name="KSP-MC Control")
             conn = self._conn
         except Exception as exc:
             self.app.call_from_thread(self._update_output, f"Connection failed: {exc}")
@@ -49,64 +61,138 @@ class ControlScreen(Screen[None]):
 
         while self.is_current:
             try:
-                vessel = conn.space_center.active_vessel  # type: ignore[union-attr]
-                flight = vessel.flight(vessel.orbit.body.reference_frame)
-                orbit = vessel.orbit
-
-                lines = [
-                    f"[b]Debug View (LIVE)[/b]",
-                    "",
-                    f"Vessel:          {vessel.name}",
-                    f"Situation:       {vessel.situation}",
-                    f"MET:             {vessel.met:.1f}s",
-                    "",
-                    "--- Flight ---",
-                    f"Altitude (sea):  {flight.mean_altitude:.0f} m",
-                    f"Altitude (srf):  {flight.surface_altitude:.0f} m",
-                    f"Speed (orbit):   {orbit.speed:.1f} m/s",
-                    f"Speed (surface): {flight.speed:.1f} m/s",
-                    f"Vertical speed:  {flight.vertical_speed:.1f} m/s",
-                    f"Latitude:        {flight.latitude:.4f}",
-                    f"Longitude:       {flight.longitude:.4f}",
-                    "",
-                    "--- Orbit ---",
-                    f"Body:            {orbit.body.name}",
-                    f"Apoapsis:        {orbit.apoapsis_altitude:.0f} m",
-                    f"Periapsis:       {orbit.periapsis_altitude:.0f} m",
-                    f"Inclination:     {orbit.inclination:.2f} deg",
-                    f"Eccentricity:    {orbit.eccentricity:.4f}",
-                    f"Period:          {orbit.period:.1f} s",
-                    "",
-                    "--- Resources ---",
-                    f"Electric charge: {vessel.resources.amount('ElectricCharge'):.1f}",
-                    f"Liquid fuel:     {vessel.resources.amount('LiquidFuel'):.1f}",
-                    f"Oxidizer:        {vessel.resources.amount('Oxidizer'):.1f}",
-                    f"Mono propellant: {vessel.resources.amount('MonoPropellant'):.1f}",
-                ]
-                self.app.call_from_thread(self._update_output, "\n".join(lines))
+                vessel_state = self._read_vessel_state(conn)
+                controls = self._runner.step(vessel_state, dt=0.5)
+                self._apply_controls(conn, controls)
+                text = _format_vessel_state(vessel_state, "LIVE")
+                snapshot = self._runner.snapshot()
+                self.app.call_from_thread(self._update_ui, text, snapshot)
             except Exception as exc:
                 self.app.call_from_thread(self._update_output, f"Error reading data: {exc}")
             time.sleep(0.5)
 
     def _start_demo_polling(self) -> None:
-        from ksp_mission_control.control.demo.provider import generate_demo_telemetry
+        from ksp_mission_control.control.demo.provider import generate_demo_vessel_state
 
         self._demo_tick = 0
 
         def tick() -> None:
             self._demo_tick += 1
-            self._update_output(generate_demo_telemetry(self._demo_tick))
+            vessel_state = generate_demo_vessel_state(self._demo_tick)
+            self._runner.step(vessel_state, dt=0.5)  # controls discarded in demo
+            text = _format_vessel_state(vessel_state, "DEMO")
+            snapshot = self._runner.snapshot()
+            self._update_ui(text, snapshot)
 
         self.set_interval(0.5, tick)
+
+    def _read_vessel_state(self, conn: object) -> VesselState:
+        """Read current vessel telemetry from kRPC into a VesselState."""
+        vessel = conn.space_center.active_vessel  # type: ignore[attr-defined]
+        flight = vessel.flight(vessel.orbit.body.reference_frame)
+        orbit = vessel.orbit
+        return VesselState(
+            altitude_sea=flight.mean_altitude,
+            altitude_surface=flight.surface_altitude,
+            vertical_speed=flight.vertical_speed,
+            surface_speed=flight.speed,
+            orbital_speed=orbit.speed,
+            apoapsis=orbit.apoapsis_altitude,
+            periapsis=orbit.periapsis_altitude,
+            met=vessel.met,
+            vessel_name=vessel.name,
+            situation=str(vessel.situation),
+            body=orbit.body.name,
+            latitude=flight.latitude,
+            longitude=flight.longitude,
+            inclination=orbit.inclination,
+            eccentricity=orbit.eccentricity,
+            period=orbit.period,
+            electric_charge=vessel.resources.amount("ElectricCharge"),
+            liquid_fuel=vessel.resources.amount("LiquidFuel"),
+            oxidizer=vessel.resources.amount("Oxidizer"),
+            mono_propellant=vessel.resources.amount("MonoPropellant"),
+        )
+
+    def _apply_controls(self, conn: object, controls: VesselControls) -> None:
+        """Apply non-None control values to the vessel via kRPC."""
+        vessel = conn.space_center.active_vessel  # type: ignore[attr-defined]
+        vc = vessel.control
+        if controls.throttle is not None:
+            vc.throttle = controls.throttle
+        if controls.sas is not None:
+            vc.sas = controls.sas
+        if controls.rcs is not None:
+            vc.rcs = controls.rcs
+        if controls.stage is not None and controls.stage:
+            vc.activate_next_stage()
+
+    def _update_ui(self, text: str, snapshot: RunnerSnapshot) -> None:
+        """Update both the telemetry display and action list status."""
+        self._update_output(text)
+        action_list = self.query_one("#action-list", ActionListWidget)
+        action_list.update_running(snapshot.action_id)
 
     def _update_output(self, text: str) -> None:
         self.query_one("#debug-output", Static).update(text)
 
+    def on_action_list_widget_selected(self, event: ActionListWidget.Selected) -> None:
+        """Start the selected action with default parameters."""
+        try:
+            self._runner.start_action(event.action)
+        except ValueError as exc:
+            self.notify(str(exc), severity="error")
+
+    def action_abort_action(self) -> None:
+        """Abort the currently running action."""
+        controls = self._runner.abort()
+        # Apply cleanup controls in live mode
+        if not self._demo and self._conn is not None:
+            with contextlib.suppress(Exception):
+                self._apply_controls(self._conn, controls)
+        action_list = self.query_one("#action-list", ActionListWidget)
+        action_list.update_running(None)
+
     def action_go_back(self) -> None:
         """Return to the setup screen."""
+        # Abort any running action
+        if self._runner.snapshot().action_id is not None:
+            self.action_abort_action()
         if self._conn is not None:
-            try:
-                self._conn.close()  # type: ignore[union-attr]
-            except Exception:
-                pass
+            with contextlib.suppress(Exception):
+                self._conn.close()  # type: ignore[attr-defined]
         self.app.pop_screen()
+
+
+def _format_vessel_state(state: VesselState, mode: str) -> str:
+    """Format a VesselState into a human-readable debug string."""
+    return "\n".join([
+        f"[b]Control View ({mode})[/b]",
+        "",
+        f"Vessel:          {state.vessel_name}",
+        f"Situation:       {state.situation}",
+        f"MET:             {state.met:.1f}s",
+        "",
+        "--- Flight ---",
+        f"Altitude (sea):  {state.altitude_sea:.0f} m",
+        f"Altitude (srf):  {state.altitude_surface:.0f} m",
+        f"Speed (orbit):   {state.orbital_speed:.1f} m/s",
+        f"Speed (surface): {state.surface_speed:.1f} m/s",
+        f"Vertical speed:  {state.vertical_speed:.1f} m/s",
+        f"Latitude:        {state.latitude:.4f}",
+        f"Longitude:       {state.longitude:.4f}",
+        "",
+        "--- Orbit ---",
+        f"Body:            {state.body}",
+        f"Apoapsis:        {state.apoapsis:.0f} m",
+        f"Periapsis:       {state.periapsis:.0f} m",
+        f"Inclination:     {state.inclination:.2f} deg",
+        f"Eccentricity:    {state.eccentricity:.4f}",
+        f"Period:          {state.period:.1f} s",
+        "",
+        "--- Resources ---",
+        f"Electric charge: {state.electric_charge:.1f}",
+        f"Liquid fuel:     {state.liquid_fuel:.1f}",
+        f"Oxidizer:        {state.oxidizer:.1f}",
+        f"Mono propellant: {state.mono_propellant:.1f}",
+    ])

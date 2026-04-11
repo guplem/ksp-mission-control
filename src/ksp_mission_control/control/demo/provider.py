@@ -1,41 +1,34 @@
-"""Demo data provider that generates fake telemetry for the debug view."""
+"""Demo data provider that generates fake vessel state for the control screen."""
 
 from __future__ import annotations
 
 import random
 
+from ksp_mission_control.control.actions.base import VesselState
 
-def generate_demo_telemetry(tick: int) -> str:
-    """Return a formatted telemetry string with randomized demo values."""
+
+def generate_demo_vessel_state(tick: int) -> VesselState:
+    """Return a VesselState with randomized demo values."""
     t = tick
-    lines = [
-        "[b]Debug View (DEMO)[/b]",
-        "",
-        "Vessel:          Demo Craft",
-        "Situation:       flying",
-        f"MET:             {t * 0.5:.1f}s",
-        "",
-        "--- Flight ---",
-        f"Altitude (sea):  {75000 + random.randint(-500, 500)} m",
-        f"Altitude (srf):  {74800 + random.randint(-500, 500)} m",
-        f"Speed (orbit):   {2200 + random.randint(-10, 10):.1f} m/s",
-        f"Speed (surface): {2180 + random.randint(-10, 10):.1f} m/s",
-        f"Vertical speed:  {random.randint(-5, 5):.1f} m/s",
-        f"Latitude:        {random.uniform(-90, 90):.4f}",
-        f"Longitude:       {random.uniform(-180, 180):.4f}",
-        "",
-        "--- Orbit ---",
-        "Body:            Kerbin",
-        f"Apoapsis:        {80000 + random.randint(-100, 100)} m",
-        f"Periapsis:       {70000 + random.randint(-100, 100)} m",
-        "Inclination:     0.50 deg",
-        "Eccentricity:    0.0071",
-        "Period:          2400.0 s",
-        "",
-        "--- Resources ---",
-        f"Electric charge: {150.0 - t * 0.1:.1f}",
-        f"Liquid fuel:     {400.0 - t * 0.5:.1f}",
-        f"Oxidizer:        {480.0 - t * 0.6:.1f}",
-        f"Mono propellant: {50.0:.1f}",
-    ]
-    return "\n".join(lines)
+    return VesselState(
+        altitude_sea=75000.0 + random.randint(-500, 500),
+        altitude_surface=74800.0 + random.randint(-500, 500),
+        vertical_speed=float(random.randint(-5, 5)),
+        surface_speed=2180.0 + random.randint(-10, 10),
+        orbital_speed=2200.0 + random.randint(-10, 10),
+        apoapsis=80000.0 + random.randint(-100, 100),
+        periapsis=70000.0 + random.randint(-100, 100),
+        met=t * 0.5,
+        vessel_name="Demo Craft",
+        situation="flying",
+        body="Kerbin",
+        latitude=random.uniform(-90, 90),
+        longitude=random.uniform(-180, 180),
+        inclination=0.50,
+        eccentricity=0.0071,
+        period=2400.0,
+        electric_charge=max(0.0, 150.0 - t * 0.1),
+        liquid_fuel=max(0.0, 400.0 - t * 0.5),
+        oxidizer=max(0.0, 480.0 - t * 0.6),
+        mono_propellant=50.0,
+    )
