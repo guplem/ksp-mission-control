@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import contextlib
+from pathlib import Path
+from typing import cast
 
 from textual import work
 from textual.app import ComposeResult
@@ -13,6 +15,11 @@ from textual.widgets import Footer, Header, Static
 from ksp_mission_control.control.actions.base import VesselControls, VesselState
 from ksp_mission_control.control.actions.runner import ActionRunner, RunnerSnapshot
 from ksp_mission_control.control.widgets.action_list import ActionListWidget
+from ksp_mission_control.setup.checks import KRPC_DEFAULT_RPC_PORT, KRPC_DEFAULT_STREAM_PORT
+from ksp_mission_control.setup.kRPC_comms.parser import (
+    KrpcSettingsParseError,
+    parse_krpc_settings,
+)
 
 
 class ControlScreen(Screen[None]):
@@ -53,7 +60,13 @@ class ControlScreen(Screen[None]):
         import krpc  # noqa: PLC0415
 
         try:
-            self._conn = krpc.connect(name="KSP-MC Control")
+            host, rpc_port, stream_port = self._resolve_connection()
+            self._conn = krpc.connect(
+                name="KSP-MC Control",
+                address=host,
+                rpc_port=rpc_port,
+                stream_port=stream_port,
+            )
             conn = self._conn
         except Exception as exc:
             self.app.call_from_thread(self._update_output, f"Connection failed: {exc}")
@@ -152,6 +165,19 @@ class ControlScreen(Screen[None]):
                 self._apply_controls(self._conn, controls)
         action_list = self.query_one("#action-list", ActionListWidget)
         action_list.update_running(None)
+
+    def _resolve_connection(self) -> tuple[str, int, int]:
+        """Read connection details from kRPC settings, falling back to defaults."""
+        from ksp_mission_control.app import MissionControlApp  # noqa: PLC0415
+
+        stored_path = cast(MissionControlApp, self.app).config_manager.config.ksp_path
+        if stored_path is not None:
+            try:
+                settings = parse_krpc_settings(Path(stored_path))
+                return settings.address, settings.rpc_port, settings.stream_port
+            except KrpcSettingsParseError:
+                pass
+        return "127.0.0.1", KRPC_DEFAULT_RPC_PORT, KRPC_DEFAULT_STREAM_PORT
 
     def action_go_back(self) -> None:
         """Return to the setup screen."""

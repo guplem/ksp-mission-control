@@ -12,6 +12,45 @@ from ksp_mission_control.setup.kRPC_installer.check import KrpcInstalledCheck
 from ksp_mission_control.setup.vessel.check import VesselDetectedCheck
 
 
+def _make_settings_cfg(
+    address: str = "127.0.0.1",
+    rpc_port: int = 50000,
+    stream_port: int = 50001,
+) -> str:
+    """Generate a minimal kRPC settings.cfg with the given server settings."""
+    return f"""KRPCConfiguration
+{{
+    servers
+    {{
+        Item
+        {{
+            id = test-id
+            name = Test Server
+            protocol = ProtocolBuffersOverTCP
+            settings
+            {{
+                Item
+                {{
+                    key = address
+                    value = {address}
+                }}
+                Item
+                {{
+                    key = rpc_port
+                    value = {rpc_port}
+                }}
+                Item
+                {{
+                    key = stream_port
+                    value = {stream_port}
+                }}
+            }}
+        }}
+    }}
+}}
+"""
+
+
 def _mock_config_manager(ksp_path: str | None = None) -> ConfigManager:
     """Create a mock ConfigManager with the given ksp_path."""
     manager = Mock(spec=ConfigManager)
@@ -128,9 +167,17 @@ class TestKrpcInstalledCheck:
 class TestKrpcCommsCheck:
     """Tests for the kRPC server reachability check."""
 
-    def test_fails_when_server_unreachable(self) -> None:
-        # Use a port that's almost certainly not listening
-        check = KrpcCommsCheck(host="127.0.0.1", port=19999, timeout=0.1)
+    def test_fails_when_server_unreachable(self, tmp_path: Path) -> None:
+        # Create a settings.cfg with an unused port so the check fails
+        cfg_dir = tmp_path / "GameData" / "kRPC" / "PluginData"
+        cfg_dir.mkdir(parents=True)
+        (cfg_dir / "settings.cfg").write_text(
+            _make_settings_cfg(address="127.0.0.1", rpc_port=19999, stream_port=19998)
+        )
+        check = KrpcCommsCheck(
+            config_manager=_mock_config_manager(ksp_path=str(tmp_path)),
+            timeout=0.1,
+        )
         result = check.run()
         assert result.passed is False
         assert "Cannot reach" in result.message
@@ -143,7 +190,7 @@ class TestKrpcCommsCheck:
             "ksp_mission_control.setup.kRPC_comms.check.socket.create_connection",
             return_value=mock_socket,
         ):
-            result = KrpcCommsCheck().run()
+            result = KrpcCommsCheck(config_manager=_mock_config_manager()).run()
         assert result.passed is True
         assert "Connected" in result.message
 
@@ -155,7 +202,7 @@ class TestVesselDetectedCheck:
         mock_krpc = Mock()
         mock_krpc.connect.side_effect = ConnectionRefusedError
         with patch.dict("sys.modules", {"krpc": mock_krpc}):
-            result = VesselDetectedCheck().run()
+            result = VesselDetectedCheck(config_manager=_mock_config_manager()).run()
         assert result.passed is False
 
     def test_fails_when_no_active_vessel(self) -> None:
@@ -166,7 +213,7 @@ class TestVesselDetectedCheck:
         mock_krpc = Mock()
         mock_krpc.connect.return_value = mock_conn
         with patch.dict("sys.modules", {"krpc": mock_krpc}):
-            result = VesselDetectedCheck().run()
+            result = VesselDetectedCheck(config_manager=_mock_config_manager()).run()
         assert result.passed is False
 
     def test_passes_when_vessel_found(self) -> None:
@@ -175,7 +222,7 @@ class TestVesselDetectedCheck:
         mock_krpc = Mock()
         mock_krpc.connect.return_value = mock_conn
         with patch.dict("sys.modules", {"krpc": mock_krpc}):
-            result = VesselDetectedCheck().run()
+            result = VesselDetectedCheck(config_manager=_mock_config_manager()).run()
         assert result.passed is True
         assert "Kerbal X" in result.message
 

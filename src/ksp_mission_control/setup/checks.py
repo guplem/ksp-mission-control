@@ -31,7 +31,7 @@ class SetupCheck(ABC):
     label: ClassVar[str]
     """Human-readable label shown in the checklist."""
 
-    screen: ClassVar[type[Screen] | None]
+    screen: ClassVar[type[Screen[object]] | None]
     """The Screen class with help to pass the check, or None if no specific page exists."""
 
     @abstractmethod
@@ -51,6 +51,6 @@ def get_default_checks(config_manager: ConfigManager) -> list[SetupCheck]:
 
     return [
         KrpcInstalledCheck(config_manager=config_manager),
-        KrpcCommsCheck(),
-        VesselDetectedCheck(),
+        KrpcCommsCheck(config_manager=config_manager),
+        VesselDetectedCheck(config_manager=config_manager),
     ]
