@@ -82,7 +82,7 @@ class TestSetupScreenDetection:
                 await pilot.click("#detect-btn")
                 await pilot.pause()
                 inp = pilot.app.screen.query_one("#ksp-path-input")
-                assert inp.value == "/fake/ksp"
+                assert Path(inp.value) == fake_info.path
 
     @pytest.mark.asyncio
     async def test_detect_shows_not_found(self) -> None:
