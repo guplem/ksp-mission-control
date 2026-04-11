@@ -1,0 +1,15 @@
+#control-split {
+    height: 1fr;
+}
+
+#telemetry-display {
+    width: 2fr;
+    padding: 1 2;
+    overflow-y: auto;
+}
+
+#action-list {
+    width: 1fr;
+    padding: 1 2;
+    border-left: solid $accent;
+}

@@ -8,7 +8,7 @@ from textual import work
 from textual.app import ComposeResult
 from textual.containers import Center, Middle, VerticalGroup
 from textual.screen import Screen
-from textual.widgets import Footer, Header, ListItem, ListView, Static
+from textual.widgets import Button, Footer, Header, ListItem, ListView, Static
 
 from ksp_mission_control.app import MissionControlApp
 from ksp_mission_control.config import ConfigManager
@@ -56,6 +56,11 @@ class SetupScreen(Screen[None]):
                         Static(f"Preparing {check.check_id}...", id=f"{check.check_id}-label"),
                         id=check.check_id,
                     )
+            yield Center(
+                Button(
+                    "Enter Control Room", id="enter-control-room", variant="primary", disabled=True
+                )
+            )
         yield Footer()
 
     def on_mount(self) -> None:
@@ -123,6 +128,12 @@ class SetupScreen(Screen[None]):
                 else ""
             )
         )
+        self.query_one("#enter-control-room", Button).disabled = not self.all_checks_passed
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button presses on the setup screen."""
+        if event.button.id == "enter-control-room":
+            self.app.push_screen(ControlScreen(demo=False))
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         """Navigate to the detail screen for the selected checklist item."""

@@ -177,6 +177,7 @@ class TestSetupScreenChecks:
         checks = _make_checks(krpc=True, comms=True, vessel=True)
         async with SetupTestApp(checks=checks).run_test() as pilot:
             await pilot.pause()
+            await pilot.pause()
             screen = pilot.app.screen
             assert isinstance(screen, SetupScreen)
             assert screen.check_action_control_room() is True

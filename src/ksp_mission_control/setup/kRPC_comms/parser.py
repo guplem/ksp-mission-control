@@ -6,7 +6,12 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from ksp_mission_control.config import ConfigManager
+
 KRPC_SETTINGS_RELATIVE_PATH = Path("GameData/kRPC/PluginData/settings.cfg")
+
+KRPC_DEFAULT_RPC_PORT = 50000
+KRPC_DEFAULT_STREAM_PORT = 50001
 
 
 class KrpcSettingsParseError(Exception):
@@ -76,7 +81,6 @@ def _parse_first_server(text: str) -> KrpcServerSettings:
 
     # Extract key/value pairs until we hit the closing brace of the settings block
     depth = 1
-    pos = 0
     current_key: str | None = None
     for line in settings_text.splitlines():
         depth += line.count("{") - line.count("}")
@@ -107,3 +111,22 @@ def _parse_first_server(text: str) -> KrpcServerSettings:
         )
     except ValueError as exc:
         raise KrpcSettingsParseError(f"Invalid port value: {exc}") from exc
+
+
+def resolve_krpc_connection(config_manager: ConfigManager) -> KrpcServerSettings:
+    """Return kRPC connection settings, falling back to defaults.
+
+    Reads the KSP install path from *config_manager*, attempts to parse
+    kRPC settings.cfg, and falls back to localhost defaults on failure.
+    """
+    stored_path = config_manager.config.ksp_path
+    if stored_path is not None:
+        try:
+            return parse_krpc_settings(Path(stored_path))
+        except KrpcSettingsParseError:
+            pass
+    return KrpcServerSettings(
+        address="127.0.0.1",
+        rpc_port=KRPC_DEFAULT_RPC_PORT,
+        stream_port=KRPC_DEFAULT_STREAM_PORT,
+    )

@@ -4,14 +4,11 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from textual.screen import Screen
 
 from ksp_mission_control.config import ConfigManager
-
-KRPC_DEFAULT_RPC_PORT = 50000
-KRPC_DEFAULT_STREAM_PORT = 50001
 
 
 @dataclass(frozen=True)
@@ -31,7 +28,7 @@ class SetupCheck(ABC):
     label: ClassVar[str]
     """Human-readable label shown in the checklist."""
 
-    screen: ClassVar[type[Screen[object]] | None]
+    screen: ClassVar[type[Screen[Any]] | None]
     """The Screen class with help to pass the check, or None if no specific page exists."""
 
     @abstractmethod

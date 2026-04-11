@@ -4,7 +4,7 @@ from pathlib import Path
 
 from ksp_mission_control.config import ConfigManager
 from ksp_mission_control.setup.checks import CheckResult, SetupCheck
-from ksp_mission_control.setup.kRPC_installer.detector import (
+from ksp_mission_control.setup.kRPC_installer.locator import (
     find_ksp_install,
     is_krpc_installed,
     is_valid_ksp_install,

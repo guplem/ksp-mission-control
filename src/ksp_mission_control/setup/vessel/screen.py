@@ -1,4 +1,4 @@
-"""kRPC server connectivity screen."""
+"""Active vessel detection screen."""
 
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ from ksp_mission_control.app import MissionControlApp
 from ksp_mission_control.setup.checks import CheckResult
 
 
-class KrpcCommsScreen(Screen[None]):
-    """Screen explaining how to start the kRPC server and testing connectivity."""
+class VesselScreen(Screen[None]):
+    """Screen explaining vessel requirements and testing detection."""
 
     CSS_PATH = "style.tcss"
 
@@ -28,10 +28,10 @@ class KrpcCommsScreen(Screen[None]):
         yield Header()
 
         with Middle(), Center(), VerticalGroup(id="setup-container"):
-            yield Center(Static("kRPC Server Connection", id="setup-title"))
+            yield Center(Static("Active Vessel Detection", id="setup-title"))
             yield Center(
                 Static(
-                    "The kRPC server must be running inside KSP before this tool can connect.",
+                    "KSP Mission Control needs an active vessel under your control.",
                     id="setup-description",
                 )
             )
@@ -39,21 +39,20 @@ class KrpcCommsScreen(Screen[None]):
             yield Static(
                 "\n".join(
                     [
-                        "To start the kRPC server:",
+                        "Before checking, make sure that:",
                         "",
-                        "  1. Open KSP and load a save (main menu is not enough).",
-                        "  2. In the Space Center or Flight view, find the kRPC toolbar icon.",
-                        "  3. Click 'Add Server' to create a server entry (first time only).",
-                        "  4. Click 'Start Server'.",
+                        "  1. You are in the Flight view (not the Space Center or main menu).",
+                        "  2. The vessel is on the launchpad or in flight.",
+                        "  3. You are controlling the vessel (not watching from the Tracking Station).",  # noqa: E501
                         "",
-                        "Once the server is running, click the button below to verify.",
+                        "Once you have an active vessel, click the button below to verify.",
                     ]
                 ),
                 id="instructions",
             )
 
             yield Button(
-                "Test Connection",
+                "Check Vessel",
                 id="test-btn",
                 variant="primary",
             )
@@ -67,16 +66,16 @@ class KrpcCommsScreen(Screen[None]):
             self._do_test()
 
     def _do_test(self) -> None:
-        self._set_status("Testing connection...")
+        self._set_status("Checking for active vessel...")
         self.query_one("#test-btn", Button).disabled = True
         self._run_check()
 
     @work(thread=True)
     def _run_check(self) -> CheckResult:
-        from ksp_mission_control.setup.kRPC_comms.check import KrpcCommsCheck
+        from ksp_mission_control.setup.vessel.check import VesselDetectedCheck
 
         config_manager = cast(MissionControlApp, self.app).config_manager
-        return KrpcCommsCheck(config_manager=config_manager).run()
+        return VesselDetectedCheck(config_manager=config_manager).run()
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         if event.worker.name != "_run_check":
