@@ -43,8 +43,7 @@ class VesselScreen(Screen[None]):
                         "",
                         "  1. You are in the Flight view (not the Space Center or main menu).",
                         "  2. The vessel is on the launchpad or in flight.",
-                        "  3. You are controlling the vessel (not watching from the"
-                        "   Tracking Station).",
+                        "  3. You are controlling the vessel (not watching from the Tracking Station).",  # noqa: E501
                         "",
                         "Once you have an active vessel, click the button below to verify.",
                     ]
