@@ -61,15 +61,15 @@ src/ksp_mission_control/
 │   │   ├── telemetry_display.py # TelemetryDisplayWidget (formatted vessel data)
 │   │   └── action_list.py       # ActionListWidget (available actions + status)
 │   └── demo/             # Demo mode data
-│       └── provider.py   # generate_demo_vessel_state()
+│       └── demo_state.py # generate_demo_vessel_state()
 ├── setup/                # Setup/checklist feature
 │   ├── screen.py         # SetupScreen (system readiness checklist)
 │   ├── style.tcss        # Setup-screen styles
 │   ├── checks.py         # SetupCheck ABC, CheckResult, get_default_checks()
 │   ├── kRPC_installer/   # kRPC mod detection + installation
 │   │   ├── check.py      # KrpcInstalledCheck
-│   │   ├── detector.py   # find_ksp_install, is_valid_ksp_install, etc.
-│   │   ├── manager.py    # Download + extract kRPC zip
+│   │   ├── locator.py    # find_ksp_install, is_valid_ksp_install, etc.
+│   │   ├── installer.py  # Download + extract kRPC zip
 │   │   ├── screen.py     # KrpcSetupScreen (guided installer UI)
 │   │   └── style.tcss
 │   ├── kRPC_comms/       # kRPC server connectivity check
@@ -92,7 +92,7 @@ This project uses **feature-based modules**, not layer-based. Every feature is a
 - **One feature = one folder**. A feature folder contains its own `screen.py`, `style.tcss`, `check.py`, business logic files, and sub-features as nested folders. No central `screens/` or `styles/` directories.
 - **Co-locate styles with screens**. Each screen's `style.tcss` lives next to its `screen.py`. The screen references it via `CSS_PATH = "style.tcss"`. App-level global styles live in the root `style.tcss`.
 - **Small, focused files**. One class per file. Each file has a single clear responsibility. Prefer many small files over few large ones.
-- **Descriptive file names**. Name files after what they contain: `check.py` for a check class, `detector.py` for detection logic, `manager.py` for orchestration logic. Never `utils.py` or `helpers.py`.
+- **Descriptive file names**. Name files after what they contain: `check.py` for a check class, `locator.py` for path-finding logic, `installer.py` for download/install logic. Never `utils.py` or `helpers.py`.
 - **Sub-features nest as subfolders**. If a feature has distinct sub-concerns (e.g. `setup/` has `kRPC_installer/`, `kRPC_comms/`, `vessel/`), each gets its own folder with its own files.
 - **Shared code stays at the parent level**. Base classes and shared types (e.g. `SetupCheck`, `CheckResult`) live in the parent module (e.g. `setup/checks.py`), not duplicated in sub-features.
 

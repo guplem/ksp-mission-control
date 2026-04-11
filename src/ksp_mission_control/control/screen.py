@@ -84,7 +84,7 @@ class ControlScreen(Screen[None]):
             self._stop_event.wait(0.5)
 
     def _start_demo_polling(self) -> None:
-        from ksp_mission_control.control.demo.provider import generate_demo_vessel_state
+        from ksp_mission_control.control.demo.demo_state import generate_demo_vessel_state
 
         self._demo_tick = 0
 
