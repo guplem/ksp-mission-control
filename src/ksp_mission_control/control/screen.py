@@ -12,8 +12,9 @@ from textual.containers import Horizontal
 from textual.screen import Screen
 from textual.widgets import Footer, Header
 
-from ksp_mission_control.control.actions.base import VesselControls, VesselState
+from ksp_mission_control.control.actions.base import VesselState
 from ksp_mission_control.control.actions.runner import ActionRunner, RunnerSnapshot
+from ksp_mission_control.control.krpc_bridge import apply_controls, read_vessel_state
 from ksp_mission_control.control.widgets.action_list import ActionListWidget
 from ksp_mission_control.control.widgets.telemetry_display import TelemetryDisplayWidget
 from ksp_mission_control.setup.kRPC_comms.parser import resolve_krpc_connection
@@ -73,11 +74,11 @@ class ControlScreen(Screen[None]):
 
         while not self._stop_event.is_set():
             try:
-                vessel_state = self._read_vessel_state(conn)
+                vessel_state = read_vessel_state(conn)
                 controls = self._runner.step(vessel_state, dt=0.5)
-                self._apply_controls(conn, controls)
-                snapshot = self._runner.snapshot()
-                self.app.call_from_thread(self._update_ui, vessel_state, snapshot)
+                apply_controls(conn, controls)
+                runner_state = self._runner.snapshot()
+                self.app.call_from_thread(self._update_ui, vessel_state, runner_state)
             except Exception as exc:
                 self.app.call_from_thread(self._show_error, f"Error reading data: {exc}")
             self._stop_event.wait(0.5)
@@ -90,57 +91,16 @@ class ControlScreen(Screen[None]):
         def tick() -> None:
             self._demo_tick += 1
             vessel_state = generate_demo_vessel_state(self._demo_tick)
-            self._runner.step(vessel_state, dt=0.5)  # controls discarded in demo
-            snapshot = self._runner.snapshot()
-            self._update_ui(vessel_state, snapshot)
+            self._runner.step(vessel_state, dt=0.5)
+            runner_state = self._runner.snapshot()
+            self._update_ui(vessel_state, runner_state)
 
         self.set_interval(0.5, tick)
 
-    def _read_vessel_state(self, conn: object) -> VesselState:
-        """Read current vessel telemetry from kRPC into a VesselState."""
-        vessel = conn.space_center.active_vessel  # type: ignore[attr-defined]
-        flight = vessel.flight(vessel.orbit.body.reference_frame)
-        orbit = vessel.orbit
-        return VesselState(
-            altitude_sea=flight.mean_altitude,
-            altitude_surface=flight.surface_altitude,
-            vertical_speed=flight.vertical_speed,
-            surface_speed=flight.speed,
-            orbital_speed=orbit.speed,
-            apoapsis=orbit.apoapsis_altitude,
-            periapsis=orbit.periapsis_altitude,
-            met=vessel.met,
-            vessel_name=vessel.name,
-            situation=str(vessel.situation),
-            body=orbit.body.name,
-            latitude=flight.latitude,
-            longitude=flight.longitude,
-            inclination=orbit.inclination,
-            eccentricity=orbit.eccentricity,
-            period=orbit.period,
-            electric_charge=vessel.resources.amount("ElectricCharge"),
-            liquid_fuel=vessel.resources.amount("LiquidFuel"),
-            oxidizer=vessel.resources.amount("Oxidizer"),
-            mono_propellant=vessel.resources.amount("MonoPropellant"),
-        )
-
-    def _apply_controls(self, conn: object, controls: VesselControls) -> None:
-        """Apply non-None control values to the vessel via kRPC."""
-        vessel = conn.space_center.active_vessel  # type: ignore[attr-defined]
-        vc = vessel.control
-        if controls.throttle is not None:
-            vc.throttle = controls.throttle
-        if controls.sas is not None:
-            vc.sas = controls.sas
-        if controls.rcs is not None:
-            vc.rcs = controls.rcs
-        if controls.stage is not None and controls.stage:
-            vc.activate_next_stage()
-
-    def _update_ui(self, state: VesselState, snapshot: RunnerSnapshot) -> None:
+    def _update_ui(self, state: VesselState, runner_state: RunnerSnapshot) -> None:
         """Update both the telemetry display and action list status."""
         self.query_one("#telemetry-display", TelemetryDisplayWidget).update_vessel_state(state)
-        self.query_one("#action-list", ActionListWidget).update_running(snapshot.action_id)
+        self.query_one("#action-list", ActionListWidget).update_running(runner_state.action_id)
 
     def _show_error(self, message: str) -> None:
         self.query_one("#telemetry-display", TelemetryDisplayWidget).show_error(message)
@@ -157,7 +117,7 @@ class ControlScreen(Screen[None]):
         controls = self._runner.abort()
         if not self._demo and self._conn is not None:
             with contextlib.suppress(Exception):
-                self._apply_controls(self._conn, controls)
+                apply_controls(self._conn, controls)
         action_list = self.query_one("#action-list", ActionListWidget)
         action_list.update_running(None)
 
@@ -168,7 +128,7 @@ class ControlScreen(Screen[None]):
             controls = self._runner.abort()
             if not self._demo and self._conn is not None:
                 with contextlib.suppress(Exception):
-                    self._apply_controls(self._conn, controls)
+                    apply_controls(self._conn, controls)
         if self._conn is not None:
             with contextlib.suppress(Exception):
                 self._conn.close()  # type: ignore[attr-defined]
