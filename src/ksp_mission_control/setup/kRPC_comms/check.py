@@ -1,18 +1,10 @@
 from __future__ import annotations
 
 import socket
-from pathlib import Path
 
 from ksp_mission_control.config import ConfigManager
-from ksp_mission_control.setup.checks import (
-    KRPC_DEFAULT_RPC_PORT,
-    CheckResult,
-    SetupCheck,
-)
-from ksp_mission_control.setup.kRPC_comms.parser import (
-    KrpcSettingsParseError,
-    parse_krpc_settings,
-)
+from ksp_mission_control.setup.checks import CheckResult, SetupCheck
+from ksp_mission_control.setup.kRPC_comms.parser import resolve_krpc_connection
 from ksp_mission_control.setup.kRPC_comms.screen import KrpcCommsScreen
 
 
@@ -32,7 +24,8 @@ class KrpcCommsCheck(SetupCheck):
         self._timeout = timeout
 
     def run(self) -> CheckResult:
-        host, port = self._resolve_connection()
+        settings = resolve_krpc_connection(self._config_manager)
+        host, port = settings.address, settings.rpc_port
         try:
             with socket.create_connection((host, port), timeout=self._timeout):
                 return CheckResult(
@@ -44,14 +37,3 @@ class KrpcCommsCheck(SetupCheck):
                 passed=False,
                 message=f"Cannot reach kRPC at {host}:{port} ({exc})",
             )
-
-    def _resolve_connection(self) -> tuple[str, int]:
-        """Read address and RPC port from kRPC settings, falling back to defaults."""
-        stored_path = self._config_manager.config.ksp_path
-        if stored_path is not None:
-            try:
-                settings = parse_krpc_settings(Path(stored_path))
-                return settings.address, settings.rpc_port
-            except KrpcSettingsParseError:
-                pass
-        return "127.0.0.1", KRPC_DEFAULT_RPC_PORT

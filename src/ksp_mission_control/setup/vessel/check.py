@@ -1,18 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from ksp_mission_control.config import ConfigManager
-from ksp_mission_control.setup.checks import (
-    KRPC_DEFAULT_RPC_PORT,
-    KRPC_DEFAULT_STREAM_PORT,
-    CheckResult,
-    SetupCheck,
-)
-from ksp_mission_control.setup.kRPC_comms.parser import (
-    KrpcSettingsParseError,
-    parse_krpc_settings,
-)
+from ksp_mission_control.setup.checks import CheckResult, SetupCheck
+from ksp_mission_control.setup.kRPC_comms.parser import resolve_krpc_connection
 
 
 class VesselDetectedCheck(SetupCheck):
@@ -26,15 +16,15 @@ class VesselDetectedCheck(SetupCheck):
         self._config_manager = config_manager
 
     def run(self) -> CheckResult:
-        host, rpc_port, stream_port = self._resolve_connection()
+        settings = resolve_krpc_connection(self._config_manager)
         try:
-            import krpc  # noqa: PLC0415 — lazy import to avoid hard dep at module level
+            import krpc  # noqa: PLC0415
 
             conn = krpc.connect(
                 name="KSP-MC Setup Check",
-                address=host,
-                rpc_port=rpc_port,
-                stream_port=stream_port,
+                address=settings.address,
+                rpc_port=settings.rpc_port,
+                stream_port=settings.stream_port,
             )
             try:
                 vessel = conn.space_center.active_vessel
@@ -56,14 +46,3 @@ class VesselDetectedCheck(SetupCheck):
             )
         except Exception as exc:
             return CheckResult(passed=False, message=f"Failed to query vessel ({exc})")
-
-    def _resolve_connection(self) -> tuple[str, int, int]:
-        """Read connection details from kRPC settings, falling back to defaults."""
-        stored_path = self._config_manager.config.ksp_path
-        if stored_path is not None:
-            try:
-                settings = parse_krpc_settings(Path(stored_path))
-                return settings.address, settings.rpc_port, settings.stream_port
-            except KrpcSettingsParseError:
-                pass
-        return "127.0.0.1", KRPC_DEFAULT_RPC_PORT, KRPC_DEFAULT_STREAM_PORT

@@ -10,9 +10,6 @@ from textual.screen import Screen
 
 from ksp_mission_control.config import ConfigManager
 
-KRPC_DEFAULT_RPC_PORT = 50000
-KRPC_DEFAULT_STREAM_PORT = 50001
-
 
 @dataclass(frozen=True)
 class CheckResult:

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import contextlib
 import threading
-from pathlib import Path
 from typing import cast
 
 from textual import work
@@ -14,15 +13,10 @@ from textual.screen import Screen
 from textual.widgets import Footer, Header
 
 from ksp_mission_control.control.actions.base import VesselControls, VesselState
-from ksp_mission_control.control.actions.runner import ActionRunner
 from ksp_mission_control.control.actions.runner import ActionRunner, RunnerSnapshot
 from ksp_mission_control.control.widgets.action_list import ActionListWidget
 from ksp_mission_control.control.widgets.telemetry_display import TelemetryDisplayWidget
-from ksp_mission_control.setup.checks import KRPC_DEFAULT_RPC_PORT, KRPC_DEFAULT_STREAM_PORT
-from ksp_mission_control.setup.kRPC_comms.parser import (
-    KrpcSettingsParseError,
-    parse_krpc_settings,
-)
+from ksp_mission_control.setup.kRPC_comms.parser import resolve_krpc_connection
 
 
 class ControlScreen(Screen[None]):
@@ -62,16 +56,19 @@ class ControlScreen(Screen[None]):
         import krpc  # noqa: PLC0415
 
         try:
-            host, rpc_port, stream_port = self._resolve_connection()
+            from ksp_mission_control.app import MissionControlApp  # noqa: PLC0415
+
+            config_manager = cast(MissionControlApp, self.app).config_manager
+            settings = resolve_krpc_connection(config_manager)
             self._conn = krpc.connect(
                 name="KSP-MC Control",
-                address=host,
-                rpc_port=rpc_port,
-                stream_port=stream_port,
+                address=settings.address,
+                rpc_port=settings.rpc_port,
+                stream_port=settings.stream_port,
             )
             conn = self._conn
         except Exception as exc:
-            self.app.call_from_thread(self._update_output, f"Connection failed: {exc}")
+            self.app.call_from_thread(self._show_error, f"Connection failed: {exc}")
             return
 
         while not self._stop_event.is_set():
@@ -79,11 +76,10 @@ class ControlScreen(Screen[None]):
                 vessel_state = self._read_vessel_state(conn)
                 controls = self._runner.step(vessel_state, dt=0.5)
                 self._apply_controls(conn, controls)
-                text = _format_vessel_state(vessel_state)
                 snapshot = self._runner.snapshot()
-                self.app.call_from_thread(self._update_ui, text, snapshot)
+                self.app.call_from_thread(self._update_ui, vessel_state, snapshot)
             except Exception as exc:
-                self.app.call_from_thread(self._update_output, f"Error reading data: {exc}")
+                self.app.call_from_thread(self._show_error, f"Error reading data: {exc}")
             self._stop_event.wait(0.5)
 
     def _start_demo_polling(self) -> None:
@@ -95,9 +91,8 @@ class ControlScreen(Screen[None]):
             self._demo_tick += 1
             vessel_state = generate_demo_vessel_state(self._demo_tick)
             self._runner.step(vessel_state, dt=0.5)  # controls discarded in demo
-            text = _format_vessel_state(vessel_state)
             snapshot = self._runner.snapshot()
-            self._update_ui(text, snapshot)
+            self._update_ui(vessel_state, snapshot)
 
         self.set_interval(0.5, tick)
 
@@ -142,14 +137,13 @@ class ControlScreen(Screen[None]):
         if controls.stage is not None and controls.stage:
             vc.activate_next_stage()
 
-    def _update_ui(self, text: str, snapshot: RunnerSnapshot) -> None:
+    def _update_ui(self, state: VesselState, snapshot: RunnerSnapshot) -> None:
         """Update both the telemetry display and action list status."""
-        self._update_output(text)
-        action_list = self.query_one("#action-list", ActionListWidget)
-        action_list.update_running(snapshot.action_id)
+        self.query_one("#telemetry-display", TelemetryDisplayWidget).update_vessel_state(state)
+        self.query_one("#action-list", ActionListWidget).update_running(snapshot.action_id)
 
-    def _update_output(self, text: str) -> None:
-        self.query_one("#telemetry-display", TelemetryDisplayWidget).update_telemetry(text)
+    def _show_error(self, message: str) -> None:
+        self.query_one("#telemetry-display", TelemetryDisplayWidget).show_error(message)
 
     def on_action_list_widget_selected(self, event: ActionListWidget.Selected) -> None:
         """Start the selected action with default parameters."""
@@ -166,19 +160,6 @@ class ControlScreen(Screen[None]):
                 self._apply_controls(self._conn, controls)
         action_list = self.query_one("#action-list", ActionListWidget)
         action_list.update_running(None)
-
-    def _resolve_connection(self) -> tuple[str, int, int]:
-        """Read connection details from kRPC settings, falling back to defaults."""
-        from ksp_mission_control.app import MissionControlApp  # noqa: PLC0415
-
-        stored_path = cast(MissionControlApp, self.app).config_manager.config.ksp_path
-        if stored_path is not None:
-            try:
-                settings = parse_krpc_settings(Path(stored_path))
-                return settings.address, settings.rpc_port, settings.stream_port
-            except KrpcSettingsParseError:
-                pass
-        return "127.0.0.1", KRPC_DEFAULT_RPC_PORT, KRPC_DEFAULT_STREAM_PORT
 
     def _shutdown(self) -> None:
         """Signal the polling thread to stop and close the kRPC connection."""
@@ -204,37 +185,3 @@ class ControlScreen(Screen[None]):
         """Return to the setup screen."""
         self._shutdown()
         self.app.pop_screen()
-
-
-def _format_vessel_state(state: VesselState) -> str:
-    """Format a VesselState into a human-readable debug string."""
-    return "\n".join(
-        [
-            f"Vessel:          {state.vessel_name}",
-            f"Situation:       {state.situation}",
-            f"MET:             {state.met:.1f}s",
-            "",
-            "--- Flight ---",
-            f"Altitude (sea):  {state.altitude_sea:.0f} m",
-            f"Altitude (srf):  {state.altitude_surface:.0f} m",
-            f"Speed (orbit):   {state.orbital_speed:.1f} m/s",
-            f"Speed (surface): {state.surface_speed:.1f} m/s",
-            f"Vertical speed:  {state.vertical_speed:.1f} m/s",
-            f"Latitude:        {state.latitude:.4f}",
-            f"Longitude:       {state.longitude:.4f}",
-            "",
-            "--- Orbit ---",
-            f"Body:            {state.body}",
-            f"Apoapsis:        {state.apoapsis:.0f} m",
-            f"Periapsis:       {state.periapsis:.0f} m",
-            f"Inclination:     {state.inclination:.2f} deg",
-            f"Eccentricity:    {state.eccentricity:.4f}",
-            f"Period:          {state.period:.1f} s",
-            "",
-            "--- Resources ---",
-            f"Electric charge: {state.electric_charge:.1f}",
-            f"Liquid fuel:     {state.liquid_fuel:.1f}",
-            f"Oxidizer:        {state.oxidizer:.1f}",
-            f"Mono propellant: {state.mono_propellant:.1f}",
-        ]
-    )
