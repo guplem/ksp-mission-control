@@ -61,3 +61,8 @@ def main() -> None:
     """Entry point for the ksp-mc command."""
     app = MissionControlApp()
     app.run()
+
+
+if __name__ == "__main__":
+    """Entry point for `python src/ksp_mission_control/app.py`, used in Textual dev mode."""
+    main()
