@@ -1,19 +1,16 @@
 SetupScreen {
     background: #0a0a0a;
-    color: #00ff41;
 }
 
 #setup-title {
     text-align: center;
     text-style: bold;
-    color: #00ff41;
     width: 100%;
     margin-bottom: 1;
 }
 
 #setup-description {
     text-align: center;
-    color: #007a1f;
     width: 100%;
     margin-bottom: 2;
 }
@@ -62,31 +59,4 @@ SetupScreen {
     width: 100%;
     min-height: 3;
     margin-top: 1;
-    color: #00cc33;
-}
-
-Button {
-    background: #003300;
-    color: #00ff41;
-    border: tall #005f1a;
-}
-
-Button:hover {
-    background: #004400;
-}
-
-Button:disabled {
-    background: #1a1a1a;
-    color: #333333;
-    border: tall #333333;
-}
-
-Input {
-    background: #111111;
-    color: #00ff41;
-    border: tall #005f1a;
-}
-
-Input:focus {
-    border: tall #00ff41;
 }
