@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from textual import work
 from textual.app import ComposeResult
 from textual.containers import Center, HorizontalGroup, Middle, VerticalGroup
 from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Static
 
-from ksp_mission_control.setup.detector import find_ksp_install
+from ksp_mission_control.setup.checks import CheckResult, SetupCheck, get_default_checks
 from ksp_mission_control.widgets.welcome_view import WelcomeView
 
 
@@ -20,66 +21,96 @@ class SetupScreen(Screen[None]):
         ("q", "app.quit", "Quit"),
         ("d", "demo_mode", "Control Room (Demo)"),
         ("c", "control_room", "Control Room"),
+        ("r", "rerun_checks", "Re-run Checks"),
     ]
 
-    def __init__(self) -> None:
+    def __init__(self, checks: list[SetupCheck] | None = None) -> None:
         super().__init__()
-        self._krpc_installed: bool = False
-        self._comms_ok: bool = False
-        self._vessel_detected: bool = False
+        self._checks = checks if checks is not None else get_default_checks()
+        self._results: dict[str, CheckResult] = {}
 
     @property
     def all_checks_passed(self) -> bool:
-        """Return True when all system checks have passed."""
-        return self._krpc_installed and self._comms_ok and self._vessel_detected
+        """Return True when every check has passed."""
+        return len(self._results) == len(self._checks) and all(
+            r.passed for r in self._results.values()
+        )
 
     def compose(self) -> ComposeResult:
         yield Header()
         with Middle(), Center(), VerticalGroup(id="setup-container"):
             yield WelcomeView()
             yield Static("")
-            with HorizontalGroup(classes="checklist-row"):
-                yield Static("[ ] kRPC installed", id="check-krpc")
-                yield Button("i", id="krpc-info-btn", variant="default")
-            yield Static(
-                "[ ] Communications with kRPC",
-                id="check-comms",
-                classes="checklist-item",
-            )
-            yield Static(
-                "[ ] Vessel detected",
-                id="check-vessel",
-                classes="checklist-item",
-            )
+            for check in self._checks:
+                if check.check_id == "check-krpc":
+                    with HorizontalGroup(classes="checklist-row"):
+                        yield Static(
+                            f"[ ] {check.label}",
+                            id=check.check_id,
+                        )
+                        yield Button("i", id="krpc-info-btn", variant="default")
+                else:
+                    yield Static(
+                        f"[ ] {check.label}",
+                        id=check.check_id,
+                        classes="checklist-item",
+                    )
         yield Footer()
 
     def on_mount(self) -> None:
         """Run system checks when the screen first mounts."""
-        self._run_checks()
+        self._run_all_checks()
 
     def on_screen_resume(self) -> None:
         """Re-run checks when returning from a sub-screen."""
-        self._run_checks()
+        self._run_all_checks()
 
-    def _run_checks(self) -> None:
-        """Run all system checks and update the checklist display."""
-        self._check_krpc()
-        self._update_checklist()
+    def _run_all_checks(self) -> None:
+        """Reset state and launch the check worker."""
+        self._results.clear()
+        for check in self._checks:
+            self._update_check_display(check.check_id, check.label, None)
+        self._run_checks_worker()
 
-    def _check_krpc(self) -> None:
-        """Check if kRPC is installed in a detected KSP installation."""
-        result = find_ksp_install()
-        self._krpc_installed = result is not None and result.has_krpc
+    @work(thread=True)
+    def _run_checks_worker(self) -> None:
+        """Execute each check in a thread so blocking I/O doesn't freeze the UI.
 
-    def _update_checklist(self) -> None:
-        """Update all checklist item labels to reflect current state."""
-        krpc_mark = "[x]" if self._krpc_installed else "[ ]"
-        comms_mark = "[x]" if self._comms_ok else "[ ]"
-        vessel_mark = "[x]" if self._vessel_detected else "[ ]"
+        Checks run sequentially: later checks (comms, vessel) only make
+        sense if earlier ones (kRPC installed) have passed.
+        """
+        for check in self._checks:
+            self.app.call_from_thread(
+                self._update_check_display,
+                check.check_id,
+                check.label,
+                None,
+                running=True,
+            )
+            result = check.run()
+            self._results[check.check_id] = result
+            self.app.call_from_thread(
+                self._update_check_display, check.check_id, check.label, result
+            )
+            if not result.passed:
+                break
 
-        self.query_one("#check-krpc", Static).update(f"{krpc_mark} kRPC installed")
-        self.query_one("#check-comms", Static).update(f"{comms_mark} Communications with kRPC")
-        self.query_one("#check-vessel", Static).update(f"{vessel_mark} Vessel detected")
+    def _update_check_display(
+        self,
+        check_id: str,
+        label: str,
+        result: CheckResult | None,
+        *,
+        running: bool = False,
+    ) -> None:
+        """Update a single checklist item's display text."""
+        if result is None:
+            mark = "[~]" if running else "[ ]"
+        elif result.passed:
+            mark = "[x]"
+        else:
+            mark = "[!]"
+        self.query_one(f"#{check_id}", Static).update(f"{mark} {label}")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle info button presses."""
@@ -103,3 +134,7 @@ class SetupScreen(Screen[None]):
         from ksp_mission_control.screens.control import ControlScreen
 
         self.app.push_screen(ControlScreen(demo=False))
+
+    def action_rerun_checks(self) -> None:
+        """Manually re-run all system checks."""
+        self._run_all_checks()
