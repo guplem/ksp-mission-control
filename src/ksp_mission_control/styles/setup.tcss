@@ -17,10 +17,13 @@ SetupScreen {
 .checklist-row {
     margin-left: 2;
     margin-bottom: 0;
+    height: auto;
 }
 
 .checklist-row Button {
     margin-left: 1;
+    min-width: 0;
+    width: auto;
     background: transparent;
     border: none;
     color: $text-muted;
