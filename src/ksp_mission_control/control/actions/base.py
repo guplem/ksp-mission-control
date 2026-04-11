@@ -54,26 +54,55 @@ class VesselState:
     zero/empty so tests can construct partial states.
     """
 
+    # --- Flight ---
     altitude_sea: float = 0.0
+    """Mean altitude above sea level, in meters."""
     altitude_surface: float = 0.0
+    """Altitude above the terrain surface, in meters."""
     vertical_speed: float = 0.0
+    """Vertical velocity in m/s. Positive = ascending, negative = descending."""
     surface_speed: float = 0.0
+    """Speed relative to the surface of the body, in m/s."""
     orbital_speed: float = 0.0
+    """Speed relative to the orbited body's center of mass, in m/s."""
+
+    # --- Orbit ---
     apoapsis: float = 0.0
+    """Highest point of the orbit above sea level, in meters."""
     periapsis: float = 0.0
-    met: float = 0.0
-    vessel_name: str = ""
-    situation: str = ""
-    body: str = ""
-    latitude: float = 0.0
-    longitude: float = 0.0
+    """Lowest point of the orbit above sea level, in meters."""
     inclination: float = 0.0
+    """Orbital inclination relative to the equator, in degrees."""
     eccentricity: float = 0.0
+    """Orbital eccentricity. 0 = circular, 0-1 = elliptical, 1 = parabolic."""
     period: float = 0.0
+    """Time for one complete orbit, in seconds."""
+
+    # --- Vessel ---
+    met: float = 0.0
+    """Mission Elapsed Time since launch, in seconds."""
+    vessel_name: str = ""
+    """Name of the active vessel."""
+    situation: str = ""
+    """Current flight situation (e.g. 'pre_launch', 'flying', 'orbiting', 'landed')."""
+
+    # --- Position ---
+    body: str = ""
+    """Name of the celestial body being orbited (e.g. 'Kerbin', 'Mun')."""
+    latitude: float = 0.0
+    """Geographic latitude on the body surface, in degrees. -90 to 90."""
+    longitude: float = 0.0
+    """Geographic longitude on the body surface, in degrees. -180 to 180."""
+
+    # --- Resources ---
     electric_charge: float = 0.0
+    """Available electric charge, in units."""
     liquid_fuel: float = 0.0
+    """Available liquid fuel, in units."""
     oxidizer: float = 0.0
+    """Available oxidizer, in units."""
     mono_propellant: float = 0.0
+    """Available monopropellant (RCS fuel), in units."""
 
 
 @dataclass

@@ -2,10 +2,14 @@
     height: 1fr;
 }
 
-#debug-output {
+#telemetry-display {
     width: 2fr;
     padding: 1 2;
     overflow-y: auto;
+}
+
+#telemetry-title {
+    padding: 0 0 1 0;
 }
 
 #action-list {

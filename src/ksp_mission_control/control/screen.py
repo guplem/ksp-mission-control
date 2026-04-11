@@ -9,13 +9,15 @@ from typing import cast
 
 from textual import work
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal
 from textual.screen import Screen
-from textual.widgets import Footer, Header, Static
+from textual.widgets import Footer, Header
 
 from ksp_mission_control.control.actions.base import VesselControls, VesselState
+from ksp_mission_control.control.actions.runner import ActionRunner
 from ksp_mission_control.control.actions.runner import ActionRunner, RunnerSnapshot
 from ksp_mission_control.control.widgets.action_list import ActionListWidget
+from ksp_mission_control.control.widgets.telemetry_display import TelemetryDisplayWidget
 from ksp_mission_control.setup.checks import KRPC_DEFAULT_RPC_PORT, KRPC_DEFAULT_STREAM_PORT
 from ksp_mission_control.setup.kRPC_comms.parser import (
     KrpcSettingsParseError,
@@ -43,11 +45,9 @@ class ControlScreen(Screen[None]):
 
     def compose(self) -> ComposeResult:
         yield Header()
+        mode = "DEMO" if self._demo else "LIVE"
         with Horizontal(id="control-split"):
-            mode = "DEMO" if self._demo else "LIVE"
-            with Vertical(id="debug-output"):
-                yield Static(f"[b]Control View[/b] ({mode})", id="debug-title")
-                yield Static("Connecting...", id="debug-content")
+            yield TelemetryDisplayWidget(mode=mode, id="telemetry-display")
             yield ActionListWidget(id="action-list")
         yield Footer()
 
@@ -59,8 +59,6 @@ class ControlScreen(Screen[None]):
 
     @work(thread=True)
     def _connect_and_poll(self) -> None:
-        import time  # noqa: PLC0415
-
         import krpc  # noqa: PLC0415
 
         try:
@@ -81,7 +79,7 @@ class ControlScreen(Screen[None]):
                 vessel_state = self._read_vessel_state(conn)
                 controls = self._runner.step(vessel_state, dt=0.5)
                 self._apply_controls(conn, controls)
-                text = _format_vessel_state(vessel_state, "LIVE")
+                text = _format_vessel_state(vessel_state)
                 snapshot = self._runner.snapshot()
                 self.app.call_from_thread(self._update_ui, text, snapshot)
             except Exception as exc:
@@ -97,7 +95,7 @@ class ControlScreen(Screen[None]):
             self._demo_tick += 1
             vessel_state = generate_demo_vessel_state(self._demo_tick)
             self._runner.step(vessel_state, dt=0.5)  # controls discarded in demo
-            text = _format_vessel_state(vessel_state, "DEMO")
+            text = _format_vessel_state(vessel_state)
             snapshot = self._runner.snapshot()
             self._update_ui(text, snapshot)
 
@@ -151,7 +149,7 @@ class ControlScreen(Screen[None]):
         action_list.update_running(snapshot.action_id)
 
     def _update_output(self, text: str) -> None:
-        self.query_one("#debug-content", Static).update(text)
+        self.query_one("#telemetry-display", TelemetryDisplayWidget).update_telemetry(text)
 
     def on_action_list_widget_selected(self, event: ActionListWidget.Selected) -> None:
         """Start the selected action with default parameters."""
@@ -208,12 +206,10 @@ class ControlScreen(Screen[None]):
         self.app.pop_screen()
 
 
-def _format_vessel_state(state: VesselState, mode: str) -> str:
+def _format_vessel_state(state: VesselState) -> str:
     """Format a VesselState into a human-readable debug string."""
     return "\n".join(
         [
-            f"[b]Control View ({mode})[/b]",
-            "",
             f"Vessel:          {state.vessel_name}",
             f"Situation:       {state.situation}",
             f"MET:             {state.met:.1f}s",

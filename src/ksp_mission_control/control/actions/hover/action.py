@@ -13,12 +13,12 @@ from ksp_mission_control.control.actions.base import (
     VesselState,
 )
 
-# Proportional gain for the throttle controller
+"""Proportional gain for the throttle controller"""
 _KP = 0.01
 
 
 class HoverAction(Action):
-    """Hold altitude at a target using a simple P-controller on throttle."""
+    """Hold altitude at a target"""
 
     action_id: ClassVar[str] = "hover"
     label: ClassVar[str] = "Hover"
@@ -34,11 +34,8 @@ class HoverAction(Action):
         ),
     ]
 
-    def __init__(self) -> None:
-        self._target_altitude: float = 100.0
-
     def start(self, param_values: dict[str, Any]) -> None:
-        self._target_altitude = float(param_values["target_altitude"])
+        self._target_altitude: float = float(param_values["target_altitude"])
 
     def tick(self, state: VesselState, controls: VesselControls, dt: float) -> ActionResult:
         error = self._target_altitude - state.altitude_surface
