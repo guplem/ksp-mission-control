@@ -12,11 +12,7 @@
     margin-top: 1;
 }
 
-#detect-btn {
-    margin-right: 2;
-}
-
-#install-btn {
+.button-row Button {
     margin-right: 2;
 }
 
