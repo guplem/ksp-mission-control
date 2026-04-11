@@ -76,6 +76,14 @@ class KrpcSetupScreen(Screen[None]):
         elif event.button.id == "back-btn":
             self.action_go_back()
 
+    def _save_ksp_path(self, path: Path) -> None:
+        """Persist the KSP path to the application config."""
+        from ksp_mission_control.config import ConfigManager  # noqa: PLC0415
+
+        config_manager: ConfigManager = self.app.config_manager  # type: ignore[attr-defined]
+        config_manager.config.ksp_path = str(path)
+        config_manager.save()
+
     def _do_detect(self) -> None:
         """Auto-detect KSP installation."""
         result = find_ksp_install()
@@ -87,6 +95,7 @@ class KrpcSetupScreen(Screen[None]):
 
         self._ksp_path = result.path
         self.query_one("#ksp-path-input", Input).value = str(result.path)
+        self._save_ksp_path(result.path)
 
         if result.has_krpc:
             self._set_status(f"kRPC is already installed at {result.path}")
@@ -111,6 +120,7 @@ class KrpcSetupScreen(Screen[None]):
             return
 
         self._ksp_path = path
+        self._save_ksp_path(path)
         if is_krpc_installed(path):
             self._set_status(f"kRPC is already installed at {path}")
             self._set_install_enabled(False)

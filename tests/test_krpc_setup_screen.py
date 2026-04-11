@@ -2,17 +2,24 @@
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
 from textual.app import App, ComposeResult
 
+from ksp_mission_control.config import ConfigManager
 from ksp_mission_control.screens.krpc_setup import KrpcSetupScreen
 
 
 class KrpcSetupTestApp(App[None]):
     """Minimal app that pushes the KrpcSetupScreen for testing."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._tmp_dir = tempfile.mkdtemp()
+        self.config_manager = ConfigManager(config_dir=Path(self._tmp_dir))
 
     def compose(self) -> ComposeResult:
         yield from ()

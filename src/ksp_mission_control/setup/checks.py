@@ -5,8 +5,13 @@ from __future__ import annotations
 import socket
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from pathlib import Path
 
-from ksp_mission_control.setup.detector import find_ksp_install
+from ksp_mission_control.setup.detector import (
+    find_ksp_install,
+    is_krpc_installed,
+    is_valid_ksp_install,
+)
 
 KRPC_DEFAULT_RPC_PORT = 50000
 KRPC_DEFAULT_STREAM_PORT = 50001
@@ -43,7 +48,14 @@ class SetupCheck(ABC):
 
 
 class KrpcInstalledCheck(SetupCheck):
-    """Verify that the kRPC mod is installed in a detected KSP installation."""
+    """Verify that the kRPC mod is installed in a detected KSP installation.
+
+    When *ksp_path* is provided (from stored config), it is checked first.
+    Falls back to auto-detection if the stored path is missing or invalid.
+    """
+
+    def __init__(self, ksp_path: str | None = None) -> None:
+        self._stored_path = ksp_path
 
     @property
     def check_id(self) -> str:
@@ -54,6 +66,16 @@ class KrpcInstalledCheck(SetupCheck):
         return "kRPC installed"
 
     def run(self) -> CheckResult:
+        if self._stored_path is not None:
+            path = Path(self._stored_path)
+            if is_valid_ksp_install(path):
+                if is_krpc_installed(path):
+                    return CheckResult(passed=True, message=f"kRPC found at {path}")
+                return CheckResult(
+                    passed=False,
+                    message=f"KSP found at {path}, but kRPC is not installed",
+                )
+
         result = find_ksp_install()
         if result is None:
             return CheckResult(passed=False, message="KSP installation not found")
@@ -151,10 +173,10 @@ class VesselDetectedCheck(SetupCheck):
             return CheckResult(passed=False, message=f"Failed to query vessel ({exc})")
 
 
-def get_default_checks() -> list[SetupCheck]:
+def get_default_checks(ksp_path: str | None = None) -> list[SetupCheck]:
     """Return the ordered list of setup checks to run."""
     return [
-        KrpcInstalledCheck(),
+        KrpcInstalledCheck(ksp_path=ksp_path),
         KrpcCommsCheck(),
         VesselDetectedCheck(),
     ]

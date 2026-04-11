@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from textual.app import App, ComposeResult
 
+from ksp_mission_control.config import ConfigManager
 from ksp_mission_control.theme import mission_control_theme
 
 
@@ -12,6 +13,10 @@ class MissionControlApp(App[None]):
 
     TITLE = "KSP Mission Control"
     CSS_PATH = "styles/app.tcss"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.config_manager = ConfigManager()
 
     def on_mount(self) -> None:
         self.register_theme(mission_control_theme)

@@ -26,8 +26,18 @@ class SetupScreen(Screen[None]):
 
     def __init__(self, checks: list[SetupCheck] | None = None) -> None:
         super().__init__()
-        self._checks = checks if checks is not None else get_default_checks()
+        self._explicit_checks = checks
+        self._checks: list[SetupCheck] = checks if checks is not None else []
         self._results: dict[str, CheckResult] = {}
+
+    def _resolve_checks(self) -> list[SetupCheck]:
+        """Return the check list, reading stored KSP path from config when needed."""
+        if self._explicit_checks is not None:
+            return self._explicit_checks
+        from ksp_mission_control.config import ConfigManager  # noqa: PLC0415
+
+        config_manager: ConfigManager = self.app.config_manager  # type: ignore[attr-defined]
+        return get_default_checks(ksp_path=config_manager.config.ksp_path)
 
     @property
     def all_checks_passed(self) -> bool:
@@ -50,8 +60,20 @@ class SetupScreen(Screen[None]):
         yield Footer()
 
     def on_mount(self) -> None:
-        """Run system checks when the screen first mounts."""
-        self._run_all_checks()
+        """Resolve checks (if not provided) and run them."""
+        if not self._checks:
+            self._checks = self._resolve_checks()
+            checklist = self.query_one("#checklist", ListView)
+            for check in self._checks:
+                checklist.append(
+                    ListItem(
+                        Static(f"[ ] {check.label}", id=f"{check.check_id}-label"),
+                        id=check.check_id,
+                    )
+                )
+            self.call_later(self._run_all_checks)
+        else:
+            self._run_all_checks()
 
     def on_screen_resume(self) -> None:
         """Re-run checks when returning from a sub-screen."""
