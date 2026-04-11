@@ -11,6 +11,12 @@ from ksp_mission_control.control.actions.base import VesselState
 class TelemetryDisplayWidget(Static):
     """Displays formatted vessel telemetry text."""
 
+    DEFAULT_CSS = """
+    #telemetry-title {
+        padding: 0 0 1 0;
+    }
+    """
+
     def __init__(self, *, mode: str, id: str | None = None) -> None:  # noqa: A002
         super().__init__(id=id)
         self._mode = mode

@@ -8,20 +8,8 @@
     overflow-y: auto;
 }
 
-#telemetry-title {
-    padding: 0 0 1 0;
-}
-
 #action-list {
     width: 1fr;
     padding: 1 2;
     border-left: solid $accent;
-}
-
-#action-list-title {
-    padding: 0 0 1 0;
-}
-
-#action-listview {
-    height: auto;
 }

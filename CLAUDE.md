@@ -90,7 +90,8 @@ src/ksp_mission_control/
 This project uses **feature-based modules**, not layer-based. Every feature is a self-contained folder.
 
 - **One feature = one folder**. A feature folder contains its own `screen.py`, `style.tcss`, `check.py`, business logic files, and sub-features as nested folders. No central `screens/` or `styles/` directories.
-- **Co-locate styles with screens**. Each screen's `style.tcss` lives next to its `screen.py`. The screen references it via `CSS_PATH = "style.tcss"`. App-level global styles live in the root `style.tcss`.
+- **Co-locate styles with screens**. Each screen's `style.tcss` lives next to its `screen.py`. The screen references it via `CSS_PATH = "style.tcss"`. App-level global styles live in the root `style.tcss`. Screen styles should only contain layout rules for how widgets are arranged (sizing, spacing, borders between panels), not widget-internal styling.
+- **Widget styles use `DEFAULT_CSS`**. Textual's `CSS_PATH` only works on `Screen` and `App`, not on `Widget`. Widgets own their internal styles via a `DEFAULT_CSS` class-level string. Keep these rules scoped to the widget's own children (e.g. title padding, internal list height). The parent screen controls the widget's external layout (width, padding, borders).
 - **Small, focused files**. One class per file. Each file has a single clear responsibility. Prefer many small files over few large ones.
 - **Descriptive file names**. Name files after what they contain: `check.py` for a check class, `locator.py` for path-finding logic, `installer.py` for download/install logic. Never `utils.py` or `helpers.py`.
 - **Sub-features nest as subfolders**. If a feature has distinct sub-concerns (e.g. `setup/` has `kRPC_installer/`, `kRPC_comms/`, `vessel/`), each gets its own folder with its own files.

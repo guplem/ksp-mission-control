@@ -19,6 +19,16 @@ from ksp_mission_control.control.actions.registry import get_available_actions
 class ActionListWidget(Static):
     """Displays available vessel actions and posts a message when one is selected."""
 
+    DEFAULT_CSS = """
+    #action-list-title {
+        padding: 0 0 1 0;
+    }
+
+    #action-listview {
+        height: auto;
+    }
+    """
+
     class Selected(Message):
         """Posted when the user selects an action from the list."""
 
