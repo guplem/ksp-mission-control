@@ -28,8 +28,9 @@ Thumbs.db
 # Environment
 .env.local
 
-# Test / Coverage
+# Test / Coverage / Misc. Cache
 .pytest_cache/
 htmlcov/
 .coverage
 .mypy_cache/
+.ruff_cache/

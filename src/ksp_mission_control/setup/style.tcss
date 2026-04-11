@@ -1,0 +1,5 @@
+#checklist {
+    height: auto;
+    padding: 1 2;
+    margin: 2 1;
+}

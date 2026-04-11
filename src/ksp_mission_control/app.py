@@ -1,102 +1,43 @@
 """KSP Mission Control - Terminal mission control for Kerbal Space Program."""
 
+from __future__ import annotations
+
 from textual.app import App, ComposeResult
-from textual.containers import Center, Middle
-from textual.widgets import Footer, Header, Static
 
-LOGO = r"""
-_  __  ____  ____    __  __ _          _              ____            _             _       / \
-| |/ / / ___||  _ \  |  \/  (_) ___ ___(_) ___  _ __  / ___|___  _ __ | |_ _ __ ___ | |     |   |
-| ' /  \___ \| |_) | | |\/| | / __/ __| |/ _ \| '_ \ | |   / _ \| '_ \| __| '__/ _ \| |     |   |
-| . \   ___) |  __/  | |  | | \__ \__ \ | (_) | | | || |__| (_) | | | | |_| | | (_) | |    /|   |\
- |_|\_\ |____/|_|     |_|  |_|_|___/___/_|\___/|_| |_| \____\___/|_| |_|\__|_|  \___/|_|   /_|___|_\
-                                                                                            /_\
-                                                                                            |___|
-"""  # noqa: E501
-
-
-class WelcomeView(Static):
-    """Welcome screen shown on startup."""
-
-    def compose(self) -> ComposeResult:
-        yield Static(LOGO, id="logo")
-        yield Static("v0.1.0", id="version")
-        yield Static("")
-        yield Static("[b]Terminal Mission Control for Kerbal Space Program[/b]", id="tagline")
+from ksp_mission_control.config import ConfigManager
+from ksp_mission_control.theme import mission_control_theme
 
 
 class MissionControlApp(App[None]):
     """Main application for KSP Mission Control."""
 
     TITLE = "KSP Mission Control"
-    BINDINGS = [
-        ("q", "quit", "Quit"),
-        ("d", "demo", "Demo Mode"),
-        ("c", "connect", "Connect to KSP"),
-    ]
-    CSS = """
-    Screen {
-        background: #0a0a0a;
-        color: #00ff41;
-    }
+    CSS_PATH = "style.tcss"
 
-    Header {
-        background: #0a0a0a;
-        color: #00ff41;
-        dock: top;
-    }
+    def __init__(self) -> None:
+        super().__init__()
+        self.config_manager = (
+            ConfigManager()  # Initialize config manager so screens can access it on mount
+        )
 
-    Footer {
-        background: #0a0a0a;
-        color: #005f1a;
-    }
+    def on_mount(self) -> None:
+        self.register_theme(mission_control_theme)
+        self.theme = "mission-control"
 
-    WelcomeView {
-        width: 100%;
-        content-align: center middle;
-        text-align: center;
-    }
+        from ksp_mission_control.setup.screen import SetupScreen
 
-    #logo {
-        color: #00ff41;
-        text-align: center;
-        width: 100%;
-    }
-
-    #version {
-        color: #005f1a;
-        text-align: center;
-        width: 100%;
-    }
-
-    #tagline {
-        color: #00cc33;
-        text-align: center;
-        width: 100%;
-    }
-
-    #instructions {
-        color: #007a1f;
-        text-align: center;
-        width: 100%;
-    }
-    """
+        self.push_screen(SetupScreen())
 
     def compose(self) -> ComposeResult:
-        yield Header()
-        yield Middle(Center(WelcomeView()))
-        yield Footer()
-
-    def action_demo(self) -> None:
-        """Launch demo mode (placeholder)."""
-        self.notify("Demo mode coming soon...")
-
-    def action_connect(self) -> None:
-        """Connect to KSP (placeholder)."""
-        self.notify("Connection screen coming soon...")
+        yield from ()
 
 
 def main() -> None:
     """Entry point for the ksp-mc command."""
     app = MissionControlApp()
     app.run()
+
+
+if __name__ == "__main__":
+    """Entry point for `python src/ksp_mission_control/app.py`, used in Textual dev mode."""
+    main()

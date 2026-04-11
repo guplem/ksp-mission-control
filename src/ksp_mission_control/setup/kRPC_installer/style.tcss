@@ -1,0 +1,30 @@
+#setup-title {
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+
+#setup-container {
+    margin: 4;
+}
+
+.button-row {
+    margin-top: 1;
+}
+
+#detect-btn {
+    margin-right: 2;
+}
+
+#install-btn {
+    margin-right: 2;
+}
+
+#setup-status {
+    margin-top: 3;
+}
+
+.step-label {
+    margin-bottom: 1;
+    margin-top: 2;
+}
