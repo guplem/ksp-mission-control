@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 from textual.app import App, ComposeResult
-from textual.widgets import Button, Static
+from textual.widgets import ListItem, Static
 
 from ksp_mission_control.screens.setup import SetupScreen
 from ksp_mission_control.setup.checks import CheckResult, SetupCheck
@@ -92,17 +92,9 @@ class TestSetupScreenComposition:
         checks = _make_checks()
         async with SetupTestApp(checks=checks).run_test() as pilot:
             await pilot.pause()
-            assert pilot.app.screen.query_one("#check-krpc", Static)
-            assert pilot.app.screen.query_one("#check-comms", Static)
-            assert pilot.app.screen.query_one("#check-vessel", Static)
-
-    @pytest.mark.asyncio
-    async def test_has_krpc_info_button(self) -> None:
-        checks = _make_checks()
-        async with SetupTestApp(checks=checks).run_test() as pilot:
-            await pilot.pause()
-            btn = pilot.app.screen.query_one("#krpc-info-btn", Button)
-            assert btn is not None
+            assert pilot.app.screen.query_one("#check-krpc", ListItem)
+            assert pilot.app.screen.query_one("#check-comms", ListItem)
+            assert pilot.app.screen.query_one("#check-vessel", ListItem)
 
 
 # ---------------------------------------------------------------------------
@@ -160,7 +152,7 @@ class TestSetupScreenChecks:
             await pilot.pause()
             await pilot.pause()
             for check in checks:
-                label = pilot.app.screen.query_one(f"#{check.check_id}", Static)
+                label = pilot.app.screen.query_one(f"#{check.check_id}-label", Static)
                 assert "[x]" in str(label._Static__content)
 
     @pytest.mark.asyncio
@@ -169,7 +161,7 @@ class TestSetupScreenChecks:
         checks = _make_checks(krpc=False)
         async with SetupTestApp(checks=checks).run_test() as pilot:
             await pilot.pause()
-            label = pilot.app.screen.query_one("#check-krpc", Static)
+            label = pilot.app.screen.query_one("#check-krpc-label", Static)
             assert "[!]" in str(label._Static__content)
 
     @pytest.mark.asyncio

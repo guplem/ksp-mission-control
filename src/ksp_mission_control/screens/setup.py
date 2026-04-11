@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from textual import work
 from textual.app import ComposeResult
-from textual.containers import Center, HorizontalGroup, Middle, VerticalGroup
+from textual.containers import Center, Middle, VerticalGroup
 from textual.screen import Screen
-from textual.widgets import Button, Footer, Header, Static
+from textual.widgets import Footer, Header, ListItem, ListView, Static
 
 from ksp_mission_control.setup.checks import CheckResult, SetupCheck, get_default_checks
 from ksp_mission_control.widgets.welcome_view import WelcomeView
@@ -41,19 +41,11 @@ class SetupScreen(Screen[None]):
         with Middle(), Center(), VerticalGroup(id="setup-container"):
             yield WelcomeView()
             yield Static("")
-            for check in self._checks:
-                if check.check_id == "check-krpc":
-                    with HorizontalGroup(classes="checklist-row"):
-                        yield Static(
-                            f"[ ] {check.label}",
-                            id=check.check_id,
-                        )
-                        yield Button("i", id="krpc-info-btn", variant="default")
-                else:
-                    yield Static(
-                        f"[ ] {check.label}",
+            with ListView(id="checklist"):
+                for check in self._checks:
+                    yield ListItem(
+                        Static(f"[ ] {check.label}", id=f"{check.check_id}-label"),
                         id=check.check_id,
-                        classes="checklist-item",
                     )
         yield Footer()
 
@@ -110,14 +102,17 @@ class SetupScreen(Screen[None]):
             mark = "[x]"
         else:
             mark = "[!]"
-        self.query_one(f"#{check_id}", Static).update(f"{mark} {label}")
+        self.query_one(f"#{check_id}-label", Static).update(f"{mark} {label}")
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Handle info button presses."""
-        if event.button.id == "krpc-info-btn":
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        """Navigate to the detail screen for the selected checklist item."""
+        check_id = event.item.id
+        if check_id == "check-krpc":
             from ksp_mission_control.screens.krpc_setup import KrpcSetupScreen
 
             self.app.push_screen(KrpcSetupScreen())
+        else:
+            self.notify("No setup screen available for this check.", severity="information")
 
     def check_action_control_room(self) -> bool:
         """Disable 'Control Room' binding until all checks pass."""

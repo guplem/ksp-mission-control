@@ -14,25 +14,7 @@ SetupScreen {
     margin-bottom: 2;
 }
 
-.checklist-row {
+#checklist {
     margin-left: 2;
-    margin-bottom: 0;
     height: auto;
-}
-
-.checklist-row Button {
-    margin-left: 1;
-    min-width: 0;
-    width: auto;
-    background: transparent;
-    border: none;
-    color: $text-muted;
-}
-
-.checklist-row Button:hover {
-    color: $primary;
-}
-
-.checklist-item {
-    margin-left: 2;
 }
