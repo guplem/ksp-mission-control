@@ -36,7 +36,7 @@ class SetupScreen(Screen[None]):
 
         if not self._checks:
             config_manager: ConfigManager = cast(MissionControlApp, self.app).config_manager
-            self._checks = get_default_checks(ksp_path=config_manager.config.ksp_path)
+            self._checks = get_default_checks(config_manager=config_manager)
 
     @property
     def all_checks_passed(self) -> bool:
