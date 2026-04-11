@@ -1,0 +1,21 @@
+#setup-title {
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#setup-container {
+    margin: 4;
+}
+
+#setup-status {
+    margin-top: 3;
+}
+
+#instructions {
+    margin-top: 2;
+}
+
+#test-btn {
+    margin-top: 2;
+}
+

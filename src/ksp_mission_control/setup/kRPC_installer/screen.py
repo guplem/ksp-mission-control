@@ -15,7 +15,6 @@ from ksp_mission_control.app import MissionControlApp
 from ksp_mission_control.config import ConfigManager
 from ksp_mission_control.setup.kRPC_installer.detector import (
     find_ksp_install,
-    is_krpc_installed,
     is_valid_ksp_install,
 )
 from ksp_mission_control.setup.kRPC_installer.manager import (
@@ -166,7 +165,12 @@ class KrpcSetupScreen(Screen[None]):
 
         self._ksp_path = path
         self._save_ksp_path(path)
-        if is_krpc_installed(path):
+
+        config_manager: ConfigManager = cast(MissionControlApp, self.app).config_manager
+        from ksp_mission_control.setup.kRPC_installer.check import KrpcInstalledCheck
+
+        result = KrpcInstalledCheck(config_manager=config_manager).run()
+        if result.passed:
             self._set_status("Valid KSP installation. kRPC is already installed.")
             self._set_install_enabled(False)
             self._set_uninstall_enabled(True)

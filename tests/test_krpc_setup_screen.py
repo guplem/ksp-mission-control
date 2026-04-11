@@ -122,7 +122,11 @@ class TestKrpcSetupScreenDetection:
                 return_value=True,
             ),
             patch(
-                "ksp_mission_control.setup.kRPC_installer.screen.is_krpc_installed",
+                "ksp_mission_control.setup.kRPC_installer.check.is_valid_ksp_install",
+                return_value=True,
+            ),
+            patch(
+                "ksp_mission_control.setup.kRPC_installer.check.is_krpc_installed",
                 return_value=False,
             ),
         ):
@@ -152,7 +156,11 @@ class TestKrpcSetupScreenDetection:
                 return_value=True,
             ),
             patch(
-                "ksp_mission_control.setup.kRPC_installer.screen.is_krpc_installed",
+                "ksp_mission_control.setup.kRPC_installer.check.is_valid_ksp_install",
+                return_value=True,
+            ),
+            patch(
+                "ksp_mission_control.setup.kRPC_installer.check.is_krpc_installed",
                 return_value=True,
             ),
         ):
@@ -178,7 +186,11 @@ class TestKrpcSetupScreenManualPath:
                 return_value=True,
             ),
             patch(
-                "ksp_mission_control.setup.kRPC_installer.screen.is_krpc_installed",
+                "ksp_mission_control.setup.kRPC_installer.check.is_valid_ksp_install",
+                return_value=True,
+            ),
+            patch(
+                "ksp_mission_control.setup.kRPC_installer.check.is_krpc_installed",
                 return_value=False,
             ),
         ):

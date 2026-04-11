@@ -7,6 +7,7 @@ from ksp_mission_control.setup.checks import (
     CheckResult,
     SetupCheck,
 )
+from ksp_mission_control.setup.kRPC_comms.screen import KrpcCommsScreen
 
 
 class KrpcCommsCheck(SetupCheck):
@@ -14,7 +15,7 @@ class KrpcCommsCheck(SetupCheck):
 
     check_id = "check-comms"
     label = "kRPC server reachable"
-    screen = None
+    screen = KrpcCommsScreen
 
     def __init__(
         self,
