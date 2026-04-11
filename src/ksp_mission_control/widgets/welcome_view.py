@@ -20,6 +20,12 @@ LOGO = r"""
 class WelcomeView(Static):
     """Welcome screen shown on startup."""
 
+    DEFAULT_CSS = """
+        WelcomeView Static {
+            width: auto;
+        }
+    """
+
     def compose(self) -> ComposeResult:
         yield Center(Static(LOGO, id="logo"))
         yield Center(Static("v0.1.0", id="version"))
