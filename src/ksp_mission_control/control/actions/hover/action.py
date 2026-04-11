@@ -1,4 +1,4 @@
-"""HoverAction - simple proportional altitude hold."""
+"""HoverAction - PD altitude hold."""
 
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ from ksp_mission_control.control.actions.base import (
     VesselState,
 )
 
-"""Proportional gain for the throttle controller"""
-_KP = 0.01
+_KP = 0.02  # Proportional gain: altitude error to throttle
+_KD = 0.1  # Derivative gain: vertical speed damping
 
 
 class HoverAction(Action):
@@ -39,7 +39,7 @@ class HoverAction(Action):
 
     def tick(self, state: VesselState, controls: VesselControls, dt: float) -> ActionResult:
         error = self._target_altitude - state.altitude_surface
-        throttle = 0.5 + error * _KP
+        throttle = 0.5 + _KP * error - _KD * state.vertical_speed
         controls.throttle = max(0.0, min(1.0, throttle))
         controls.sas = True
         return ActionResult(status=ActionStatus.RUNNING)
