@@ -1,154 +1,125 @@
-"""Setup screen for detecting KSP and installing the kRPC mod."""
+"""Setup screen with system readiness checklist for KSP Mission Control."""
 
 from __future__ import annotations
-
-from pathlib import Path
 
 from textual.app import ComposeResult
 from textual.containers import Center, Horizontal, Middle, Vertical
 from textual.screen import Screen
-from textual.widgets import Button, Footer, Header, Input, Static
-from textual.worker import Worker, WorkerState
+from textual.widgets import Button, Footer, Header, Static
 
-from ksp_mission_control.setup.detector import (
-    find_ksp_install,
-    is_krpc_installed,
-    is_valid_ksp_install,
-)
-from ksp_mission_control.setup.installer import KrpcInstallError, install_krpc
+from ksp_mission_control.setup.detector import find_ksp_install
+
+LOGO = r"""
+ _  __  ____  ____    __  __ _         _               ____            _             _       / \
+| |/ / / ___||  _ \  |  \/  (_)___ ___(_) ___  _ __   / ___|___  _ __ | |_ _ __ ___ | |     |   |
+| ' /  \___ \| |_) | | |\/| | / __/ __| |/ _ \| '_ \ | |   / _ \| '_ \| __| '__/ _ \| |     |   |
+| . \   ___) |  __/  | |  | | \__ \__ \ | (_) | | | || |__| (_) | | | | |_| | | (_) | |    /|   |\
+|_|\_\ |____/|_|     |_|  |_|_|___/___/_|\___/|_| |_| \____\___/|_| |_|\__|_|  \___/|_|   /_|___|_\
+                                                                                             /_\
+                                                                                            |___|
+"""  # noqa: E501
 
 
 class SetupScreen(Screen[None]):
-    """Screen that guides the user through kRPC mod installation."""
+    """Initial screen showing system readiness checklist."""
 
     CSS_PATH = "../styles/setup.tcss"
 
     BINDINGS = [
-        ("escape", "go_back", "Back"),
+        ("q", "quit", "Quit"),
+        ("d", "demo_mode", "Control Room (Demo)"),
+        ("c", "control_room", "Control Room"),
     ]
 
     def __init__(self) -> None:
         super().__init__()
-        self._ksp_path: Path | None = None
+        self._krpc_installed: bool = False
+        self._comms_ok: bool = False
+        self._vessel_detected: bool = False
+
+    @property
+    def all_checks_passed(self) -> bool:
+        """Return True when all system checks have passed."""
+        return self._krpc_installed and self._comms_ok and self._vessel_detected
 
     def compose(self) -> ComposeResult:
         yield Header()
-
         with Middle(), Center(), Vertical(id="setup-container"):
-            yield Static("kRPC Setup", id="setup-title")
+            yield Static(LOGO, id="logo")
+            yield Static("v0.1.0", id="version")
             yield Static(
-                "Detect your KSP installation and install the kRPC mod.",
-                id="setup-description",
+                "[b]Terminal Mission Control for Kerbal Space Program[/b]",
+                id="tagline",
             )
-            with Vertical(id="path-row"):
-                yield Input(
-                    placeholder="KSP installation path...",
-                    id="ksp-path-input",
-                )
-                yield Button("Use Path", id="validate-btn", variant="default")
-            with Center():
-                with Horizontal(id="button-row"):
-                    yield Button("Detect KSP", id="detect-btn", variant="primary")
-                    yield Button(
-                        "Install kRPC",
-                        id="install-btn",
-                        variant="success",
-                        disabled=True,
-                    )
-                    yield Button("Back", id="back-btn", variant="default")
-            yield Static("", id="setup-status")
-
+            yield Static("")
+            with Horizontal(classes="checklist-row"):
+                yield Static("[ ] kRPC installed", id="check-krpc")
+                yield Button("i", id="krpc-info-btn", variant="default")
+            yield Static(
+                "[ ] Communications with kRPC",
+                id="check-comms",
+                classes="checklist-item",
+            )
+            yield Static(
+                "[ ] Vessel detected",
+                id="check-vessel",
+                classes="checklist-item",
+            )
         yield Footer()
 
-    def _set_status(self, message: str) -> None:
-        self.query_one("#setup-status", Static).update(message)
+    def on_mount(self) -> None:
+        """Run system checks when the screen first mounts."""
+        self._run_checks()
 
-    def _set_install_enabled(self, enabled: bool) -> None:
-        self.query_one("#install-btn", Button).disabled = not enabled
+    def on_screen_resume(self) -> None:
+        """Re-run checks when returning from a sub-screen."""
+        self._run_checks()
+
+    def _run_checks(self) -> None:
+        """Run all system checks and update the checklist display."""
+        self._check_krpc()
+        self._update_checklist()
+
+    def _check_krpc(self) -> None:
+        """Check if kRPC is installed in a detected KSP installation."""
+        result = find_ksp_install()
+        self._krpc_installed = result is not None and result.has_krpc
+
+    def _update_checklist(self) -> None:
+        """Update all checklist item labels to reflect current state."""
+        krpc_mark = "[x]" if self._krpc_installed else "[ ]"
+        comms_mark = "[x]" if self._comms_ok else "[ ]"
+        vessel_mark = "[x]" if self._vessel_detected else "[ ]"
+
+        self.query_one("#check-krpc", Static).update(
+            f"{krpc_mark} kRPC installed"
+        )
+        self.query_one("#check-comms", Static).update(
+            f"{comms_mark} Communications with kRPC"
+        )
+        self.query_one("#check-vessel", Static).update(
+            f"{vessel_mark} Vessel detected"
+        )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "detect-btn":
-            self._do_detect()
-        elif event.button.id == "validate-btn":
-            self._do_validate_path()
-        elif event.button.id == "install-btn":
-            self._do_install()
-        elif event.button.id == "back-btn":
-            self.action_go_back()
+        """Handle info button presses."""
+        if event.button.id == "krpc-info-btn":
+            from ksp_mission_control.screens.krpc_setup import KrpcSetupScreen
 
-    def _do_detect(self) -> None:
-        """Auto-detect KSP installation."""
-        result = find_ksp_install()
-        if result is None:
-            self._set_status("KSP not found. Enter the path manually.")
-            self._set_install_enabled(False)
-            self._ksp_path = None
-            return
+            self.app.push_screen(KrpcSetupScreen())
 
-        self._ksp_path = result.path
-        self.query_one("#ksp-path-input", Input).value = str(result.path)
+    def check_action_control_room(self) -> bool:
+        """Disable 'Control Room' binding until all checks pass."""
+        return self.all_checks_passed
 
-        if result.has_krpc:
-            self._set_status(f"kRPC is already installed at {result.path}")
-            self._set_install_enabled(False)
-        else:
-            self._set_status(f"KSP found at {result.path}. Ready to install kRPC.")
-            self._set_install_enabled(True)
+    def action_demo_mode(self) -> None:
+        """Launch the control room in demo mode."""
+        from ksp_mission_control.screens.control import ControlScreen
 
-    def _do_validate_path(self) -> None:
-        """Validate a manually entered KSP path."""
-        raw = self.query_one("#ksp-path-input", Input).value.strip()
-        if not raw:
-            self._set_status("Please enter a path.")
-            self._set_install_enabled(False)
-            return
+        self.app.push_screen(ControlScreen(demo=True))
 
-        path = Path(raw)
-        if not is_valid_ksp_install(path):
-            self._set_status(f"Not a valid KSP installation: {path}")
-            self._set_install_enabled(False)
-            self._ksp_path = None
-            return
+    def action_control_room(self) -> None:
+        """Launch the control room (requires all checks to pass)."""
+        from ksp_mission_control.screens.control import ControlScreen
 
-        self._ksp_path = path
-        if is_krpc_installed(path):
-            self._set_status(f"kRPC is already installed at {path}")
-            self._set_install_enabled(False)
-        else:
-            self._set_status("Valid KSP installation. Ready to install kRPC.")
-            self._set_install_enabled(True)
-
-    def _do_install(self) -> None:
-        """Launch the kRPC installation in a background worker."""
-        if self._ksp_path is None:
-            return
-        self._set_status("Downloading and installing kRPC...")
-        self._set_install_enabled(False)
-        self._run_install(self._ksp_path)
-
-    def _run_install(self, ksp_path: Path) -> None:
-        """Run the async install in a Textual worker."""
-
-        async def do_install() -> str:
-            return await install_krpc(ksp_path)
-
-        self.run_worker(do_install(), name="krpc-install")
-
-    def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
-        """Handle worker completion for the kRPC install."""
-        if event.worker.name != "krpc-install":
-            return
-        if event.state == WorkerState.SUCCESS:
-            version = event.worker.result
-            self._set_status(f"kRPC {version} installed successfully!")
-        elif event.state == WorkerState.ERROR:
-            error = event.worker.error
-            if isinstance(error, KrpcInstallError):
-                msg = str(error)
-            else:
-                msg = f"Unexpected error: {error}"
-            self._set_status(f"Installation failed: {msg}")
-
-    def action_go_back(self) -> None:
-        """Return to the previous screen."""
-        self.app.pop_screen()
+        self.app.push_screen(ControlScreen(demo=False))

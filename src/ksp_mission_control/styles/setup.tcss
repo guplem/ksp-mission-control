@@ -2,58 +2,54 @@ SetupScreen {
     background: #0a0a0a;
 }
 
-#setup-title {
+#setup-container {
+    width: auto;
+    max-width: 100%;
+    margin: 0 4;
+}
+
+#logo {
     text-align: center;
-    text-style: bold;
+    width: 100%;
+}
+
+#version {
+    text-align: center;
     width: 100%;
     margin-bottom: 1;
 }
 
-#setup-description {
+#tagline {
     text-align: center;
     width: 100%;
     margin-bottom: 2;
 }
 
-#setup-container {
-    width: 80;
-    max-width: 100%;
-    margin: 1 4;
-}
-
-#path-row {
+.checklist-row {
     height: auto;
-    width: 100%;
-    margin-bottom: 1;
-}
-
-#ksp-path-input {
-    width: 100%;
-}
-
-#validate-btn {
     width: auto;
-    min-width: 12;
-    margin-top: 1;
+    margin-left: 2;
+    margin-bottom: 0;
 }
 
-#button-row {
-    height: 3;
-    width: 100%;
-    margin-top: 1;
+.checklist-row Static {
+    width: auto;
 }
 
-#detect-btn {
-    margin-right: 2;
+.checklist-row Button {
+    min-width: 3;
+    width: 3;
+    height: 1;
+    margin-left: 1;
+    background: transparent;
+    border: none;
+    color: $text-muted;
 }
 
-#install-btn {
-    margin-right: 2;
+.checklist-row Button:hover {
+    color: $primary;
 }
 
-#setup-status {
-    text-align: center;
-    width: 100%;
-    min-height: 3;
-    margin-top: 1;
+.checklist-item {
+    margin-left: 2;
 }
