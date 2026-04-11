@@ -81,7 +81,7 @@ class TestKrpcSetupScreenDetection:
         fake_info.has_krpc = False
 
         with patch(
-            "ksp_mission_control.screens.krpc_setup.find_ksp_install",
+            "ksp_mission_control.setup.kRPC_installer.screen.find_ksp_install",
             return_value=fake_info,
         ):
             async with KrpcSetupTestApp().run_test() as pilot:
@@ -95,7 +95,7 @@ class TestKrpcSetupScreenDetection:
     async def test_detect_shows_not_found(self) -> None:
         """When KSP is not found, status should report it."""
         with patch(
-            "ksp_mission_control.screens.krpc_setup.find_ksp_install",
+            "ksp_mission_control.setup.kRPC_installer.screen.find_ksp_install",
             return_value=None,
         ):
             async with KrpcSetupTestApp().run_test() as pilot:
@@ -106,37 +106,61 @@ class TestKrpcSetupScreenDetection:
                 assert "not found" in str(status._Static__content).lower()
 
     @pytest.mark.asyncio
-    async def test_detect_enables_install_when_krpc_missing(self) -> None:
-        """Install button should enable when KSP is found but kRPC is not."""
+    async def test_detect_enables_install_after_validate(self) -> None:
+        """Install button should enable after detect + validate when kRPC is missing."""
         fake_info = Mock()
         fake_info.path = Path("/fake/ksp")
         fake_info.has_krpc = False
 
-        with patch(
-            "ksp_mission_control.screens.krpc_setup.find_ksp_install",
-            return_value=fake_info,
+        with (
+            patch(
+                "ksp_mission_control.setup.kRPC_installer.screen.find_ksp_install",
+                return_value=fake_info,
+            ),
+            patch(
+                "ksp_mission_control.setup.kRPC_installer.screen.is_valid_ksp_install",
+                return_value=True,
+            ),
+            patch(
+                "ksp_mission_control.setup.kRPC_installer.screen.is_krpc_installed",
+                return_value=False,
+            ),
         ):
             async with KrpcSetupTestApp().run_test() as pilot:
                 await pilot.pause()
                 await pilot.click("#detect-btn")
+                await pilot.pause()
+                await pilot.click("#validate-path-btn")
                 await pilot.pause()
                 button = pilot.app.screen.query_one("#install-btn")
                 assert button.disabled is False
 
     @pytest.mark.asyncio
-    async def test_detect_shows_krpc_already_installed(self) -> None:
-        """When kRPC is already present, status should say so."""
+    async def test_validate_shows_krpc_already_installed(self) -> None:
+        """When kRPC is already present, status should say so after validate."""
         fake_info = Mock()
         fake_info.path = Path("/fake/ksp")
         fake_info.has_krpc = True
 
-        with patch(
-            "ksp_mission_control.screens.krpc_setup.find_ksp_install",
-            return_value=fake_info,
+        with (
+            patch(
+                "ksp_mission_control.setup.kRPC_installer.screen.find_ksp_install",
+                return_value=fake_info,
+            ),
+            patch(
+                "ksp_mission_control.setup.kRPC_installer.screen.is_valid_ksp_install",
+                return_value=True,
+            ),
+            patch(
+                "ksp_mission_control.setup.kRPC_installer.screen.is_krpc_installed",
+                return_value=True,
+            ),
         ):
             async with KrpcSetupTestApp().run_test() as pilot:
                 await pilot.pause()
                 await pilot.click("#detect-btn")
+                await pilot.pause()
+                await pilot.click("#validate-path-btn")
                 await pilot.pause()
                 status = pilot.app.screen.query_one("#setup-status")
                 assert "already installed" in str(status._Static__content).lower()
@@ -150,11 +174,11 @@ class TestKrpcSetupScreenManualPath:
         """Entering a valid KSP path manually should enable install."""
         with (
             patch(
-                "ksp_mission_control.screens.krpc_setup.is_valid_ksp_install",
+                "ksp_mission_control.setup.kRPC_installer.screen.is_valid_ksp_install",
                 return_value=True,
             ),
             patch(
-                "ksp_mission_control.screens.krpc_setup.is_krpc_installed",
+                "ksp_mission_control.setup.kRPC_installer.screen.is_krpc_installed",
                 return_value=False,
             ),
         ):
@@ -162,7 +186,7 @@ class TestKrpcSetupScreenManualPath:
                 await pilot.pause()
                 inp = pilot.app.screen.query_one("#ksp-path-input")
                 inp.value = "/some/ksp/path"
-                await pilot.click("#validate-btn")
+                await pilot.click("#validate-path-btn")
                 await pilot.pause()
                 button = pilot.app.screen.query_one("#install-btn")
                 assert button.disabled is False
@@ -171,14 +195,14 @@ class TestKrpcSetupScreenManualPath:
     async def test_invalid_manual_path_shows_error(self) -> None:
         """Entering an invalid path should show an error."""
         with patch(
-            "ksp_mission_control.screens.krpc_setup.is_valid_ksp_install",
+            "ksp_mission_control.setup.kRPC_installer.screen.is_valid_ksp_install",
             return_value=False,
         ):
             async with KrpcSetupTestApp().run_test() as pilot:
                 await pilot.pause()
                 inp = pilot.app.screen.query_one("#ksp-path-input")
                 inp.value = "/not/valid"
-                await pilot.click("#validate-btn")
+                await pilot.click("#validate-path-btn")
                 await pilot.pause()
                 status = pilot.app.screen.query_one("#setup-status")
                 assert "not a valid" in str(status._Static__content).lower()

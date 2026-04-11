@@ -5,12 +5,18 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from ksp_mission_control.setup.checks import (
-    KrpcCommsCheck,
-    KrpcInstalledCheck,
-    VesselDetectedCheck,
-    get_default_checks,
-)
+from ksp_mission_control.config import AppConfig, ConfigManager
+from ksp_mission_control.setup.checks import get_default_checks
+from ksp_mission_control.setup.kRPC_comms.check import KrpcCommsCheck
+from ksp_mission_control.setup.kRPC_installer.check import KrpcInstalledCheck
+from ksp_mission_control.setup.vessel.check import VesselDetectedCheck
+
+
+def _mock_config_manager(ksp_path: str | None = None) -> ConfigManager:
+    """Create a mock ConfigManager with the given ksp_path."""
+    manager = Mock(spec=ConfigManager)
+    manager.config = AppConfig(ksp_path=ksp_path)
+    return manager
 
 
 class TestKrpcInstalledCheck:
@@ -18,10 +24,10 @@ class TestKrpcInstalledCheck:
 
     def test_fails_when_ksp_not_found(self) -> None:
         with patch(
-            "ksp_mission_control.setup.checks.find_ksp_install",
+            "ksp_mission_control.setup.kRPC_installer.check.find_ksp_install",
             return_value=None,
         ):
-            result = KrpcInstalledCheck().run()
+            result = KrpcInstalledCheck(_mock_config_manager()).run()
         assert result.passed is False
         assert "not found" in result.message
 
@@ -30,10 +36,10 @@ class TestKrpcInstalledCheck:
         info.has_krpc = False
         info.path = "/fake/ksp"
         with patch(
-            "ksp_mission_control.setup.checks.find_ksp_install",
+            "ksp_mission_control.setup.kRPC_installer.check.find_ksp_install",
             return_value=info,
         ):
-            result = KrpcInstalledCheck().run()
+            result = KrpcInstalledCheck(_mock_config_manager()).run()
         assert result.passed is False
         assert "not installed" in result.message
 
@@ -42,10 +48,10 @@ class TestKrpcInstalledCheck:
         info.has_krpc = True
         info.path = "/fake/ksp"
         with patch(
-            "ksp_mission_control.setup.checks.find_ksp_install",
+            "ksp_mission_control.setup.kRPC_installer.check.find_ksp_install",
             return_value=info,
         ):
-            result = KrpcInstalledCheck().run()
+            result = KrpcInstalledCheck(_mock_config_manager()).run()
         assert result.passed is True
 
     def test_stored_path_with_krpc_passes(self, tmp_path: Path) -> None:
@@ -54,7 +60,7 @@ class TestKrpcInstalledCheck:
         (tmp_path / "GameData" / "kRPC" / "kRPC.dll").touch()
         (tmp_path / "KSP_x64.exe").touch()
 
-        check = KrpcInstalledCheck(ksp_path=str(tmp_path))
+        check = KrpcInstalledCheck(_mock_config_manager(ksp_path=str(tmp_path)))
         result = check.run()
         assert result.passed is True
         assert str(tmp_path) in result.message
@@ -64,7 +70,7 @@ class TestKrpcInstalledCheck:
         (tmp_path / "GameData").mkdir()
         (tmp_path / "KSP_x64.exe").touch()
 
-        check = KrpcInstalledCheck(ksp_path=str(tmp_path))
+        check = KrpcInstalledCheck(_mock_config_manager(ksp_path=str(tmp_path)))
         result = check.run()
         assert result.passed is False
         assert "not installed" in result.message
@@ -75,10 +81,10 @@ class TestKrpcInstalledCheck:
         info.has_krpc = True
         info.path = "/auto/detected"
         with patch(
-            "ksp_mission_control.setup.checks.find_ksp_install",
+            "ksp_mission_control.setup.kRPC_installer.check.find_ksp_install",
             return_value=info,
         ):
-            check = KrpcInstalledCheck(ksp_path="/nonexistent/path")
+            check = KrpcInstalledCheck(_mock_config_manager(ksp_path="/nonexistent/path"))
             result = check.run()
         assert result.passed is True
         assert "/auto/detected" in result.message
@@ -86,12 +92,37 @@ class TestKrpcInstalledCheck:
     def test_no_stored_path_uses_autodetect(self) -> None:
         """Without a stored path, behaves as before (auto-detect)."""
         with patch(
-            "ksp_mission_control.setup.checks.find_ksp_install",
+            "ksp_mission_control.setup.kRPC_installer.check.find_ksp_install",
             return_value=None,
         ):
-            check = KrpcInstalledCheck(ksp_path=None)
+            check = KrpcInstalledCheck(_mock_config_manager())
             result = check.run()
         assert result.passed is False
+
+    def test_reads_ksp_path_fresh_on_each_run(self, tmp_path: Path) -> None:
+        """Config changes between runs are picked up without re-creating the check."""
+        (tmp_path / "GameData" / "kRPC").mkdir(parents=True)
+        (tmp_path / "GameData" / "kRPC" / "kRPC.dll").touch()
+        (tmp_path / "KSP_x64.exe").touch()
+
+        manager = _mock_config_manager()
+        check = KrpcInstalledCheck(manager)
+
+        # First run: no ksp_path, auto-detect finds nothing
+        with patch(
+            "ksp_mission_control.setup.kRPC_installer.check.find_ksp_install",
+            return_value=None,
+        ):
+            result = check.run()
+        assert result.passed is False
+
+        # User sets ksp_path via setup screen
+        manager.config = AppConfig(ksp_path=str(tmp_path))
+
+        # Second run: picks up the new path without re-creating the check
+        result = check.run()
+        assert result.passed is True
+        assert str(tmp_path) in result.message
 
 
 class TestKrpcCommsCheck:
@@ -109,7 +140,7 @@ class TestKrpcCommsCheck:
         mock_socket.__enter__ = Mock(return_value=mock_socket)
         mock_socket.__exit__ = Mock(return_value=False)
         with patch(
-            "ksp_mission_control.setup.checks.socket.create_connection",
+            "ksp_mission_control.setup.kRPC_comms.check.socket.create_connection",
             return_value=mock_socket,
         ):
             result = KrpcCommsCheck().run()
@@ -153,22 +184,23 @@ class TestGetDefaultChecks:
     """Test the default check list factory."""
 
     def test_returns_three_checks(self) -> None:
-        checks = get_default_checks()
+        checks = get_default_checks(_mock_config_manager())
         assert len(checks) == 3
 
     def test_check_ids_are_unique(self) -> None:
-        checks = get_default_checks()
+        checks = get_default_checks(_mock_config_manager())
         ids = [c.check_id for c in checks]
         assert len(ids) == len(set(ids))
 
     def test_check_order(self) -> None:
-        checks = get_default_checks()
+        checks = get_default_checks(_mock_config_manager())
         assert checks[0].check_id == "check-krpc"
         assert checks[1].check_id == "check-comms"
         assert checks[2].check_id == "check-vessel"
 
-    def test_passes_ksp_path_to_krpc_check(self) -> None:
-        checks = get_default_checks(ksp_path="/stored/ksp")
+    def test_passes_config_manager_to_krpc_check(self) -> None:
+        manager = _mock_config_manager(ksp_path="/stored/ksp")
+        checks = get_default_checks(manager)
         krpc_check = checks[0]
         assert isinstance(krpc_check, KrpcInstalledCheck)
-        assert krpc_check._stored_path == "/stored/ksp"  # noqa: SLF001
+        assert krpc_check._config_manager is manager  # noqa: SLF001

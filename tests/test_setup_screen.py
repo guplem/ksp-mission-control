@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import pytest
 from textual.app import App, ComposeResult
+from textual.screen import Screen
 from textual.widgets import ListItem, Static
 
-from ksp_mission_control.setup.screen import SetupScreen
 from ksp_mission_control.setup.checks import CheckResult, SetupCheck
+from ksp_mission_control.setup.screen import SetupScreen
 
 # ---------------------------------------------------------------------------
 # Fake checks for testing
@@ -17,20 +20,16 @@ from ksp_mission_control.setup.checks import CheckResult, SetupCheck
 class FakeCheck(SetupCheck):
     """A check whose outcome is predetermined."""
 
+    check_id: ClassVar[str] = ""
+    label: ClassVar[str] = ""
+    screen: ClassVar[type[Screen] | None] = None
+
     def __init__(self, check_id: str, label: str, *, passed: bool, message: str = "") -> None:
-        self._check_id = check_id
-        self._label = label
+        self.check_id = check_id  # type: ignore[misc]
+        self.label = label  # type: ignore[misc]
         self._passed = passed
         self._message = message
         self.run_count = 0
-
-    @property
-    def check_id(self) -> str:
-        return self._check_id
-
-    @property
-    def label(self) -> str:
-        return self._label
 
     def run(self) -> CheckResult:
         self.run_count += 1
@@ -153,7 +152,7 @@ class TestSetupScreenChecks:
             await pilot.pause()
             for check in checks:
                 label = pilot.app.screen.query_one(f"#{check.check_id}-label", Static)
-                assert "[x]" in str(label._Static__content)
+                assert "[✓]" in str(label._Static__content)
 
     @pytest.mark.asyncio
     async def test_display_shows_fail_mark_on_failure(self) -> None:
@@ -162,7 +161,7 @@ class TestSetupScreenChecks:
         async with SetupTestApp(checks=checks).run_test() as pilot:
             await pilot.pause()
             label = pilot.app.screen.query_one("#check-krpc-label", Static)
-            assert "[!]" in str(label._Static__content)
+            assert "[ ]" in str(label._Static__content)
 
     @pytest.mark.asyncio
     async def test_control_room_disabled_when_checks_fail(self) -> None:
