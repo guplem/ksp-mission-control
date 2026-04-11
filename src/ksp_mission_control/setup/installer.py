@@ -35,9 +35,9 @@ def extract_krpc_zip(zip_path: Path, ksp_path: Path) -> None:
 
     with zipfile.ZipFile(zip_path) as zf:
         gamedata_entries = [n for n in zf.namelist() if n.startswith("GameData/")]
-        if not any("kRPC/kRPC.dll" in entry for entry in gamedata_entries):
+        if not any("krpc.dll" in entry.lower() for entry in gamedata_entries):
             raise KrpcInstallError(
-                f"{zip_path.name} does not contain kRPC (missing GameData/kRPC/kRPC.dll)"
+                f"{zip_path.name} does not contain kRPC (missing GameData/kRPC/KRPC.dll)"
             )
 
         gamedata_dest = ksp_path / "GameData"
