@@ -45,4 +45,5 @@ ignore = ["ANN101", "ANN102"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-packages = ["src/ksp_mission_control"]
+packages = ["ksp_mission_control"]
+mypy_path = ["src"]

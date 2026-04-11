@@ -33,6 +33,7 @@ class MissionControlApp(App[None]):
         ("q", "quit", "Quit"),
         ("d", "demo", "Demo Mode"),
         ("c", "connect", "Connect to KSP"),
+        ("s", "setup", "kRPC Setup"),
     ]
     CSS = """
     Screen {
@@ -94,6 +95,12 @@ class MissionControlApp(App[None]):
     def action_connect(self) -> None:
         """Connect to KSP (placeholder)."""
         self.notify("Connection screen coming soon...")
+
+    def action_setup(self) -> None:
+        """Open the kRPC setup screen."""
+        from ksp_mission_control.screens.setup import SetupScreen
+
+        self.push_screen(SetupScreen())
 
 
 def main() -> None:
