@@ -93,7 +93,27 @@ kRPC Server (KSP) --> connection/ (streams) --> models/ (dataclasses) --> widget
 
 - **10 Hz refresh**: `DashboardScreen` uses `set_interval(0.1, refresh)` to read cached stream values and update widgets.
 - **Thread bridge**: kRPC calls are synchronous. Use Textual's `@work(thread=True)` for commands, `app.call_from_thread()` for callbacks.
-- **CSS theming**: All visual styling in `.tcss` files. Widget classes set IDs/classes, CSS handles layout and colors.
+- **CSS theming**: Keep static layout and visual styling in `.tcss`. Use Python style updates only for runtime-dependent values (state, measurements, animations, temporary overrides).
+
+### Textual UI composition and styling rules
+
+Use this separation of concerns for all Textual UI work:
+
+- **Compose + containers define structure**: Use `compose()` and container hierarchy (`Vertical`, `Horizontal`, `Center`, `Middle`, etc.) to define parent/child relationships and layout intent.
+- **`.tcss` defines static presentation**: Put fixed spacing, sizing, alignment, colors, typography, and other non-dynamic visual rules in `.tcss`.
+- **Python style mutations are runtime-only**: Use `widget.styles.*` in Python only for dynamic behavior (state-driven changes, measurements, animations, temporary overrides).
+
+Preferred compose style:
+
+- Use **constructor nesting** for simple single-child wrappers (typically 1 to 2 levels), for example one-liners like `Middle(Center(WelcomeView()))`.
+- Use **`with` blocks** when a container has multiple siblings or nesting depth exceeds 2 levels, because it is easier to read and maintain.
+- Choose whichever is clearest, but do not move fixed visual styling from `.tcss` into Python.
+
+Default policy for agents:
+
+- If a style value is static, place it in `.tcss`.
+- If a style value depends on runtime state, Python may set it.
+- Prefer IDs/classes + `.tcss` over repeated inline Python style assignments.
 
 ## Test-Driven Development
 
