@@ -3,43 +3,24 @@ KrpcSetupScreen {
 }
 
 #setup-title {
-    text-align: center;
     text-style: bold;
-    width: 100%;
     margin-bottom: 1;
 }
 
 #setup-description {
-    text-align: center;
-    width: 100%;
     margin-bottom: 2;
 }
 
 #setup-container {
-    width: 80;
-    max-width: 100%;
     margin: 1 4;
 }
 
-#path-row {
-    height: auto;
-    width: 100%;
+#validate-btn {
+    margin-top: 1;
     margin-bottom: 1;
 }
 
-#ksp-path-input {
-    width: 100%;
-}
-
-#validate-btn {
-    width: auto;
-    min-width: 12;
-    margin-top: 1;
-}
-
 #button-row {
-    height: 3;
-    width: 100%;
     margin-top: 1;
 }
 
@@ -52,8 +33,5 @@ KrpcSetupScreen {
 }
 
 #setup-status {
-    text-align: center;
-    width: 100%;
-    min-height: 3;
     margin-top: 1;
 }

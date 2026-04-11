@@ -1,8 +1,3 @@
 ControlScreen {
     background: #0a0a0a;
 }
-
-#control-title {
-    text-align: center;
-    width: 100%;
-}

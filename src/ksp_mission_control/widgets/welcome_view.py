@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from textual.app import ComposeResult
+from textual.containers import Center
 from textual.widgets import Static
 
 LOGO = r"""
@@ -19,15 +20,10 @@ LOGO = r"""
 class WelcomeView(Static):
     """Welcome screen shown on startup."""
 
-    DEFAULT_CSS = """
-    WelcomeView Static {
-        text-align: center;
-        width: 100%;
-    }
-    """
-
     def compose(self) -> ComposeResult:
-        yield Static(LOGO, id="logo")
-        yield Static("v0.1.0", id="version")
+        yield Center(Static(LOGO, id="logo"))
+        yield Center(Static("v0.1.0", id="version"))
         yield Static("")
-        yield Static("[b]Terminal Mission Control for Kerbal Space Program[/b]", id="tagline")
+        yield Center(
+            Static("[b]Terminal Mission Control for Kerbal Space Program[/b]", id="tagline")
+        )

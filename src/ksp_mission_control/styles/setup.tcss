@@ -3,43 +3,23 @@ SetupScreen {
 }
 
 #setup-container {
-    width: auto;
-    max-width: 100%;
     margin: 0 4;
 }
 
-#logo {
-    text-align: center;
-    width: 100%;
-}
-
 #version {
-    text-align: center;
-    width: 100%;
     margin-bottom: 1;
 }
 
 #tagline {
-    text-align: center;
-    width: 100%;
     margin-bottom: 2;
 }
 
 .checklist-row {
-    height: auto;
-    width: auto;
     margin-left: 2;
     margin-bottom: 0;
 }
 
-.checklist-row Static {
-    width: auto;
-}
-
 .checklist-row Button {
-    min-width: 3;
-    width: 3;
-    height: 1;
     margin-left: 1;
     background: transparent;
     border: none;

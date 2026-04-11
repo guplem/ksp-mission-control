@@ -3,21 +3,12 @@
 from __future__ import annotations
 
 from textual.app import ComposeResult
-from textual.containers import Center, Horizontal, Middle, Vertical
+from textual.containers import Center, HorizontalGroup, Middle, VerticalGroup
 from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Static
 
 from ksp_mission_control.setup.detector import find_ksp_install
-
-LOGO = r"""
- _  __  ____  ____    __  __ _         _               ____            _             _       / \
-| |/ / / ___||  _ \  |  \/  (_)___ ___(_) ___  _ __   / ___|___  _ __ | |_ _ __ ___ | |     |   |
-| ' /  \___ \| |_) | | |\/| | / __/ __| |/ _ \| '_ \ | |   / _ \| '_ \| __| '__/ _ \| |     |   |
-| . \   ___) |  __/  | |  | | \__ \__ \ | (_) | | | || |__| (_) | | | | |_| | | (_) | |    /|   |\
-|_|\_\ |____/|_|     |_|  |_|_|___/___/_|\___/|_| |_| \____\___/|_| |_|\__|_|  \___/|_|   /_|___|_\
-                                                                                             /_\
-                                                                                            |___|
-"""  # noqa: E501
+from ksp_mission_control.widgets.welcome_view import WelcomeView
 
 
 class SetupScreen(Screen[None]):
@@ -26,7 +17,7 @@ class SetupScreen(Screen[None]):
     CSS_PATH = "../styles/setup.tcss"
 
     BINDINGS = [
-        ("q", "quit", "Quit"),
+        ("q", "app.quit", "Quit"),
         ("d", "demo_mode", "Control Room (Demo)"),
         ("c", "control_room", "Control Room"),
     ]
@@ -44,15 +35,10 @@ class SetupScreen(Screen[None]):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with Middle(), Center(), Vertical(id="setup-container"):
-            yield Static(LOGO, id="logo")
-            yield Static("v0.1.0", id="version")
-            yield Static(
-                "[b]Terminal Mission Control for Kerbal Space Program[/b]",
-                id="tagline",
-            )
+        with Middle(), Center(), VerticalGroup(id="setup-container"):
+            yield WelcomeView()
             yield Static("")
-            with Horizontal(classes="checklist-row"):
+            with HorizontalGroup(classes="checklist-row"):
                 yield Static("[ ] kRPC installed", id="check-krpc")
                 yield Button("i", id="krpc-info-btn", variant="default")
             yield Static(
@@ -91,15 +77,9 @@ class SetupScreen(Screen[None]):
         comms_mark = "[x]" if self._comms_ok else "[ ]"
         vessel_mark = "[x]" if self._vessel_detected else "[ ]"
 
-        self.query_one("#check-krpc", Static).update(
-            f"{krpc_mark} kRPC installed"
-        )
-        self.query_one("#check-comms", Static).update(
-            f"{comms_mark} Communications with kRPC"
-        )
-        self.query_one("#check-vessel", Static).update(
-            f"{vessel_mark} Vessel detected"
-        )
+        self.query_one("#check-krpc", Static).update(f"{krpc_mark} kRPC installed")
+        self.query_one("#check-comms", Static).update(f"{comms_mark} Communications with kRPC")
+        self.query_one("#check-vessel", Static).update(f"{vessel_mark} Vessel detected")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle info button presses."""

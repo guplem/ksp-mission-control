@@ -15,7 +15,7 @@ class ControlScreen(Screen[None]):
 
     BINDINGS = [
         ("escape", "go_back", "Back to Setup"),
-        ("q", "quit", "Quit"),
+        ("q", "app.quit", "Quit"),
     ]
 
     def __init__(self, demo: bool = False) -> None:

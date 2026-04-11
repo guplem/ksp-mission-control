@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from textual.app import ComposeResult
-from textual.containers import Center, Horizontal, Middle, Vertical
+from textual.containers import Center, HorizontalGroup, Middle, VerticalGroup
 from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Input, Static
 from textual.worker import Worker, WorkerState
@@ -34,19 +34,20 @@ class KrpcSetupScreen(Screen[None]):
     def compose(self) -> ComposeResult:
         yield Header()
 
-        with Middle(), Center(), Vertical(id="setup-container"):
-            yield Static("kRPC Setup", id="setup-title")
-            yield Static(
-                "Detect your KSP installation and install the kRPC mod.",
-                id="setup-description",
-            )
-            with Vertical(id="path-row"):
-                yield Input(
-                    placeholder="KSP installation path...",
-                    id="ksp-path-input",
+        with Middle(), Center(), VerticalGroup(id="setup-container"):
+            yield Center(Static("kRPC Setup", id="setup-title"))
+            yield Center(
+                Static(
+                    "Detect your KSP installation and install the kRPC mod.",
+                    id="setup-description",
                 )
-                yield Button("Use Path", id="validate-btn", variant="default")
-            with Center(), Horizontal(id="button-row"):
+            )
+            yield Input(
+                placeholder="KSP installation path...",
+                id="ksp-path-input",
+            )
+            yield Button("Use Path", id="validate-btn", variant="default")
+            with Center(), HorizontalGroup(id="button-row"):
                     yield Button("Detect KSP", id="detect-btn", variant="primary")
                     yield Button(
                         "Install kRPC",
@@ -55,7 +56,7 @@ class KrpcSetupScreen(Screen[None]):
                         disabled=True,
                     )
                     yield Button("Back", id="back-btn", variant="default")
-            yield Static("", id="setup-status")
+            yield Center(Static("", id="setup-status"))
 
         yield Footer()
 
