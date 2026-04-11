@@ -1,8 +1,14 @@
-"""ActionListWidget - displays available actions with running status."""
+"""ActionListWidget - displays available actions with running status.
+
+Shows a ListView of all registered actions. When the user selects one,
+posts a Selected message for the parent screen to handle. Tracks which
+action (if any) is currently running and updates the display accordingly.
+"""
 
 from __future__ import annotations
 
 from textual.app import ComposeResult
+from textual.css.query import NoMatches
 from textual.message import Message
 from textual.widgets import ListItem, ListView, Static
 
@@ -45,7 +51,11 @@ class ActionListWidget(Static):
             self.post_message(self.Selected(action))
 
     def update_running(self, action_id: str | None) -> None:
-        """Update which action (if any) shows the running indicator."""
+        """Update which action (if any) shows the running indicator.
+
+        Called from the screen's poll loop each tick. Safe to call before
+        the widget is fully mounted (NoMatches is caught).
+        """
         if action_id == self._running_action_id:
             return
         # Clear previous running indicator
@@ -57,7 +67,7 @@ class ActionListWidget(Static):
                 try:
                     label = self.query_one(f"#action-{prev.action_id}-label", Static)
                     label.update(prev.label)
-                except Exception:
+                except NoMatches:
                     pass
         # Set new running indicator
         self._running_action_id = action_id
@@ -67,5 +77,5 @@ class ActionListWidget(Static):
                 try:
                     label = self.query_one(f"#action-{action.action_id}-label", Static)
                     label.update(f"[b]RUNNING: {action.label}[/b]")
-                except Exception:
+                except NoMatches:
                     pass

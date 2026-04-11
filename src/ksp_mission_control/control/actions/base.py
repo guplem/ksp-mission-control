@@ -8,7 +8,7 @@ kRPC directly. See ADR 0006 for rationale.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, ClassVar
 
@@ -113,12 +113,18 @@ class VesselControls:
     Actions mutate this in tick(); the runner applies non-None fields to kRPC.
     """
 
-    throttle: float | None = field(default=None)
-    pitch: float | None = field(default=None)
-    heading: float | None = field(default=None)
-    sas: bool | None = field(default=None)
-    rcs: bool | None = field(default=None)
-    stage: bool | None = field(default=None)
+    throttle: float | None = None
+    """Main engine throttle. 0.0 = off, 1.0 = full thrust."""
+    pitch: float | None = None
+    """Target pitch angle in degrees. 0 = horizontal, 90 = straight up."""
+    heading: float | None = None
+    """Target heading in degrees. 0 = north, 90 = east, 180 = south, 270 = west."""
+    sas: bool | None = None
+    """Stability Assist System. True = enable, False = disable."""
+    rcs: bool | None = None
+    """Reaction Control System. True = enable, False = disable."""
+    stage: bool | None = None
+    """Set to True to activate the next stage this tick."""
 
 
 class Action(ABC):

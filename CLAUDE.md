@@ -43,53 +43,46 @@ KSP Mission Control is a Python TUI application that connects to Kerbal Space Pr
 
 ```
 src/ksp_mission_control/
-├── app.py              # Textual App subclass, entry point
-├── config.py           # AppConfig dataclass + ConfigManager (JSON persistence)
-├── theme.py            # Custom Textual theme
-├── style.tcss          # App-level global styles
-├── control/            # Control room feature
-│   ├── screen.py       # ControlScreen (live telemetry, vessel control)
-│   ├── style.tcss      # Control-screen styles
-│   ├── actions/        # Action execution system (ADR 0006)
-│   │   ├── base.py     # Action ABC, VesselState, VesselControls, ActionParam, enums
-│   │   ├── runner.py   # ActionRunner (step-based executor)
-│   │   ├── registry.py # get_available_actions() factory
-│   │   └── hover/      # Hover altitude-hold action
+├── app.py                # Textual App subclass, entry point
+├── config.py             # AppConfig dataclass + ConfigManager (JSON persistence)
+├── theme.py              # Custom Textual theme
+├── style.tcss            # App-level global styles
+├── control/              # Control room feature
+│   ├── screen.py         # ControlScreen (split layout: telemetry + actions)
+│   ├── style.tcss        # Control-screen styles
+│   ├── krpc_bridge.py    # kRPC I/O: read_vessel_state(), apply_controls()
+│   ├── actions/          # Action execution system (ADR 0006)
+│   │   ├── base.py       # Action ABC, VesselState, VesselControls, ActionParam, enums
+│   │   ├── runner.py     # ActionRunner (step-based executor)
+│   │   ├── registry.py   # get_available_actions() factory
+│   │   └── hover/        # Hover altitude-hold action
 │   │       └── action.py # HoverAction
-│   ├── widgets/        # Control-screen widgets
-│   │   └── action_list.py # ActionListWidget (available actions display)
-│   └── demo/           # Demo mode data
-│       └── provider.py # generate_demo_vessel_state()
-├── setup/              # Setup/checklist feature
-│   ├── screen.py       # SetupScreen (system readiness checklist)
-│   ├── style.tcss      # Setup-screen styles
-│   ├── checks.py       # SetupCheck ABC, CheckResult, get_default_checks()
-│   ├── kRPC_installer/ # kRPC mod detection + installation
-│   │   ├── check.py    # KrpcInstalledCheck
-│   │   ├── detector.py # find_ksp_install, is_valid_ksp_install, etc.
-│   │   ├── manager.py  # Download + extract kRPC zip
-│   │   ├── screen.py   # KrpcSetupScreen (guided installer UI)
+│   ├── widgets/          # Control-screen widgets
+│   │   ├── telemetry_display.py # TelemetryDisplayWidget (formatted vessel data)
+│   │   └── action_list.py       # ActionListWidget (available actions + status)
+│   └── demo/             # Demo mode data
+│       └── provider.py   # generate_demo_vessel_state()
+├── setup/                # Setup/checklist feature
+│   ├── screen.py         # SetupScreen (system readiness checklist)
+│   ├── style.tcss        # Setup-screen styles
+│   ├── checks.py         # SetupCheck ABC, CheckResult, get_default_checks()
+│   ├── kRPC_installer/   # kRPC mod detection + installation
+│   │   ├── check.py      # KrpcInstalledCheck
+│   │   ├── detector.py   # find_ksp_install, is_valid_ksp_install, etc.
+│   │   ├── manager.py    # Download + extract kRPC zip
+│   │   ├── screen.py     # KrpcSetupScreen (guided installer UI)
 │   │   └── style.tcss
-│   ├── kRPC_comms/     # kRPC server connectivity check
-│   │   ├── check.py    # KrpcCommsCheck
-│   │   ├── parser.py   # Parse kRPC settings.cfg for server connection details
-│   │   ├── screen.py   # KrpcCommsScreen (connectivity help + test button)
+│   ├── kRPC_comms/       # kRPC server connectivity check
+│   │   ├── check.py      # KrpcCommsCheck
+│   │   ├── parser.py     # Parse kRPC settings.cfg + resolve_krpc_connection()
+│   │   ├── screen.py     # KrpcCommsScreen (connectivity help + test button)
 │   │   └── style.tcss
-│   └── vessel/         # Active vessel detection check
-│       └── check.py    # VesselDetectedCheck
-├── connection/         # kRPC bridge layer
-│   ├── client.py       # KRPCClient (real game connection)
-│   ├── mock.py         # MockClient (fake data for dev/demo)
-│   ├── streams.py      # StreamManager (kRPC stream subscriptions)
-│   └── protocol.py     # MissionClient Protocol (shared interface)
-├── models/             # Pure Python dataclasses (no TUI/kRPC imports)
-│   ├── telemetry.py    # TelemetryData
-│   ├── orbit.py        # OrbitData
-│   ├── vessel.py       # VesselState
-│   ├── control.py      # ControlState
-│   └── events.py       # MissionEvent
-└── widgets/            # Shared/reusable Textual Widgets
-    └── welcome_view.py # WelcomeView
+│   ├── vessel/           # Active vessel detection check
+│   │   └── check.py      # VesselDetectedCheck
+│   └── widgets/          # Setup-screen widgets
+│       └── welcome_widget.py # WelcomeWidget
+└── widgets/              # Shared/reusable Textual Widgets
+    └── welcome_view.py   # WelcomeView
 ```
 
 ### Module organization rules
@@ -118,19 +111,23 @@ This project uses **feature-based modules**, not layer-based. Every feature is a
 ### Data flow
 
 ```
-kRPC Server (KSP) --> connection/ (streams) --> models/ (dataclasses) --> widgets/ (display)
-                  <-- connection/ (commands) <-- screens/ (user input) <-- widgets/ (events)
+kRPC Server (KSP) --read--> krpc_bridge --> VesselState --> ActionRunner.step() --> VesselControls --> krpc_bridge --write--> kRPC
+                                                                                                          |
+Demo mode:        generate_demo_vessel_state() --> VesselState --> ActionRunner.step() --> VesselControls (discarded)
 ```
 
-- **Unidirectional for reads**: kRPC streams push data, connection layer converts to model dataclasses, widgets render them.
-- **Reverse for commands**: widget events bubble up to screen handlers, which call client methods.
-- **Models are pure**: no kRPC or Textual imports. This keeps them testable and decoupled.
-- **Protocol-based client**: `KRPCClient` and `MockClient` both implement `MissionClient` Protocol. The app picks one at startup.
+- **Read path**: `krpc_bridge.read_vessel_state()` reads kRPC telemetry into a pure `VesselState` dataclass. In demo mode, `generate_demo_vessel_state()` produces the same dataclass with fake data.
+- **Action loop**: `ActionRunner.step()` passes `VesselState` to the current action's `tick()`, which mutates a `VesselControls` command buffer.
+- **Write path**: `krpc_bridge.apply_controls()` writes non-None `VesselControls` fields back to kRPC. In demo mode, controls are discarded.
+- **UI updates**: The screen's poll loop calls `call_from_thread()` to push `VesselState` and `RunnerSnapshot` to widgets.
+- **Models are pure**: `VesselState` and `VesselControls` have no kRPC or Textual imports. Actions are testable with constructed states.
 
 ### Key patterns
 
-- **10 Hz refresh**: `DashboardScreen` uses `set_interval(0.1, refresh)` to read cached stream values and update widgets.
-- **Thread bridge**: kRPC calls are synchronous. Use Textual's `@work(thread=True)` for commands, `app.call_from_thread()` for callbacks.
+- **0.5s poll loop**: `ControlScreen` uses `@work(thread=True)` with a `threading.Event` wait for live mode, `set_interval(0.5)` for demo mode. Each tick: read state, step runner, apply controls, update UI.
+- **Thread bridge**: kRPC calls are synchronous. Use Textual's `@work(thread=True)` for blocking I/O, `app.call_from_thread()` to push updates to the UI thread.
+- **Action tick lifecycle**: Actions implement `start()` / `tick()` / `stop()`. The `ActionRunner` calls `tick()` each poll iteration and auto-stops on SUCCEEDED or FAILED. Actions never touch kRPC directly.
+- **Command buffer pattern**: `VesselControls` fields default to `None` ("don't change"). Actions set only the fields they care about. The bridge applies non-None fields to kRPC.
 - **CSS theming**: Keep static layout and visual styling in `.tcss`. Use Python style updates only for runtime-dependent values (state, measurements, animations, temporary overrides).
 
 ### Textual UI composition and styling rules
