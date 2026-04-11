@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from textual.app import ComposeResult
-from textual.containers import Center, Vertical
+from textual.containers import Center, Horizontal, Middle, Vertical
 from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Input, Static
 from textual.worker import Worker, WorkerState
@@ -33,7 +33,8 @@ class SetupScreen(Screen[None]):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with Center(), Vertical(id="setup-container"):
+
+        with Middle(), Center(), Vertical(id="setup-container"):
             yield Static("kRPC Setup", id="setup-title")
             yield Static(
                 "Detect your KSP installation and install the kRPC mod.",
@@ -45,7 +46,7 @@ class SetupScreen(Screen[None]):
                     id="ksp-path-input",
                 )
                 yield Button("Use Path", id="validate-btn", variant="default")
-            with Vertical(id="button-row"):
+            with Horizontal(id="button-row"):
                 yield Button("Detect KSP", id="detect-btn", variant="primary")
                 yield Button(
                     "Install kRPC",
@@ -55,6 +56,7 @@ class SetupScreen(Screen[None]):
                 )
                 yield Button("Back", id="back-btn", variant="default")
             yield Static("", id="setup-status")
+
         yield Footer()
 
     def _set_status(self, message: str) -> None:

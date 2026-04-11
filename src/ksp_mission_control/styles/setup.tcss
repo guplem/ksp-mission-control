@@ -19,7 +19,6 @@ SetupScreen {
     width: 80;
     max-width: 100%;
     margin: 1 4;
-    align-horizontal: center;
 }
 
 #path-row {
@@ -39,7 +38,6 @@ SetupScreen {
 }
 
 #button-row {
-    layout: horizontal;
     height: 3;
     width: 100%;
     align-horizontal: center;
