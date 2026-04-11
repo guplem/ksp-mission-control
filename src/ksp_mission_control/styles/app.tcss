@@ -16,7 +16,6 @@ Footer {
 
 WelcomeView {
     width: 100%;
-    content-align: center middle;
     text-align: center;
 }
 

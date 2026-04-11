@@ -40,7 +40,6 @@ SetupScreen {
 #button-row {
     height: 3;
     width: 100%;
-    align-horizontal: center;
     margin-top: 1;
 }
 

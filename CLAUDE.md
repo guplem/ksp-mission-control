@@ -100,7 +100,7 @@ kRPC Server (KSP) --> connection/ (streams) --> models/ (dataclasses) --> widget
 Use this separation of concerns for all Textual UI work:
 
 - **Compose + containers define structure**: Use `compose()` and container hierarchy (`Vertical`, `Horizontal`, `Center`, `Middle`, etc.) to define parent/child relationships and layout intent.
-- **`.tcss` defines static presentation**: Put fixed spacing, sizing, alignment, colors, typography, and other non-dynamic visual rules in `.tcss`.
+- **`.tcss` defines static presentation**: Put fixed spacing, sizing, colors, typography, and other non-dynamic visual rules in `.tcss`. Layout alignment (`content-align`, `align-horizontal`, `align-vertical`) should be handled by Textual container widgets (`Center`, `Middle`, etc.) in `compose()`, not in `.tcss`.
 - **Python style mutations are runtime-only**: Use `widget.styles.*` in Python only for dynamic behavior (state-driven changes, measurements, animations, temporary overrides).
 
 Preferred compose style:

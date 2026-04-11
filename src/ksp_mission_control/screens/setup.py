@@ -46,15 +46,16 @@ class SetupScreen(Screen[None]):
                     id="ksp-path-input",
                 )
                 yield Button("Use Path", id="validate-btn", variant="default")
-            with Horizontal(id="button-row"):
-                yield Button("Detect KSP", id="detect-btn", variant="primary")
-                yield Button(
-                    "Install kRPC",
-                    id="install-btn",
-                    variant="success",
-                    disabled=True,
-                )
-                yield Button("Back", id="back-btn", variant="default")
+            with Center():
+                with Horizontal(id="button-row"):
+                    yield Button("Detect KSP", id="detect-btn", variant="primary")
+                    yield Button(
+                        "Install kRPC",
+                        id="install-btn",
+                        variant="success",
+                        disabled=True,
+                    )
+                    yield Button("Back", id="back-btn", variant="default")
             yield Static("", id="setup-status")
 
         yield Footer()
