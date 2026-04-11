@@ -13,6 +13,7 @@ from textual.widgets import Button, Footer, Header, ListItem, ListView, Static
 from ksp_mission_control.app import MissionControlApp
 from ksp_mission_control.config import ConfigManager
 from ksp_mission_control.control.screen import ControlScreen
+from ksp_mission_control.setup.check_runner import CheckRunner
 from ksp_mission_control.setup.checks import CheckResult, SetupCheck, get_default_checks
 from ksp_mission_control.setup.widgets.welcome_widget import WelcomeWidget
 
@@ -32,7 +33,7 @@ class SetupScreen(Screen[None]):
     def __init__(self, checks: list[SetupCheck] | None = None) -> None:
         super().__init__()
         self._checks: list[SetupCheck] = checks if checks is not None else []
-        self._results: dict[str, CheckResult] = {}
+        self._check_runner: CheckRunner | None = None
 
         if not self._checks:
             config_manager: ConfigManager = cast(MissionControlApp, self.app).config_manager
@@ -41,9 +42,9 @@ class SetupScreen(Screen[None]):
     @property
     def all_checks_passed(self) -> bool:
         """Return True when every check has passed."""
-        return len(self._results) == len(self._checks) and all(
-            r.passed for r in self._results.values()
-        )
+        if self._check_runner is None:
+            return False
+        return self._check_runner.all_passed
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -73,36 +74,20 @@ class SetupScreen(Screen[None]):
 
     def _run_all_checks(self) -> None:
         """Reset state and launch the check worker."""
-        self._results.clear()
-        # Update display to show all checks as not passed before starting the worker thread
+        # Show all checks as not-started before kicking off the worker thread
         for check in self._checks:
             self._update_check_display(check.check_id, check.label, None, False)
+        self._check_runner = CheckRunner(
+            checks=self._checks,
+            on_update=lambda *args: self.app.call_from_thread(self._update_check_display, *args),
+        )
         self._run_checks_worker()
 
     @work(thread=True)
     def _run_checks_worker(self) -> None:
-        """Execute each check in a thread so blocking I/O doesn't freeze the UI.
-
-        Checks run sequentially: later checks (comms, vessel) only make
-        sense if earlier ones (kRPC installed) have passed.
-        """
-        for check in self._checks:
-            # Ensure the "in progress" status is painted before running the check
-            self.app.call_from_thread(
-                self._update_check_display,
-                check.check_id,
-                check.label,
-                None,
-                running=True,
-            )
-            result = check.run()
-            self._results[check.check_id] = result
-            # Update the display with the result after each check completes
-            self.app.call_from_thread(
-                self._update_check_display, check.check_id, check.label, result, running=False
-            )
-            if not result.passed:
-                break
+        """Execute checks in a thread so blocking I/O doesn't freeze the UI."""
+        if self._check_runner is not None:
+            self._check_runner.run_all()
 
     def _update_check_display(
         self,

@@ -48,7 +48,8 @@ src/ksp_mission_control/
 ├── theme.py              # Custom Textual theme
 ├── style.tcss            # App-level global styles
 ├── control/              # Control room feature
-│   ├── screen.py         # ControlScreen (split layout: telemetry + actions)
+│   ├── screen.py         # ControlScreen (thin UI glue, delegates to session)
+│   ├── session.py        # ControlSession (poll loop, connection, ActionRunner)
 │   ├── style.tcss        # Control-screen styles
 │   ├── krpc_bridge.py    # kRPC I/O: read_vessel_state(), apply_controls()
 │   ├── actions/          # Action execution system (ADR 0006)
@@ -63,7 +64,8 @@ src/ksp_mission_control/
 │   └── demo/             # Demo mode data
 │       └── demo_state.py # generate_demo_vessel_state()
 ├── setup/                # Setup/checklist feature
-│   ├── screen.py         # SetupScreen (system readiness checklist)
+│   ├── screen.py         # SetupScreen (thin UI glue, delegates to CheckRunner)
+│   ├── check_runner.py   # CheckRunner (sequential check execution logic)
 │   ├── style.tcss        # Setup-screen styles
 │   ├── checks.py         # SetupCheck ABC, CheckResult, get_default_checks()
 │   ├── kRPC_installer/   # kRPC mod detection + installation
@@ -78,7 +80,9 @@ src/ksp_mission_control/
 │   │   ├── screen.py     # KrpcCommsScreen (connectivity help + test button)
 │   │   └── style.tcss
 │   ├── vessel/           # Active vessel detection check
-│   │   └── check.py      # VesselDetectedCheck
+│   │   ├── check.py      # VesselDetectedCheck
+│   │   ├── screen.py     # VesselScreen (vessel help + check button)
+│   │   └── style.tcss
 │   └── widgets/          # Setup-screen widgets
 │       └── welcome_widget.py # WelcomeWidget
 └── widgets/              # Shared/reusable Textual Widgets
@@ -108,24 +112,32 @@ This project uses **feature-based modules**, not layer-based. Every feature is a
 - **`cast()` over `type: ignore`**. When accessing app-specific attributes (e.g. `self.app.config_manager`), use `cast(MissionControlApp, self.app)` instead of `# type: ignore` comments.
 - **Data-driven dispatch over hardcoded branching**. Don't write `if check_id == "check-krpc": import FooScreen`. Instead, let objects carry their own metadata (e.g. `check.screen`) and dispatch generically. New entries should not require editing unrelated code.
 - **Resolve state in `__init__`, not in lifecycle hooks**. If a value can be computed at construction time, do it in `__init__`. Keep `on_mount` / `compose` simple and free of conditional setup logic. Avoid dual-path initialization (e.g. separate codepaths for "explicit" vs "default" arguments).
+- **Keep screens thin**. Screens should only compose widgets, handle Textual events/bindings, and bridge between logic classes and the UI. If a screen owns a poll loop, manages a connection, or runs sequential business logic, extract that into a dedicated class (e.g. `ControlSession`, `CheckRunner`) that takes typed callbacks and has no Textual imports.
 
 ### Data flow
 
 ```
 kRPC Server (KSP) --read--> krpc_bridge --> VesselState --> ActionRunner.step() --> VesselControls --> krpc_bridge --write--> kRPC
-                                                                                                          |
+                                                  \                                      /
+                                              ControlSession (owns connection + runner + poll loop)
+                                                  |                                      |
+                                              on_update callback                    on_error callback
+                                                  |                                      |
+                                              ControlScreen (UI glue: call_from_thread -> widgets)
+
 Demo mode:        generate_demo_vessel_state() --> VesselState --> ActionRunner.step() --> VesselControls (discarded)
 ```
 
 - **Read path**: `krpc_bridge.read_vessel_state()` reads kRPC telemetry into a pure `VesselState` dataclass. In demo mode, `generate_demo_vessel_state()` produces the same dataclass with fake data.
 - **Action loop**: `ActionRunner.step()` passes `VesselState` to the current action's `tick()`, which mutates a `VesselControls` command buffer.
 - **Write path**: `krpc_bridge.apply_controls()` writes non-None `VesselControls` fields back to kRPC. In demo mode, controls are discarded.
-- **UI updates**: The screen's poll loop calls `call_from_thread()` to push `VesselState` and `RunnerSnapshot` to widgets.
+- **Session/screen split**: `ControlSession` owns the poll loop and calls `on_update`/`on_error` callbacks. `ControlScreen` wraps these callbacks with `call_from_thread()` to bridge to the UI thread.
 - **Models are pure**: `VesselState` and `VesselControls` have no kRPC or Textual imports. Actions are testable with constructed states.
 
 ### Key patterns
 
-- **0.5s poll loop**: `ControlScreen` uses `@work(thread=True)` with a `threading.Event` wait for live mode, `set_interval(0.5)` for demo mode. Each tick: read state, step runner, apply controls, update UI.
+- **Screen + session/runner pattern (ADR 0007)**: Screens are thin UI glue. Business logic (poll loops, check sequencing, connection lifecycle) lives in dedicated classes (`ControlSession`, `CheckRunner`) that communicate via typed callbacks. These logic classes have no Textual dependency and are independently testable. Screens wrap callbacks with `app.call_from_thread()` to bridge from worker threads to the UI thread.
+- **0.5s poll loop**: `ControlSession.run_poll_loop()` blocks with a `threading.Event` wait for live mode; `demo_tick()` is called via `set_interval(0.5)` for demo mode. Each tick: read state, step runner, apply controls, call `on_update`.
 - **Thread bridge**: kRPC calls are synchronous. Use Textual's `@work(thread=True)` for blocking I/O, `app.call_from_thread()` to push updates to the UI thread.
 - **Action tick lifecycle**: Actions implement `start()` / `tick()` / `stop()`. The `ActionRunner` calls `tick()` each poll iteration and auto-stops on SUCCEEDED or FAILED. Actions never touch kRPC directly.
 - **Command buffer pattern**: `VesselControls` fields default to `None` ("don't change"). Actions set only the fields they care about. The bridge applies non-None fields to kRPC.
@@ -178,6 +190,7 @@ Format: `adr/NNNN-short-title.md` with Context, Decision, Consequences sections.
 | [0004](adr/0004-protocol-based-client.md) | Protocol-based client abstraction for testability |
 | [0005](adr/0005-tdd-workflow.md) | Test-driven development workflow |
 | [0006](adr/0006-action-execution-system.md) | Tick-based action execution system |
+| [0007](adr/0007-screen-session-pattern.md) | Screen + session/runner separation of concerns |
 
 When to create a new ADR: any decision involving trade-offs between alternatives, especially around dependencies, architecture boundaries, or data flow.
 

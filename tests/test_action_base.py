@@ -71,9 +71,7 @@ class TestActionParam:
         assert param.unit == "m"
 
     def test_is_frozen(self) -> None:
-        param = ActionParam(
-            param_id="x", label="X", description="x", required=True
-        )
+        param = ActionParam(param_id="x", label="X", description="x", required=True)
         with pytest.raises(AttributeError):
             param.param_id = "y"  # type: ignore[misc]
 

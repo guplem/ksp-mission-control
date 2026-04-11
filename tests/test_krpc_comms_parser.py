@@ -62,9 +62,7 @@ class TestParseKrpcSettings:
     def test_parses_valid_settings(self, tmp_path: Path) -> None:
         _write_settings(tmp_path, VALID_SETTINGS)
         result = parse_krpc_settings(tmp_path)
-        assert result == KrpcServerSettings(
-            address="127.0.0.1", rpc_port=50000, stream_port=50001
-        )
+        assert result == KrpcServerSettings(address="127.0.0.1", rpc_port=50000, stream_port=50001)
 
     def test_parses_custom_address_and_ports(self, tmp_path: Path) -> None:
         content = VALID_SETTINGS.replace("127.0.0.1", "0.0.0.0")
@@ -72,9 +70,7 @@ class TestParseKrpcSettings:
         content = content.replace("50001", "60001")
         _write_settings(tmp_path, content)
         result = parse_krpc_settings(tmp_path)
-        assert result == KrpcServerSettings(
-            address="0.0.0.0", rpc_port=60000, stream_port=60001
-        )
+        assert result == KrpcServerSettings(address="0.0.0.0", rpc_port=60000, stream_port=60001)
 
     def test_raises_when_file_missing(self, tmp_path: Path) -> None:
         with pytest.raises(KrpcSettingsParseError, match="not found"):

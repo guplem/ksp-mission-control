@@ -99,9 +99,7 @@ def _parse_first_server(text: str) -> KrpcServerSettings:
     required_keys = ("address", "rpc_port", "stream_port")
     missing = [k for k in required_keys if k not in settings_data]
     if missing:
-        raise KrpcSettingsParseError(
-            f"Missing required server settings: {', '.join(missing)}"
-        )
+        raise KrpcSettingsParseError(f"Missing required server settings: {', '.join(missing)}")
 
     try:
         return KrpcServerSettings(

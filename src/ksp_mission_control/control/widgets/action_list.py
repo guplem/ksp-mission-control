@@ -70,9 +70,7 @@ class ActionListWidget(Static):
             return
         # Clear previous running indicator
         if self._running_action_id is not None:
-            prev = next(
-                (a for a in self._actions if a.action_id == self._running_action_id), None
-            )
+            prev = next((a for a in self._actions if a.action_id == self._running_action_id), None)
             if prev is not None:
                 try:
                     label = self.query_one(f"#action-{prev.action_id}-label", Static)

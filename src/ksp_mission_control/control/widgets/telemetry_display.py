@@ -27,9 +27,7 @@ class TelemetryDisplayWidget(Static):
 
     def update_vessel_state(self, state: VesselState) -> None:
         """Format and display the current vessel state."""
-        self.query_one("#telemetry-content", Static).update(
-            _format_vessel_state(state)
-        )
+        self.query_one("#telemetry-content", Static).update(_format_vessel_state(state))
 
     def show_error(self, message: str) -> None:
         """Display an error message in place of telemetry."""
