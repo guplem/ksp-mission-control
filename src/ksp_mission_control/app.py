@@ -29,59 +29,13 @@ class MissionControlApp(App[None]):
     """Main application for KSP Mission Control."""
 
     TITLE = "KSP Mission Control"
+    CSS_PATH = "styles/app.tcss"
     BINDINGS = [
         ("q", "quit", "Quit"),
         ("d", "demo", "Demo Mode"),
         ("c", "connect", "Connect to KSP"),
         ("s", "setup", "kRPC Setup"),
     ]
-    CSS = """
-    Screen {
-        background: #0a0a0a;
-        color: #00ff41;
-    }
-
-    Header {
-        background: #0a0a0a;
-        color: #00ff41;
-        dock: top;
-    }
-
-    Footer {
-        background: #0a0a0a;
-        color: #005f1a;
-    }
-
-    WelcomeView {
-        width: 100%;
-        content-align: center middle;
-        text-align: center;
-    }
-
-    #logo {
-        color: #00ff41;
-        text-align: center;
-        width: 100%;
-    }
-
-    #version {
-        color: #005f1a;
-        text-align: center;
-        width: 100%;
-    }
-
-    #tagline {
-        color: #00cc33;
-        text-align: center;
-        width: 100%;
-    }
-
-    #instructions {
-        color: #007a1f;
-        text-align: center;
-        width: 100%;
-    }
-    """
 
     def compose(self) -> ComposeResult:
         yield Header()
