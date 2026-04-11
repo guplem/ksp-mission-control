@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import cast
 
+from textual import work
 from textual.app import ComposeResult
 from textual.containers import Center, Middle, VerticalGroup
 from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Static
-from textual import work
 from textual.worker import Worker, WorkerState
 
 from ksp_mission_control.app import MissionControlApp

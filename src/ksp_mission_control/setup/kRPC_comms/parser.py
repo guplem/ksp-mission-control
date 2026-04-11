@@ -81,7 +81,6 @@ def _parse_first_server(text: str) -> KrpcServerSettings:
 
     # Extract key/value pairs until we hit the closing brace of the settings block
     depth = 1
-    pos = 0
     current_key: str | None = None
     for line in settings_text.splitlines():
         depth += line.count("{") - line.count("}")

@@ -107,7 +107,7 @@ class TestFindKspInstall:
         (ksp_dir / "KSP.x86_64").touch()
 
         monkeypatch.setattr(
-            "ksp_mission_control.setup.kRPC_installer.detector.get_default_search_paths",
+            "ksp_mission_control.setup.kRPC_installer.locator.get_default_search_paths",
             lambda: [ksp_dir],
         )
         result = find_ksp_install()
@@ -116,7 +116,7 @@ class TestFindKspInstall:
 
     def test_returns_none_when_not_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
-            "ksp_mission_control.setup.kRPC_installer.detector.get_default_search_paths",
+            "ksp_mission_control.setup.kRPC_installer.locator.get_default_search_paths",
             lambda: [],
         )
         result = find_ksp_install()
@@ -131,7 +131,7 @@ class TestFindKspInstall:
         (ksp_dir / "KSP.x86_64").touch()
 
         monkeypatch.setattr(
-            "ksp_mission_control.setup.kRPC_installer.detector.get_default_search_paths",
+            "ksp_mission_control.setup.kRPC_installer.locator.get_default_search_paths",
             lambda: [ksp_dir],
         )
         result = find_ksp_install()
@@ -149,7 +149,7 @@ class TestFindKspInstall:
         (krpc_dir / "kRPC.dll").touch()
 
         monkeypatch.setattr(
-            "ksp_mission_control.setup.kRPC_installer.detector.get_default_search_paths",
+            "ksp_mission_control.setup.kRPC_installer.locator.get_default_search_paths",
             lambda: [ksp_dir],
         )
         result = find_ksp_install()
@@ -169,7 +169,7 @@ class TestFindKspInstall:
         (valid / "KSP.x86_64").touch()
 
         monkeypatch.setattr(
-            "ksp_mission_control.setup.kRPC_installer.detector.get_default_search_paths",
+            "ksp_mission_control.setup.kRPC_installer.locator.get_default_search_paths",
             lambda: [invalid, valid],
         )
         result = find_ksp_install()
