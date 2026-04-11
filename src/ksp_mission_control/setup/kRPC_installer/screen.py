@@ -13,11 +13,11 @@ from textual.worker import Worker, WorkerState
 
 from ksp_mission_control.app import MissionControlApp
 from ksp_mission_control.config import ConfigManager
-from ksp_mission_control.setup.kRPC_installer.detector import (
+from ksp_mission_control.setup.kRPC_installer.locator import (
     find_ksp_install,
     is_valid_ksp_install,
 )
-from ksp_mission_control.setup.kRPC_installer.manager import (
+from ksp_mission_control.setup.kRPC_installer.installer import (
     KrpcInstallError,
     install_krpc,
     uninstall_krpc,

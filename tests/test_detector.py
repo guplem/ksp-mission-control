@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from ksp_mission_control.setup.kRPC_installer.detector import (
+from ksp_mission_control.setup.kRPC_installer.locator import (
     KSP_STEAM_APP_ID,
     KspInstallInfo,
     find_ksp_install,

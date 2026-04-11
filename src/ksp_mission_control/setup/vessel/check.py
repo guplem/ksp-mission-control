@@ -3,6 +3,7 @@ from __future__ import annotations
 from ksp_mission_control.config import ConfigManager
 from ksp_mission_control.setup.checks import CheckResult, SetupCheck
 from ksp_mission_control.setup.kRPC_comms.parser import resolve_krpc_connection
+from ksp_mission_control.setup.vessel.screen import VesselScreen
 
 
 class VesselDetectedCheck(SetupCheck):
@@ -10,7 +11,7 @@ class VesselDetectedCheck(SetupCheck):
 
     check_id = "check-vessel"
     label = "Active vessel detected"
-    screen = None
+    screen = VesselScreen
 
     def __init__(self, config_manager: ConfigManager) -> None:
         self._config_manager = config_manager
