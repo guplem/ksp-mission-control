@@ -56,11 +56,21 @@ uv run ksp-mc --demo
 # Install with dev dependencies
 uv sync --dev
 
+# Run with Textual dev mode (live CSS reload)
+uv run textual run --dev src/ksp_mission_control/app.py
+
+# Run with Textual dev mode (live CSS reload)
+uv run textual serve --dev src/ksp_mission_control/app.py
+
+# Access the Textual console for debugging (in another terminal you must run the app with --dev)
+uv run textual console
+```
+
+### Validations
+
+```bash
 # Run tests
 uv run pytest
-
-# Run with live CSS reloading (Textual dev mode)
-uv run textual run --dev src/ksp_mission_control/app.py
 
 # Lint
 uv run ruff check src/ tests/
