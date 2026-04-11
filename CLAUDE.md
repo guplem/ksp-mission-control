@@ -185,5 +185,6 @@ Add a rule here when:
 ## Gotchas
 
 - kRPC Python client is synchronous. Never call it from Textual's async event loop directly. Always use `@work(thread=True)`.
+- Any blocking I/O (sockets, filesystem) in a Textual worker must use `@work(thread=True)`, not an `async` coroutine passed to `run_worker()`. An async coroutine still runs on the event loop thread, so it blocks the UI and prevents status updates from rendering.
 - Textual CSS uses `.tcss` extension, not `.css`. The `CSS_PATH` in App/Screen must point to the right file.
 - `uv run` is required to execute anything in the project's virtual environment. Plain `python` or `pytest` won't use the right env.
