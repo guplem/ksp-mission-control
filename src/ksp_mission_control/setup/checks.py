@@ -8,10 +8,6 @@ from typing import ClassVar
 
 from textual.screen import Screen
 
-from ksp_mission_control.setup.kRPC_comms.check import KrpcCommsCheck
-from ksp_mission_control.setup.kRPC_installer.check import KrpcInstalledCheck
-from ksp_mission_control.setup.vessel.check import VesselDetectedCheck
-
 KRPC_DEFAULT_RPC_PORT = 50000
 KRPC_DEFAULT_STREAM_PORT = 50001
 
@@ -47,6 +43,10 @@ class SetupCheck(ABC):
 
 def get_default_checks(ksp_path: str | None = None) -> list[SetupCheck]:
     """Return the ordered list of setup checks to run."""
+    from ksp_mission_control.setup.kRPC_comms.check import KrpcCommsCheck
+    from ksp_mission_control.setup.kRPC_installer.check import KrpcInstalledCheck
+    from ksp_mission_control.setup.vessel.check import VesselDetectedCheck
+
     return [
         KrpcInstalledCheck(ksp_path=ksp_path),
         KrpcCommsCheck(),
