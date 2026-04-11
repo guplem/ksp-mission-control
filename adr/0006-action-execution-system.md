@@ -7,8 +7,8 @@ The control screen needs to support automated vessel actions (hover, ascend to o
 The system is designed to grow in phases:
 1. Single action execution with hardcoded parameters (current)
 2. Parameter input dialog before running an action
-3. More actions + text-based flight plan format (sequential action lists)
-4. Wait-until condition actions (e.g. wait until time-to-apoapsis < 30s)
+3. Text-based flight plan format (sequential action lists)
+4. Create Wait-until condition actions (e.g. wait until time-to-apoapsis < 30s) - Just a simple action that won't stop until the condition is met, then returns SUCCEEDED.
 5. Full compound flight plans (orbit-and-back)
 
 ## Decision
