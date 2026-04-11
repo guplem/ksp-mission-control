@@ -20,7 +20,7 @@ from ksp_mission_control.widgets.welcome_view import WelcomeView
 class SetupScreen(Screen[None]):
     """Initial screen showing system readiness checklist."""
 
-    CSS_PATH = "style..tcss"
+    CSS_PATH = "style.tcss"
 
     BINDINGS = [
         ("q", "app.quit", "Quit"),
