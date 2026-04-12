@@ -8,6 +8,7 @@ import pytest
 
 from ksp_mission_control.control.actions.base import (
     Action,
+    ActionLogger,
     ActionParam,
     ActionResult,
     ActionStatus,
@@ -40,15 +41,17 @@ class StubAction(Action):
         self.started = True
         self._param_values = param_values
 
-    def tick(self, state: VesselState, controls: VesselCommands, dt: float) -> ActionResult:
+    def tick(
+        self, state: VesselState, controls: VesselCommands, dt: float, log: ActionLogger
+    ) -> ActionResult:
         self.tick_count += 1
         controls.throttle = 0.7
         controls.sas = True
         return ActionResult(status=self._return_status)
 
-    def stop(self, controls: VesselCommands) -> None:
+    def stop(self, controls: VesselCommands, log: ActionLogger) -> None:
         self.stopped = True
-        super().stop(controls)
+        super().stop(controls, log)
 
 
 class RequiredParamAction(Action):
@@ -64,7 +67,9 @@ class RequiredParamAction(Action):
     def start(self, param_values: dict[str, Any]) -> None:
         pass
 
-    def tick(self, state: VesselState, controls: VesselCommands, dt: float) -> ActionResult:
+    def tick(
+        self, state: VesselState, controls: VesselCommands, dt: float, log: ActionLogger
+    ) -> ActionResult:
         return ActionResult(status=ActionStatus.RUNNING)
 
 
@@ -73,10 +78,10 @@ class TestActionRunnerNoAction:
 
     def test_step_returns_empty_controls(self) -> None:
         runner = ActionRunner()
-        controls = runner.step(VesselState(), dt=0.5)
-        assert controls.throttle is None
-        assert controls.sas is None
-        assert controls.pitch is None
+        result = runner.step(VesselState(), dt=0.5)
+        assert result.commands.throttle is None
+        assert result.commands.sas is None
+        assert result.commands.pitch is None
 
     def test_snapshot_shows_no_action(self) -> None:
         runner = ActionRunner()
@@ -100,10 +105,10 @@ class TestActionRunnerStartAndStep:
         runner = ActionRunner()
         action = StubAction()
         runner.start_action(action)
-        controls = runner.step(VesselState(), dt=0.5)
+        result = runner.step(VesselState(), dt=0.5)
         assert action.tick_count == 1
-        assert controls.throttle == 0.7
-        assert controls.sas is True
+        assert result.commands.throttle == 0.7
+        assert result.commands.sas is True
 
     def test_step_increments_tick_count(self) -> None:
         runner = ActionRunner()
@@ -145,9 +150,9 @@ class TestActionRunnerAbort:
         action = StubAction()
         runner.start_action(action)
         runner.step(VesselState(), dt=0.5)
-        controls = runner.abort()
+        result = runner.abort()
         assert action.stopped
-        assert controls.throttle == 0.0  # from Action.stop() default
+        assert result.commands.throttle == 0.0  # from Action.stop() default
 
     def test_abort_clears_state(self) -> None:
         runner = ActionRunner()
@@ -156,8 +161,8 @@ class TestActionRunnerAbort:
         runner.step(VesselState(), dt=0.5)
         runner.abort()
         # Subsequent step returns empty controls
-        controls = runner.step(VesselState(), dt=0.5)
-        assert controls.throttle is None
+        result = runner.step(VesselState(), dt=0.5)
+        assert result.commands.throttle is None
 
     def test_snapshot_after_abort_shows_no_action(self) -> None:
         runner = ActionRunner()
@@ -170,8 +175,8 @@ class TestActionRunnerAbort:
 
     def test_abort_with_no_action_returns_empty_controls(self) -> None:
         runner = ActionRunner()
-        controls = runner.abort()
-        assert controls.throttle is None
+        result = runner.abort()
+        assert result.commands.throttle is None
 
 
 class TestActionRunnerAutoStop:
@@ -182,10 +187,10 @@ class TestActionRunnerAutoStop:
         action = StubAction()
         action.set_return_status(ActionStatus.SUCCEEDED)
         runner.start_action(action)
-        controls = runner.step(VesselState(), dt=0.5)
+        result = runner.step(VesselState(), dt=0.5)
         assert action.stopped
-        # Controls from stop() override tick's controls
-        assert controls.throttle == 0.0
+        # Commands from stop() override tick's commands
+        assert result.commands.throttle == 0.0
 
     def test_failed_action_auto_stops(self) -> None:
         runner = ActionRunner()

@@ -12,8 +12,8 @@ from collections.abc import Callable
 from typing import Any
 
 from ksp_mission_control.config import ConfigManager
-from ksp_mission_control.control.actions.base import Action, VesselCommands, VesselState
-from ksp_mission_control.control.actions.runner import ActionRunner, RunnerSnapshot
+from ksp_mission_control.control.actions.base import Action, LogEntry, VesselCommands, VesselState
+from ksp_mission_control.control.actions.runner import ActionRunner, RunnerSnapshot, StepResult
 from ksp_mission_control.control.demo.demo_state import generate_demo_vessel_state
 from ksp_mission_control.control.krpc_bridge import apply_controls, read_vessel_state
 from ksp_mission_control.setup.kRPC_comms.parser import resolve_krpc_connection
@@ -29,7 +29,7 @@ class ControlSession:
         self,
         *,
         demo: bool,
-        on_update: Callable[[VesselState, RunnerSnapshot, VesselCommands], None],
+        on_update: Callable[[VesselState, RunnerSnapshot, VesselCommands, list[LogEntry]], None],
         on_error: Callable[[str], None],
         config_manager: ConfigManager | None = None,
     ) -> None:
@@ -68,9 +68,11 @@ class ControlSession:
         while not self._stop_event.is_set():
             try:
                 vessel_state = read_vessel_state(conn)
-                commands = self._runner.step(vessel_state, dt=0.5)
-                apply_controls(conn, commands)
-                self._on_update(vessel_state, self._runner.snapshot(), commands)
+                result = self._runner.step(vessel_state, dt=0.5)
+                apply_controls(conn, result.commands)
+                self._on_update(
+                    vessel_state, self._runner.snapshot(), result.commands, result.logs
+                )
             except Exception as exc:
                 self._on_error(f"Error reading data: {exc}")
             self._stop_event.wait(0.5)
@@ -83,19 +85,19 @@ class ControlSession:
         """
         self._tick += 1
         vessel_state = generate_demo_vessel_state(self._tick)
-        commands = self._runner.step(vessel_state, dt=0.5)
-        self._on_update(vessel_state, self._runner.snapshot(), commands)
+        result = self._runner.step(vessel_state, dt=0.5)
+        self._on_update(vessel_state, self._runner.snapshot(), result.commands, result.logs)
 
     def start_action(self, action: Action, params: dict[str, Any] | None = None) -> None:
         """Begin executing an action. Raises ValueError on invalid params."""
         self._runner.start_action(action, params)
 
     def abort(self) -> None:
-        """Abort the current action and apply cleanup controls if connected."""
-        controls = self._runner.abort()
+        """Abort the current action and apply cleanup commands if connected."""
+        result = self._runner.abort()
         if not self._demo and self._conn is not None:
             with contextlib.suppress(Exception):
-                apply_controls(self._conn, controls)
+                apply_controls(self._conn, result.commands)
 
     def shutdown(self) -> None:
         """Stop the poll loop, abort any running action, and close the connection."""

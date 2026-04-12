@@ -12,6 +12,45 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, ClassVar
 
+class LogLevel(Enum):
+    """Severity level for action debug log entries."""
+
+    DEBUG = "DEBUG"
+    INFO = "INFO"
+    WARN = "WARN"
+    ERROR = "ERROR"
+
+
+@dataclass(frozen=True)
+class LogEntry:
+    """Single log entry emitted by an action."""
+
+    level: LogLevel
+    message: str
+
+
+class ActionLogger:
+    """Collects typed log entries during a tick or stop call.
+
+    Actions receive an instance and call ``log.debug()``, ``log.info()``, etc.
+    The runner reads ``log.entries`` after the call returns.
+    """
+
+    def __init__(self) -> None:
+        self.entries: list[LogEntry] = []
+
+    def debug(self, message: str) -> None:
+        self.entries.append(LogEntry(level=LogLevel.DEBUG, message=message))
+
+    def info(self, message: str) -> None:
+        self.entries.append(LogEntry(level=LogLevel.INFO, message=message))
+
+    def warn(self, message: str) -> None:
+        self.entries.append(LogEntry(level=LogLevel.WARN, message=message))
+
+    def error(self, message: str) -> None:
+        self.entries.append(LogEntry(level=LogLevel.ERROR, message=message))
+
 
 class ActionStatus(Enum):
     """Lifecycle status of an action."""
@@ -107,6 +146,8 @@ class VesselState:
     """Current throttle setting. 0.0 = off, 1.0 = full thrust."""
     sas: bool = False
     """Whether the Stability Assist System is enabled."""
+    sas_mode: str = ""
+    """Active SAS mode (e.g. 'stability_assist', 'prograde', 'normal')."""
     rcs: bool = False
     """Whether the Reaction Control System is enabled."""
     current_stage: int = 0
@@ -175,17 +216,20 @@ class Action(ABC):
         """
 
     @abstractmethod
-    def tick(self, state: VesselState, controls: VesselCommands, dt: float) -> ActionResult:
+    def tick(
+        self, state: VesselState, commands: VesselCommands, dt: float, log: ActionLogger
+    ) -> ActionResult:
         """Execute one step of the action.
 
-        Read from *state*, mutate *controls* to express desired changes,
+        Read from *state*, mutate *commands* to express desired changes,
+        call *log.debug()/.info()/.warn()/.error()* to emit messages,
         and return an ActionResult indicating lifecycle status.
         """
 
-    def stop(self, controls: VesselCommands) -> None:
+    def stop(self, commands: VesselCommands, log: ActionLogger) -> None:
         """Clean up on abort or completion.
 
         Default implementation kills throttle (safe default).
         Subclasses override for custom cleanup.
         """
-        controls.throttle = 0.0
+        commands.throttle = 0.0

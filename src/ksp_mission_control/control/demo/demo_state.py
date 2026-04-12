@@ -32,6 +32,7 @@ def generate_demo_vessel_state(tick: int) -> VesselState:
         roll=random.uniform(-10.0, 10.0),
         throttle=0.75 if t < 200 else 0.0,
         sas=True,
+        sas_mode="stability_assist",
         rcs=t > 100,
         current_stage=min(t // 50, 4),
         max_stages=5,

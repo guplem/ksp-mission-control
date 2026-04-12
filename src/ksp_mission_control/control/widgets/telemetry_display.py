@@ -102,6 +102,7 @@ def _format_resources(state: VesselState) -> str:
             "[b]Configuration[/b]",
             f"Throttle:        {state.throttle * 100:.0f}%",
             f"SAS:             {'ON' if state.sas else 'OFF'}",
+            f"SAS mode:        {state.sas_mode.split('.')[-1].replace('_', ' ').title() if state.sas_mode else 'N/A'}",
             f"RCS:             {'ON' if state.rcs else 'OFF'}",
             f"Stage:           {state.current_stage} / {state.max_stages}",
         ]

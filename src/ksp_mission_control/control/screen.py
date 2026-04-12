@@ -10,11 +10,12 @@ from textual.containers import Container
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Static
 
-from ksp_mission_control.control.actions.base import Action, VesselCommands, VesselState
+from ksp_mission_control.control.actions.base import Action, LogEntry, VesselCommands, VesselState
 from ksp_mission_control.control.actions.runner import RunnerSnapshot
 from ksp_mission_control.control.param_input_modal import ParamInputModal
 from ksp_mission_control.control.session import ControlSession
 from ksp_mission_control.control.widgets.action_list import ActionListWidget
+from ksp_mission_control.control.widgets.debug_console import DebugConsoleWidget
 from ksp_mission_control.control.widgets.last_command import LastCommandWidget
 from ksp_mission_control.control.widgets.telemetry_display import TelemetryDisplayWidget
 
@@ -44,7 +45,7 @@ class ControlScreen(Screen[None]):
         with Container(id="control-grid"):
             yield TelemetryDisplayWidget(mode=mode, id="telemetry-display")
             yield ActionListWidget(id="action-list")
-            yield Static("[b]Action Debug Console[/b]", id="debug-console")
+            yield DebugConsoleWidget(id="debug-console")
             yield LastCommandWidget(id="last-command")
         yield Footer()
 
@@ -54,7 +55,7 @@ class ControlScreen(Screen[None]):
         config_manager = cast(MissionControlApp, self.app).config_manager
         self._session = ControlSession(
             demo=self._demo,
-            on_update=lambda s, r, c: self.app.call_from_thread(self._update_ui, s, r, c),
+            on_update=lambda s, r, c, l: self.app.call_from_thread(self._update_ui, s, r, c, l),
             on_error=lambda msg: self.app.call_from_thread(self._show_error, msg),
             config_manager=config_manager,
         )
@@ -71,12 +72,17 @@ class ControlScreen(Screen[None]):
             self._session.run_poll_loop()
 
     def _update_ui(
-        self, state: VesselState, runner_state: RunnerSnapshot, commands: VesselCommands
+        self,
+        state: VesselState,
+        runner_state: RunnerSnapshot,
+        commands: VesselCommands,
+        logs: list[LogEntry],
     ) -> None:
-        """Update telemetry, action list, and last command display."""
+        """Update telemetry, action list, last command, and debug console."""
         self.query_one("#telemetry-display", TelemetryDisplayWidget).update_vessel_state(state)
         self.query_one("#action-list", ActionListWidget).update_running(runner_state.action_id)
         self.query_one("#last-command", LastCommandWidget).update_commands(commands)
+        self.query_one("#debug-console", DebugConsoleWidget).append_logs(logs, met=state.met)
 
     def _show_error(self, message: str) -> None:
         self.query_one("#telemetry-display", TelemetryDisplayWidget).show_error(message)

@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from ksp_mission_control.control.actions.base import (
     Action,
+    ActionLogger,
     ActionParam,
     ActionResult,
     ActionStatus,
@@ -45,7 +46,9 @@ class StubAction(Action):
     def start(self, param_values: dict[str, Any]) -> None:
         self.started = True
 
-    def tick(self, state: VesselState, controls: VesselCommands, dt: float) -> ActionResult:
+    def tick(
+        self, state: VesselState, controls: VesselCommands, dt: float, log: ActionLogger
+    ) -> ActionResult:
         self.tick_count += 1
         controls.throttle = 0.5
         return ActionResult(status=ActionStatus.RUNNING)
@@ -63,7 +66,7 @@ class TestControlSessionDemo:
         updates: list[tuple[VesselState, RunnerSnapshot]] = []
         session = ControlSession(
             demo=True,
-            on_update=lambda s, r, c: updates.append((s, r)),
+            on_update=lambda s, r, c, l: updates.append((s, r)),
             on_error=lambda _: None,
         )
 
@@ -78,7 +81,7 @@ class TestControlSessionDemo:
         states: list[VesselState] = []
         session = ControlSession(
             demo=True,
-            on_update=lambda s, _r, _c: states.append(s),
+            on_update=lambda s, _r, _c, _l: states.append(s),
             on_error=lambda _: None,
         )
 

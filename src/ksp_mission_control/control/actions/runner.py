@@ -11,10 +11,21 @@ from typing import Any
 
 from ksp_mission_control.control.actions.base import (
     Action,
+    ActionLogger,
     ActionStatus,
+    LogEntry,
+    LogLevel,
     VesselCommands,
     VesselState,
 )
+
+
+@dataclass(frozen=True)
+class StepResult:
+    """Output of a single runner step: commands to apply and typed log entries."""
+
+    commands: VesselCommands
+    logs: list[LogEntry]
 
 
 @dataclass(frozen=True)
@@ -37,6 +48,7 @@ class ActionRunner:
         self._action: Action | None = None
         self._status: ActionStatus | None = None
         self._message: str = ""
+        self._pending_logs: list[LogEntry] = []
 
     def start_action(
         self,
@@ -53,45 +65,54 @@ class ActionRunner:
         self._status = ActionStatus.RUNNING
         self._message = ""
         action.start(resolved)
+        self._pending_logs.append(LogEntry(level=LogLevel.INFO, message=f"Started: {action.label}"))
 
-    def abort(self) -> VesselCommands:
+    def abort(self) -> StepResult:
         """Stop the current action immediately.
 
-        Returns cleanup controls (throttle=0 by default) for the caller to apply.
-        If no action is running, returns empty controls.
+        Returns cleanup commands and any log messages from stop().
+        If no action is running, returns empty result.
         """
-        controls = VesselCommands()
+        commands = VesselCommands()
+        log = ActionLogger()
+        log.entries.extend(self._pending_logs)
+        self._pending_logs.clear()
         if self._action is not None:
-            self._action.stop(controls)
+            log.info(f"Aborted: {self._action.label}")
+            self._action.stop(commands, log)
             self._action = None
             self._status = None
             self._message = ""
-        return controls
+        return StepResult(commands=commands, logs=log.entries)
 
-    def step(self, vessel_state: VesselState, dt: float) -> VesselCommands:
+    def step(self, vessel_state: VesselState, dt: float) -> StepResult:
         """Execute one tick of the current action.
 
-        Creates a fresh VesselCommands, passes it to the action's tick(),
-        and returns it. If the action signals completion or failure,
-        stop() is called automatically.
+        Creates a fresh VesselCommands and ActionLogger, passes them to
+        the action's tick(), and returns commands plus typed log entries.
 
-        If no action is running, returns empty controls (all None).
+        If no action is running, returns empty result (all None, no logs).
         """
-        controls = VesselCommands()
+        commands = VesselCommands()
+        log = ActionLogger()
+        log.entries.extend(self._pending_logs)
+        self._pending_logs.clear()
         if self._action is None:
-            return controls
+            return StepResult(commands=commands, logs=log.entries)
 
-        result = self._action.tick(vessel_state, controls, dt)
+        result = self._action.tick(vessel_state, commands, dt, log)
         self._status = result.status
         self._message = result.message
 
         if result.status in (ActionStatus.SUCCEEDED, ActionStatus.FAILED):
-            self._action.stop(controls)
+            label = self._action.label
+            log.info(f"Finished: {label} ({result.status.value})")
+            self._action.stop(commands, log)
             self._action = None
             self._status = None
             self._message = ""
 
-        return controls
+        return StepResult(commands=commands, logs=log.entries)
 
     def snapshot(self) -> RunnerSnapshot:
         """Return an immutable snapshot of the current runner state."""

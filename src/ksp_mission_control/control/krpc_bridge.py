@@ -38,6 +38,7 @@ def read_vessel_state(conn: object) -> VesselState:
         roll=flight.roll,
         throttle=control.throttle,
         sas=control.sas,
+        sas_mode=str(control.sas_mode),
         rcs=control.rcs,
         current_stage=control.current_stage,
         max_stages=max((p.stage for p in vessel.parts.all), default=0),

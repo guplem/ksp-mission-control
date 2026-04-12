@@ -10,6 +10,7 @@ from textual.widgets import Input
 
 from ksp_mission_control.control.actions.base import (
     Action,
+    ActionLogger,
     ActionParam,
     ActionResult,
     ActionStatus,
@@ -43,7 +44,9 @@ class SingleParamAction(Action):
     def start(self, param_values: dict[str, Any]) -> None:
         pass
 
-    def tick(self, state: VesselState, controls: VesselCommands, dt: float) -> ActionResult:
+    def tick(
+        self, state: VesselState, controls: VesselCommands, dt: float, log: ActionLogger
+    ) -> ActionResult:
         return ActionResult(status=ActionStatus.RUNNING)
 
 
@@ -74,7 +77,9 @@ class MultiParamAction(Action):
     def start(self, param_values: dict[str, Any]) -> None:
         pass
 
-    def tick(self, state: VesselState, controls: VesselCommands, dt: float) -> ActionResult:
+    def tick(
+        self, state: VesselState, controls: VesselCommands, dt: float, log: ActionLogger
+    ) -> ActionResult:
         return ActionResult(status=ActionStatus.RUNNING)
 
 
@@ -89,7 +94,9 @@ class NoParamAction(Action):
     def start(self, param_values: dict[str, Any]) -> None:
         pass
 
-    def tick(self, state: VesselState, controls: VesselCommands, dt: float) -> ActionResult:
+    def tick(
+        self, state: VesselState, controls: VesselCommands, dt: float, log: ActionLogger
+    ) -> ActionResult:
         return ActionResult(status=ActionStatus.RUNNING)
 
 
