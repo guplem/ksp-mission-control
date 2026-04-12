@@ -9,7 +9,12 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
 from textual.widgets import Button, Static
 
-from ksp_mission_control.control.actions.base import ActionStatus, SASMode, VesselCommands
+from ksp_mission_control.control.actions.base import (
+    ActionStatus,
+    SASMode,
+    SpeedMode,
+    VesselCommands,
+)
 from ksp_mission_control.control.formatting import format_met, resolve_theme_colors
 
 _MAX_HISTORY = 10_000
@@ -220,6 +225,8 @@ def format_field_value(name: str, value: object) -> str:
         return "ON" if value else "OFF"
     if name == "sas_mode":
         return cast(SASMode, value).display_name
+    if name == "speed_mode":
+        return cast(SpeedMode, value).display_name
     if name in ("stage", "abort"):
         return "ACTIVATE" if value else "---"
     return str(value)

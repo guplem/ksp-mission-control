@@ -13,6 +13,7 @@ from ksp_mission_control.control.actions.base import (
     ActionStatus,
     ParamType,
     SASMode,
+    SpeedMode,
     VesselCommands,
     VesselSituation,
     VesselState,
@@ -101,11 +102,12 @@ class LandAction(Action):
             f"throttle={commands.throttle:.3f}"
         )
 
-        # Turn on lights on the first tick for landing visibility
+        # First tick: lights on and switch navball to surface mode
         if self._first_tick:
             self._first_tick = False
             commands.lights = True
-            log.info("Lights on for descent")
+            commands.speed_mode = SpeedMode.SURFACE
+            log.info("Lights on for descent, navball set to Surface")
 
         # Hold radial SAS to keep vessel pointing away from surface
         commands.sas = True

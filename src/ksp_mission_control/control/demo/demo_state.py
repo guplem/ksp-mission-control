@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import random
 
-from ksp_mission_control.control.actions.base import SASMode, VesselSituation, VesselState
+from ksp_mission_control.control.actions.base import (
+    SASMode,
+    SpeedMode,
+    VesselSituation,
+    VesselState,
+)
 
 
 def generate_demo_vessel_state(tick: int) -> VesselState:
@@ -34,6 +39,7 @@ def generate_demo_vessel_state(tick: int) -> VesselState:
         throttle=0.75 if t < 200 else 0.0,
         sas=True,
         sas_mode=SASMode.STABILITY_ASSIST,
+        speed_mode=SpeedMode.ORBIT,
         rcs=t > 100,
         gear=t < 50,
         legs=False,

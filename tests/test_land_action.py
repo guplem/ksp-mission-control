@@ -5,6 +5,7 @@ from __future__ import annotations
 from ksp_mission_control.control.actions.base import (
     ActionLogger,
     ActionStatus,
+    SpeedMode,
     VesselCommands,
     VesselSituation,
     VesselState,
@@ -129,6 +130,21 @@ class TestLandActionTick:
         controls = VesselCommands()
         action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert controls.lights is True
+
+    def test_speed_mode_surface_on_first_tick(self) -> None:
+        action = self._make_started_action()
+        state = VesselState(altitude_surface=200.0, vertical_speed=-2.0)
+        controls = VesselCommands()
+        action.tick(state, controls, dt=0.5, log=ActionLogger())
+        assert controls.speed_mode == SpeedMode.SURFACE
+
+    def test_speed_mode_not_set_after_first_tick(self) -> None:
+        action = self._make_started_action()
+        state = VesselState(altitude_surface=200.0, vertical_speed=-2.0)
+        action.tick(state, VesselCommands(), dt=0.5, log=ActionLogger())
+        controls = VesselCommands()
+        action.tick(state, controls, dt=0.5, log=ActionLogger())
+        assert controls.speed_mode is None
 
     def test_lights_only_on_first_tick(self) -> None:
         action = self._make_started_action()

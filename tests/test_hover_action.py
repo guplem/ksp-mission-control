@@ -5,6 +5,7 @@ from __future__ import annotations
 from ksp_mission_control.control.actions.base import (
     ActionLogger,
     ActionStatus,
+    SpeedMode,
     VesselCommands,
     VesselState,
 )
@@ -106,6 +107,21 @@ class TestHoverActionTick:
         controls = VesselCommands()
         action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert controls.sas is True
+
+    def test_speed_mode_surface_on_first_tick(self) -> None:
+        action = self._make_started_action()
+        state = VesselState(altitude_surface=50.0)
+        controls = VesselCommands()
+        action.tick(state, controls, dt=0.5, log=ActionLogger())
+        assert controls.speed_mode == SpeedMode.SURFACE
+
+    def test_speed_mode_not_set_after_first_tick(self) -> None:
+        action = self._make_started_action()
+        state = VesselState(altitude_surface=50.0)
+        action.tick(state, VesselCommands(), dt=0.5, log=ActionLogger())
+        controls = VesselCommands()
+        action.tick(state, controls, dt=0.5, log=ActionLogger())
+        assert controls.speed_mode is None
 
     def test_ascending_faster_than_desired_reduces_throttle(self) -> None:
         """5m below target but ascending at 10 m/s (desired ~2.5) - throttle backs off."""

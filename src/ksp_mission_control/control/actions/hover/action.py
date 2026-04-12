@@ -22,6 +22,7 @@ from ksp_mission_control.control.actions.base import (
     ActionStatus,
     ParamType,
     SASMode,
+    SpeedMode,
     VesselCommands,
     VesselSituation,
     VesselState,
@@ -85,6 +86,7 @@ class HoverAction(Action):
         self._horizontal_control: float = float(param_values["horizontal_control"])
         self._land_at_end: bool = bool(param_values["land_at_end"])
         self._ticks: int = 0
+        self._first_tick: bool = True
         self._reached_target: bool = False
         self._hover_elapsed: float = 0.0
         self._initial_altitude: float = state.altitude_surface
@@ -115,6 +117,12 @@ class HoverAction(Action):
             f"actual_vspd={state.vertical_speed:+.1f}m/s  "
             f"speed_err={speed_error:+.1f}  throttle={commands.throttle:.3f}"
         )
+        # --- First tick: switch navball to surface mode ---
+        if self._first_tick:
+            self._first_tick = False
+            commands.speed_mode = SpeedMode.SURFACE
+            log.info("Navball speed mode set to Surface")
+
         # --- Orientation: point straight up and use RCS for stability ---
         commands.sas = True
         commands.sas_mode = SASMode.RADIAL

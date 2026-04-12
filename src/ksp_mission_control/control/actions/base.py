@@ -53,6 +53,19 @@ class ActionLogger:
         self.entries.append(LogEntry(level=LogLevel.ERROR, message=message))
 
 
+class SpeedMode(Enum):
+    """Navball speed display mode, matching kRPC's SpeedMode enum members."""
+
+    ORBIT = "orbit"
+    SURFACE = "surface"
+    TARGET = "target"
+
+    @property
+    def display_name(self) -> str:
+        """Human-readable label (e.g. 'Orbit', 'Surface')."""
+        return self.value.replace("_", " ").title()
+
+
 class SASMode(Enum):
     """SAS autopilot mode, matching kRPC's SASMode enum members."""
 
@@ -198,6 +211,8 @@ class VesselState:
     """Whether the Stability Assist System is enabled."""
     sas_mode: SASMode = SASMode.STABILITY_ASSIST
     """Active SAS autopilot mode."""
+    speed_mode: SpeedMode = SpeedMode.ORBIT
+    """Navball speed display mode (orbit, surface, or target)."""
     rcs: bool = False
     """Whether the Reaction Control System is enabled."""
     gear: bool = False
@@ -281,6 +296,8 @@ class VesselCommands:
     """Stability Assist System. True = enable, False = disable."""
     sas_mode: SASMode | None = None
     """SAS autopilot mode."""
+    speed_mode: SpeedMode | None = None
+    """Navball speed display mode."""
     rcs: bool | None = None
     """Reaction Control System. True = enable, False = disable."""
     gear: bool | None = None

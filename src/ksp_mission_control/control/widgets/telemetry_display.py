@@ -115,6 +115,7 @@ def _format_resources(state: VesselState) -> str:
             f"Throttle:        {state.throttle * 100:.0f}%",
             f"SAS:             {_on_off(state.sas)}",
             f"SAS mode:        {state.sas_mode.display_name}",
+            f"Speed mode:      {state.speed_mode.display_name}",
             f"RCS:             {_on_off(state.rcs)}",
             f"Gear:            {_on_off(state.gear)}",
             f"Legs:            {_on_off(state.legs)}",

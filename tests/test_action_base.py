@@ -9,6 +9,7 @@ from ksp_mission_control.control.actions.base import (
     ActionResult,
     ActionStatus,
     ParamType,
+    SpeedMode,
     VesselCommands,
     VesselSituation,
     VesselState,
@@ -113,6 +114,7 @@ class TestVesselState:
         assert state.roll == 0.0
         assert state.throttle == 0.0
         assert state.sas is False
+        assert state.speed_mode == SpeedMode.ORBIT
         assert state.rcs is False
         assert state.current_stage == 0
         assert state.max_stages == 0

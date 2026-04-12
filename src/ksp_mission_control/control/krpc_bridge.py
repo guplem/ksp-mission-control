@@ -11,6 +11,7 @@ from dataclasses import fields
 
 from ksp_mission_control.control.actions.base import (
     SASMode,
+    SpeedMode,
     VesselCommands,
     VesselSituation,
     VesselState,
@@ -26,6 +27,7 @@ _COMPARABLE_FIELDS: dict[str, str] = {
     "throttle": "throttle",
     "sas": "sas",
     "sas_mode": "sas_mode",
+    "speed_mode": "speed_mode",
     "rcs": "rcs",
     "gear": "gear",
     "legs": "legs",
@@ -49,6 +51,16 @@ def _parse_sas_mode(raw: str) -> SASMode:
     """
     name = raw.split(".")[-1] if "." in raw else raw
     return SASMode(name)
+
+
+def _parse_speed_mode(raw: str) -> SpeedMode:
+    """Convert a kRPC speed mode string to a SpeedMode enum.
+
+    kRPC ``str(space_center.navball.speed_mode)`` returns ``'SpeedMode.surface'``.
+    Extracts the member name and looks it up in our enum.
+    """
+    name = raw.split(".")[-1] if "." in raw else raw
+    return SpeedMode(name)
 
 
 def _parse_vessel_situation(raw: str) -> VesselSituation:
@@ -77,6 +89,7 @@ def read_vessel_state(conn: object) -> VesselState:
     flight = vessel.flight(vessel.orbit.body.reference_frame)
     orbit = vessel.orbit
     control = vessel.control
+    navball = conn.space_center  # type: ignore[attr-defined]
     return VesselState(
         altitude_sea=flight.mean_altitude,
         altitude_surface=flight.surface_altitude,
@@ -101,6 +114,7 @@ def read_vessel_state(conn: object) -> VesselState:
         throttle=control.throttle,
         sas=control.sas,
         sas_mode=_parse_sas_mode(str(control.sas_mode)),
+        speed_mode=_parse_speed_mode(str(navball.navball.speed_mode)),
         rcs=control.rcs,
         gear=control.gear,
         legs=control.legs,
@@ -188,6 +202,10 @@ def apply_controls(conn: object, controls: VesselCommands) -> None:
         krpc_sas = getattr(conn.space_center.SASMode, controls.sas_mode.value, None)  # type: ignore[attr-defined]
         if krpc_sas is not None:
             vc.sas_mode = krpc_sas
+    if controls.speed_mode is not None:
+        krpc_speed = getattr(conn.space_center.SpeedMode, controls.speed_mode.value, None)  # type: ignore[attr-defined]
+        if krpc_speed is not None:
+            conn.space_center.navball.speed_mode = krpc_speed  # type: ignore[attr-defined]
     if controls.rcs is not None:
         vc.rcs = controls.rcs
     if controls.gear is not None:
