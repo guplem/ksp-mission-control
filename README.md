@@ -7,14 +7,13 @@ A terminal-based mission control console for **Kerbal Space Program**. Connect t
 
 ## Features
 
-- **Live flight telemetry** -- altitude, velocity, g-force, attitude, updated in real-time
-- **Orbital parameters** -- apoapsis, periapsis, eccentricity, inclination, period
-- **Fuel gauges** -- per-resource progress bars (LiquidFuel, Oxidizer, MonoPropellant, ElectricCharge)
-- **Vessel control** -- throttle, staging, SAS/RCS, action groups
-- **Maneuver planner** -- create, edit, and delete maneuver nodes
-- **Mission log** -- timestamped event timeline
+- **Live flight telemetry** -- 3-column display: flight data, orbital parameters, resources and configuration, updated every 0.5s
+- **Automated vessel actions** -- tick-based action system with parameter input. Ships with a PD altitude-hold (Hover) action
+- **Action debug console** -- scrolling, color-coded log (DEBUG/INFO/WARN/ERROR) with MET timestamps showing action internals
+- **Command history** -- paginated record of every command sent to the vessel, showing which fields were actually applied vs redundant
 - **Auto kRPC setup** -- detects your KSP installation and installs the kRPC mod for you
-- **Demo mode** -- explore the UI with mock data, no KSP required
+- **Connection resilience** -- auto-reconnect on connection loss, kRPC call timeouts, graceful handling of missing vessels
+- **Demo mode** -- explore the full UI with mock data, no KSP required
 
 ## Prerequisites
 

@@ -51,17 +51,21 @@ src/ksp_mission_control/
 ├── control/              # Control room feature
 │   ├── screen.py         # ControlScreen (thin UI glue, delegates to session) (ADR 0007)
 │   ├── session.py        # ControlSession (poll loop, connection, ActionRunner) (ADR 0007)
-│   ├── style.tcss        # Control-screen styles
-│   ├── krpc_bridge.py    # kRPC I/O: read_vessel_state(), apply_controls() (ADR 0002)
+│   ├── style.tcss        # Control-screen grid layout (4x2: telemetry, actions, console, history)
+│   ├── formatting.py     # Shared formatting: format_met(), resolve_theme_colors()
+│   ├── krpc_bridge.py    # kRPC I/O: read/write + filter_commands() + NoActiveVesselError
+│   ├── param_input_modal.py # ParamInputModal (parameter collection before action start)
 │   ├── actions/          # Action execution system (ADR 0006)
-│   │   ├── base.py       # Action ABC, VesselState, VesselCommands, ActionParam, enums
-│   │   ├── runner.py     # ActionRunner (step-based executor)
+│   │   ├── base.py       # Action ABC, VesselState, VesselCommands, ActionLogger, enums
+│   │   ├── runner.py     # ActionRunner (step-based executor), StepResult
 │   │   ├── registry.py   # get_available_actions() factory
 │   │   └── hover/        # Hover altitude-hold action
-│   │       └── action.py # HoverAction
+│   │       └── action.py # HoverAction (PD controller)
 │   ├── widgets/          # Control-screen widgets
-│   │   ├── telemetry_display.py # TelemetryDisplayWidget (formatted vessel data)
-│   │   └── action_list.py       # ActionListWidget (available actions + status)
+│   │   ├── telemetry_display.py # TelemetryDisplayWidget (3-column: flight, orbit, resources)
+│   │   ├── action_list.py       # ActionListWidget (available actions + running status)
+│   │   ├── debug_console.py     # DebugConsoleWidget (scrolling color-coded action logs)
+│   │   └── command_history.py   # CommandHistoryWidget (paginated command history with navigation)
 │   └── demo/             # Demo mode data (ADR 0004)
 │       └── demo_state.py # generate_demo_vessel_state()
 ├── setup/                # Setup/checklist feature
@@ -114,34 +118,42 @@ This project uses **feature-based modules**, not layer-based. Every feature is a
 - **Data-driven dispatch over hardcoded branching**. Don't write `if check_id == "check-krpc": import FooScreen`. Instead, let objects carry their own metadata (e.g. `check.screen`) and dispatch generically. New entries should not require editing unrelated code.
 - **Resolve state in `__init__`, not in lifecycle hooks**. If a value can be computed at construction time, do it in `__init__`. Keep `on_mount` / `compose` simple and free of conditional setup logic. Avoid dual-path initialization (e.g. separate codepaths for "explicit" vs "default" arguments).
 - **Keep screens thin**. Screens should only compose widgets, handle Textual events/bindings, and bridge between logic classes and the UI. If a screen owns a poll loop, manages a connection, or runs sequential business logic, extract that into a dedicated class (e.g. `ControlSession`, `CheckRunner`) that takes typed callbacks and has no Textual imports.
+- **Descriptive names everywhere**. No single-letter variables except `_` for intentionally unused values. Lambda parameters must be named: `lambda state, snapshot, commands:` not `lambda s, r, c:`.
+- **Cache with `None` init pattern**. For lazy-resolved values (e.g. theme colors that need `self.app`), initialize to `None` in `__init__` and check `if self._x is None` on first use. Never use `hasattr` for caching.
 
 ### Data flow
 
 ```
-kRPC Server (KSP) --read--> krpc_bridge --> VesselState --> ActionRunner.step() --> VesselCommands --> krpc_bridge --write--> kRPC
-                                                  \                                      /
+kRPC --read--> krpc_bridge --> VesselState --> ActionRunner.step() --> VesselCommands
+                                                                          |
+                                                              filter_commands(commands, state)
+                                                                    |              |
+                                                              applied_fields   filtered commands
+                                                                    |              |
+                                                                    |       krpc_bridge --write--> kRPC
+                                                                    |
                                               ControlSession (owns connection + runner + poll loop)
                                                   |                                      |
                                               on_update callback                    on_error callback
                                                   |                                      |
                                               ControlScreen (UI glue: call_from_thread -> widgets)
-
-Demo mode:        generate_demo_vessel_state() --> VesselState --> ActionRunner.step() --> VesselCommands (discarded)
 ```
 
 - **Read path**: `krpc_bridge.read_vessel_state()` reads kRPC telemetry into a pure `VesselState` dataclass. In demo mode, `generate_demo_vessel_state()` produces the same dataclass with fake data.
-- **Action loop**: `ActionRunner.step()` passes `VesselState` to the current action's `tick()`, which mutates a `VesselCommands` command buffer.
-- **Write path**: `krpc_bridge.apply_controls()` writes non-None `VesselCommands` fields back to kRPC. In demo mode, controls are discarded.
+- **Action loop**: `ActionRunner.step()` passes `VesselState` to the current action's `tick()`, which mutates a `VesselCommands` buffer and collects `LogEntry` messages via `ActionLogger`.
+- **Command filtering**: `filter_commands()` compares each command field against the vessel's current state. Only fields that differ are sent to kRPC. Returns `applied_fields` (which fields were actually sent) for the UI.
+- **Write path**: `krpc_bridge.apply_controls()` writes the filtered commands to kRPC. In demo mode, commands are discarded.
 - **Session/screen split**: `ControlSession` owns the poll loop and calls `on_update`/`on_error` callbacks. `ControlScreen` wraps these callbacks with `call_from_thread()` to bridge to the UI thread.
 - **Models are pure (ADR 0004)**: `VesselState` and `VesselCommands` have no kRPC or Textual imports. Actions are testable with constructed states. Demo mode swaps the data source without changing any logic.
 
 ### Key patterns
 
 - **Screen + session/runner pattern (ADR 0007)**: Screens are thin UI glue. Business logic (poll loops, check sequencing, connection lifecycle) lives in dedicated classes (`ControlSession`, `CheckRunner`) that communicate via typed callbacks. These logic classes have no Textual dependency and are independently testable. Screens wrap callbacks with `app.call_from_thread()` to bridge from worker threads to the UI thread.
-- **0.5s poll loop**: `ControlSession.run_poll_loop()` blocks with a `threading.Event` wait for live mode; `demo_tick()` is called via `set_interval(0.5)` for demo mode. Each tick: read state, step runner, apply controls, call `on_update`.
+- **Two-loop poll architecture**: `ControlSession.run_poll_loop()` has an outer loop (reconnect on connection death) and inner loop (poll every 0.5s). Errors are either *transient* (keep polling: `NoActiveVesselError`, generic) or *connection dead* (break to reconnect: `FutureTimeout`, `ConnectionError`). Each kRPC call runs in a `ThreadPoolExecutor` with a 10s timeout to detect hung connections. Demo mode uses `set_interval(0.5)` calling `demo_tick()` on the main thread.
 - **Thread bridge**: kRPC calls are synchronous. Use Textual's `@work(thread=True)` for blocking I/O, `app.call_from_thread()` to push updates to the UI thread.
-- **Action tick lifecycle**: Actions implement `start()` / `tick()` / `stop()`. The `ActionRunner` calls `tick()` each poll iteration and auto-stops on SUCCEEDED or FAILED. Actions never touch kRPC directly.
-- **Command buffer pattern**: `VesselCommands` fields default to `None` ("don't change"). Actions set only the fields they care about. The bridge applies non-None fields to kRPC.
+- **Action tick lifecycle**: Actions implement `start()` / `tick(state, commands, dt, log)` / `stop(commands, log)`. The `ActionRunner` calls `tick()` each poll iteration and auto-stops on SUCCEEDED or FAILED. Actions emit debug messages via `ActionLogger` (DEBUG, INFO, WARN, ERROR levels). Actions never touch kRPC directly.
+- **Command buffer + filtering**: `VesselCommands` fields default to `None` ("don't change"). Actions set only the fields they care about. `filter_commands()` compares against vessel state and only sends fields that differ. The UI shows all intended values but dims redundant ones.
+- **Theme color resolution**: Widgets that need theme colors in Rich markup (where CSS variables aren't available) use `resolve_theme_colors(app, mapping)` from `formatting.py`. Results are cached after first call.
 - **CSS theming**: Keep static layout and visual styling in `.tcss`. Use Python style updates only for runtime-dependent values (state, measurements, animations, temporary overrides).
 
 ### Textual UI composition and styling rules (ADR 0001)
@@ -210,7 +222,8 @@ Add a rule here when:
 
 ## Gotchas
 
-- kRPC Python client is synchronous (ADR 0002). Never call it from Textual's async event loop directly. Always use `@work(thread=True)`.
+- **Use dataclass `__eq__`**: `@dataclass` auto-generates field-by-field equality. Don't reimplement comparison helpers manually.
+- kRPC Python client is synchronous (ADR 0002). Never call it from Textual's async event loop directly. Always use `@work(thread=True)`. Wrap kRPC calls in a `ThreadPoolExecutor` with a timeout to detect hung connections.
 - Any blocking I/O (sockets, filesystem) in a Textual worker must use `@work(thread=True)`, not an `async` coroutine passed to `run_worker()`. An async coroutine still runs on the event loop thread, so it blocks the UI and prevents status updates from rendering.
 - Textual CSS uses `.tcss` extension, not `.css`. The `CSS_PATH` in App/Screen must point to the right file.
 - `uv run` is required to execute anything in the project's virtual environment. Plain `python` or `pytest` won't use the right env.
