@@ -17,10 +17,16 @@ def get_available_actions() -> list[Action]:
     # 1. Import
     import ksp_mission_control.control.actions.hover.action as hover_module
     import ksp_mission_control.control.actions.land.action as land_module
+    import ksp_mission_control.control.actions.translate.action as translate_module
 
     # 2. Reload to pick up code changes without restarting the app
     importlib.reload(hover_module)
     importlib.reload(land_module)
+    importlib.reload(translate_module)
 
     # 3. Instantiate and return
-    return [hover_module.HoverAction(), land_module.LandAction()]
+    return [
+        hover_module.HoverAction(),
+        land_module.LandAction(),
+        translate_module.TranslateAction(),
+    ]

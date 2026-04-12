@@ -1,0 +1,7 @@
+# Hover to 50m, fly a square pattern, then land
+hover      target_altitude=50  hover_duration=5
+translate  distance_north=50   distance_east=0    max_speed=10
+translate  distance_north=0    distance_east=50   max_speed=10
+translate  distance_north=-50  distance_east=0    max_speed=10
+translate  distance_north=0    distance_east=-50  max_speed=10
+land       target_speed=2

@@ -22,6 +22,7 @@ def generate_demo_vessel_state(tick: int) -> VesselState:
         vessel_name="Demo Craft",
         situation=VesselSituation.FLYING,
         body="Kerbin",
+        body_radius=600000.0,
         latitude=random.uniform(-90, 90),
         longitude=random.uniform(-180, 180),
         inclination=0.50,

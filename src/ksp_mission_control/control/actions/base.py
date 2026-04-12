@@ -176,6 +176,8 @@ class VesselState:
     # --- Position ---
     body: str = ""
     """Name of the celestial body being orbited (e.g. 'Kerbin', 'Mun')."""
+    body_radius: float = 600000.0
+    """Equatorial radius of the orbited body, in meters. Defaults to Kerbin."""
     latitude: float = 0.0
     """Geographic latitude on the body surface, in degrees. -90 to 90."""
     longitude: float = 0.0

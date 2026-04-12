@@ -89,6 +89,7 @@ def read_vessel_state(conn: object) -> VesselState:
         vessel_name=vessel.name,
         situation=_parse_vessel_situation(str(vessel.situation)),
         body=orbit.body.name,
+        body_radius=orbit.body.equatorial_radius,
         latitude=flight.latitude,
         longitude=flight.longitude,
         inclination=orbit.inclination,
