@@ -2,7 +2,7 @@
 
 This file provides guidance to AI Agents when working with code in this repository.
 
-KSP Mission Control is a Python TUI application that connects to Kerbal Space Program via the kRPC mod. It provides a terminal-based mission control console with live telemetry, vessel control, maneuver planning, and mission logging. Built with Textual (TUI framework) and kRPC (game bridge).
+KSP Mission Control is a Python TUI application that connects to Kerbal Space Program via the kRPC mod (ADR 0002). It provides a terminal-based mission control console with live telemetry, vessel control, maneuver planning, and mission logging. Built with Python + Textual (ADR 0001) and kRPC (game bridge).
 
 **Before implementing any non-trivial feature**, run the `pattern-scout` agent.
 **Before/after changes touching architecture**, run the `adr-checker` agent.
@@ -29,7 +29,7 @@ KSP Mission Control is a Python TUI application that connects to Kerbal Space Pr
 
 | Task | Command | Notes |
 |---|---|---|
-| Install deps | `uv sync --dev` | Includes test/lint/type-check tools |
+| Install deps | `uv sync --dev` | uv is the only package manager (ADR 0003) |
 | Run app | `uv run ksp-mc` | Or `uv run python -m ksp_mission_control` |
 | Run demo mode | `uv run ksp-mc --demo` | Mock data, no KSP needed |
 | Run tests | `uv run pytest` | TDD: write failing test first |
@@ -48,10 +48,10 @@ src/ksp_mission_control/
 ├── theme.py              # Custom Textual theme
 ├── style.tcss            # App-level global styles
 ├── control/              # Control room feature
-│   ├── screen.py         # ControlScreen (thin UI glue, delegates to session)
-│   ├── session.py        # ControlSession (poll loop, connection, ActionRunner)
+│   ├── screen.py         # ControlScreen (thin UI glue, delegates to session) (ADR 0007)
+│   ├── session.py        # ControlSession (poll loop, connection, ActionRunner) (ADR 0007)
 │   ├── style.tcss        # Control-screen styles
-│   ├── krpc_bridge.py    # kRPC I/O: read_vessel_state(), apply_controls()
+│   ├── krpc_bridge.py    # kRPC I/O: read_vessel_state(), apply_controls() (ADR 0002)
 │   ├── actions/          # Action execution system (ADR 0006)
 │   │   ├── base.py       # Action ABC, VesselState, VesselControls, ActionParam, enums
 │   │   ├── runner.py     # ActionRunner (step-based executor)
@@ -61,11 +61,11 @@ src/ksp_mission_control/
 │   ├── widgets/          # Control-screen widgets
 │   │   ├── telemetry_display.py # TelemetryDisplayWidget (formatted vessel data)
 │   │   └── action_list.py       # ActionListWidget (available actions + status)
-│   └── demo/             # Demo mode data
+│   └── demo/             # Demo mode data (ADR 0004)
 │       └── demo_state.py # generate_demo_vessel_state()
 ├── setup/                # Setup/checklist feature
-│   ├── screen.py         # SetupScreen (thin UI glue, delegates to CheckRunner)
-│   ├── check_runner.py   # CheckRunner (sequential check execution logic)
+│   ├── screen.py         # SetupScreen (thin UI glue, delegates to CheckRunner) (ADR 0007)
+│   ├── check_runner.py   # CheckRunner (sequential check execution logic) (ADR 0007)
 │   ├── style.tcss        # Setup-screen styles
 │   ├── checks.py         # SetupCheck ABC, CheckResult, get_default_checks()
 │   ├── kRPC_installer/   # kRPC mod detection + installation
@@ -132,7 +132,7 @@ Demo mode:        generate_demo_vessel_state() --> VesselState --> ActionRunner.
 - **Action loop**: `ActionRunner.step()` passes `VesselState` to the current action's `tick()`, which mutates a `VesselControls` command buffer.
 - **Write path**: `krpc_bridge.apply_controls()` writes non-None `VesselControls` fields back to kRPC. In demo mode, controls are discarded.
 - **Session/screen split**: `ControlSession` owns the poll loop and calls `on_update`/`on_error` callbacks. `ControlScreen` wraps these callbacks with `call_from_thread()` to bridge to the UI thread.
-- **Models are pure**: `VesselState` and `VesselControls` have no kRPC or Textual imports. Actions are testable with constructed states.
+- **Models are pure (ADR 0004)**: `VesselState` and `VesselControls` have no kRPC or Textual imports. Actions are testable with constructed states. Demo mode swaps the data source without changing any logic.
 
 ### Key patterns
 
@@ -143,7 +143,7 @@ Demo mode:        generate_demo_vessel_state() --> VesselState --> ActionRunner.
 - **Command buffer pattern**: `VesselControls` fields default to `None` ("don't change"). Actions set only the fields they care about. The bridge applies non-None fields to kRPC.
 - **CSS theming**: Keep static layout and visual styling in `.tcss`. Use Python style updates only for runtime-dependent values (state, measurements, animations, temporary overrides).
 
-### Textual UI composition and styling rules
+### Textual UI composition and styling rules (ADR 0001)
 
 Use this separation of concerns for all Textual UI work:
 
@@ -163,7 +163,7 @@ Default policy for agents:
 - If a style value depends on runtime state, Python may set it.
 - Prefer IDs/classes + `.tcss` over repeated inline Python style assignments.
 
-## Test-Driven Development
+## Test-Driven Development (ADR 0005)
 
 This project follows red-green TDD:
 
@@ -182,15 +182,15 @@ Test structure mirrors source: `tests/test_<module>.py` for each source module.
 
 Format: `adr/NNNN-short-title.md` with Context, Decision, Consequences sections.
 
-| ADR | Topic |
-|---|---|
-| [0001](adr/0001-python-textual-tui.md) | Python + Textual for the TUI framework |
-| [0002](adr/0002-krpc-game-bridge.md) | kRPC as the KSP communication layer |
-| [0003](adr/0003-uv-package-manager.md) | uv as the package manager |
-| [0004](adr/0004-protocol-based-client.md) | Protocol-based client abstraction for testability |
-| [0005](adr/0005-tdd-workflow.md) | Test-driven development workflow |
-| [0006](adr/0006-action-execution-system.md) | Tick-based action execution system |
-| [0007](adr/0007-screen-session-pattern.md) | Screen + session/runner separation of concerns |
+| ADR | Topic | Read when... |
+|---|---|---|
+| [0001](adr/0001-python-textual-tui.md) | Python + Textual for the TUI framework | Adding/changing UI, screens, widgets, or CSS |
+| [0002](adr/0002-krpc-game-bridge.md) | kRPC as the KSP communication layer | Touching krpc_bridge, connection logic, or telemetry |
+| [0003](adr/0003-uv-package-manager.md) | uv as the package manager | Adding dependencies or changing build config |
+| [0004](adr/0004-protocol-based-client.md) | Protocol-based client abstraction for testability | Changing data sources, demo mode, or mock strategy |
+| [0005](adr/0005-tdd-workflow.md) | Test-driven development workflow | Writing or restructuring tests |
+| [0006](adr/0006-action-execution-system.md) | Tick-based action execution system | Adding actions, changing runner, or modifying the control loop |
+| [0007](adr/0007-screen-session-pattern.md) | Screen + session/runner separation of concerns | Adding new screens or refactoring screen logic |
 
 When to create a new ADR: any decision involving trade-offs between alternatives, especially around dependencies, architecture boundaries, or data flow.
 
@@ -209,7 +209,7 @@ Add a rule here when:
 
 ## Gotchas
 
-- kRPC Python client is synchronous. Never call it from Textual's async event loop directly. Always use `@work(thread=True)`.
+- kRPC Python client is synchronous (ADR 0002). Never call it from Textual's async event loop directly. Always use `@work(thread=True)`.
 - Any blocking I/O (sockets, filesystem) in a Textual worker must use `@work(thread=True)`, not an `async` coroutine passed to `run_worker()`. An async coroutine still runs on the event loop thread, so it blocks the UI and prevents status updates from rendering.
 - Textual CSS uses `.tcss` extension, not `.css`. The `CSS_PATH` in App/Screen must point to the right file.
 - `uv run` is required to execute anything in the project's virtual environment. Plain `python` or `pytest` won't use the right env.
