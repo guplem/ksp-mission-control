@@ -208,7 +208,7 @@ _AXIS_FIELDS: frozenset[str] = frozenset(
 )
 
 
-def _format_field_value(name: str, value: object) -> str:
+def format_field_value(name: str, value: object) -> str:
     """Format a command field value with appropriate units."""
     if name == "throttle":
         return f"{float(value) * 100:.0f}%"  # type: ignore[arg-type]
@@ -238,7 +238,7 @@ def _format_commands(commands: VesselCommands, applied_fields: frozenset[str]) -
         if value is None:
             continue
         label = field.name.replace("_", " ").title()
-        formatted = _format_field_value(field.name, value)
+        formatted = format_field_value(field.name, value)
         if field.name in applied_fields:
             lines.append(f"{label}: {formatted}")
         else:

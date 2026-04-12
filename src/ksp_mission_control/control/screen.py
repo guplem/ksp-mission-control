@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, fields
 from typing import cast
 
 from textual import work
@@ -11,18 +12,44 @@ from textual.screen import Screen
 from textual.widgets import Footer, Header
 
 from ksp_mission_control.control.action_picker import ActionPicker
-from ksp_mission_control.control.actions.base import Action, LogEntry, VesselCommands, VesselState
+from ksp_mission_control.control.actions.base import (
+    Action,
+    ActionStatus,
+    LogEntry,
+    VesselCommands,
+    VesselState,
+)
 from ksp_mission_control.control.actions.flight_plan import FlightPlan
 from ksp_mission_control.control.actions.plan_executor import PlanSnapshot
 from ksp_mission_control.control.actions.runner import RunnerSnapshot
 from ksp_mission_control.control.flight_plan_picker import FlightPlanPicker
+from ksp_mission_control.control.formatting import format_met
 from ksp_mission_control.control.param_input_modal import ParamInputModal
 from ksp_mission_control.control.plan_failure_dialog import PlanFailureDialog
 from ksp_mission_control.control.session import ControlSession
 from ksp_mission_control.control.widgets.action_list import ActionListWidget
-from ksp_mission_control.control.widgets.command_history import CommandHistoryWidget
+from ksp_mission_control.control.widgets.command_history import (
+    CommandHistoryWidget,
+    format_field_value,
+)
 from ksp_mission_control.control.widgets.debug_console import DebugConsoleWidget
 from ksp_mission_control.control.widgets.telemetry_display import TelemetryDisplayWidget
+
+_MAX_TICK_HISTORY = 10_000
+"""Maximum number of tick records to keep for clipboard export."""
+
+
+@dataclass(frozen=True)
+class TickRecord:
+    """A single tick's logs and resulting commands, for clipboard export."""
+
+    tick_number: int
+    met: float
+    action_label: str | None
+    action_status: ActionStatus | None
+    logs: list[LogEntry]
+    commands: VesselCommands
+    applied_fields: frozenset[str]
 
 
 class ControlScreen(Screen[None]):
@@ -37,6 +64,7 @@ class ControlScreen(Screen[None]):
     BINDINGS = [
         ("escape", "go_back", "Back to Setup"),
         ("a", "abort_action", "Abort Action"),
+        ("c", "copy_logs", "Copy Logs"),
     ]
 
     def __init__(self, demo: bool = False) -> None:
@@ -44,6 +72,8 @@ class ControlScreen(Screen[None]):
         self._demo = demo
         self._session: ControlSession | None = None
         self._showing_failure_dialog: bool = False
+        self._tick_history: list[TickRecord] = []
+        self._tick_counter: int = 0
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -91,6 +121,21 @@ class ControlScreen(Screen[None]):
         plan_snap: PlanSnapshot,
     ) -> None:
         """Update telemetry, action list, command history, and debug console."""
+        self._tick_counter += 1
+        self._tick_history.append(
+            TickRecord(
+                tick_number=self._tick_counter,
+                met=state.met,
+                action_label=runner_state.action_label,
+                action_status=runner_state.status,
+                logs=list(logs),
+                commands=commands,
+                applied_fields=applied_fields,
+            )
+        )
+        if len(self._tick_history) > _MAX_TICK_HISTORY:
+            self._tick_history.pop(0)
+
         self.query_one("#telemetry-display", TelemetryDisplayWidget).update_vessel_state(state)
         action_list = self.query_one("#action-list", ActionListWidget)
         action_list.update_running(runner_state.action_id)
@@ -190,6 +235,15 @@ class ControlScreen(Screen[None]):
         self._session.abort()
         self.query_one("#action-list", ActionListWidget).update_running(None)
 
+    def action_copy_logs(self) -> None:
+        """Copy the full tick-by-tick log to the clipboard."""
+        if not self._tick_history:
+            self.notify("No ticks recorded yet", severity="warning")
+            return
+        text = _format_tick_history(self._tick_history)
+        self.app.copy_to_clipboard(text)
+        self.notify(f"Copied {len(self._tick_history)} ticks to clipboard")
+
     def _shutdown(self) -> None:
         """Signal the session to stop and clean up."""
         if self._session is not None:
@@ -215,3 +269,49 @@ class ControlScreen(Screen[None]):
         """Return to the setup screen."""
         self._shutdown()
         self.app.pop_screen()
+
+
+def _format_tick_history(ticks: list[TickRecord]) -> str:
+    """Format all tick records as plain text for clipboard export."""
+    sections: list[str] = []
+    for tick in ticks:
+        action_text = tick.action_label or "No action"
+        if tick.action_status is not None:
+            action_text += f" ({tick.action_status.value})"
+
+        header = f"=== Tick #{tick.tick_number} | {format_met(tick.met)} | {action_text} ==="
+        lines: list[str] = [header]
+
+        # Logs
+        if tick.logs:
+            lines.append("--- Logs ---")
+            for entry in tick.logs:
+                lines.append(f"  {entry.level.value:>5}  {entry.message}")
+
+        # Commands sent (applied)
+        sent_lines: list[str] = []
+        redundant_lines: list[str] = []
+        for field in fields(tick.commands):
+            value = getattr(tick.commands, field.name)
+            if value is None:
+                continue
+            label = field.name.replace("_", " ").title()
+            formatted = format_field_value(field.name, value)
+            if field.name in tick.applied_fields:
+                sent_lines.append(f"  {label}: {formatted}")
+            else:
+                redundant_lines.append(f"  {label}: {formatted}")
+
+        if sent_lines:
+            lines.append("--- Commands (sent) ---")
+            lines.extend(sent_lines)
+        if redundant_lines:
+            lines.append("--- Commands (redundant) ---")
+            lines.extend(redundant_lines)
+
+        if not tick.logs and not sent_lines and not redundant_lines:
+            lines.append("  (idle)")
+
+        sections.append("\n".join(lines))
+
+    return "\n\n".join(sections) + "\n"
