@@ -37,26 +37,29 @@ class DebugConsoleWidget(Static):
     """Displays a scrolling log of debug messages emitted by actions."""
 
     DEFAULT_CSS = """
-    #debug-console-title {
-        padding: 0 0 1 0;
-    }
-
-    #debug-console-filters {
+    #debug-console-header {
         height: auto;
         padding: 0 0 1 0;
     }
 
-    #debug-console-filters .filter-label {
+    #debug-console-title {
+        width: 1fr;
+    }
+
+    #debug-console-header .filter-label {
         width: auto;
         padding: 0 1 0 0;
         content-align: center middle;
+        margin: 0 0 0 5;
     }
 
-    #debug-console-filters Switch {
+    #debug-console-header Switch {
         width: auto;
         height: auto;
         min-width: 0;
         margin: 0 2 0 0;
+        padding: 0;
+        border: none;
     }
 
     #debug-console-log {
@@ -71,8 +74,8 @@ class DebugConsoleWidget(Static):
         self._enabled_levels: set[LogLevel] = set(LogLevel)
 
     def compose(self) -> ComposeResult:
-        yield Static("[b]Action Debug Console[/b]", id="debug-console-title")
-        with Horizontal(id="debug-console-filters"):
+        with Horizontal(id="debug-console-header"):
+            yield Static("[b]Action Debug Console[/b]", id="debug-console-title")
             for level in LogLevel:
                 yield Static(level.value, classes="filter-label")
                 yield Switch(value=True, id=_switch_id(level))
