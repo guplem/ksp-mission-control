@@ -6,6 +6,7 @@ from textual.app import ComposeResult
 from textual.widgets import RichLog, Static
 
 from ksp_mission_control.control.actions.base import LogEntry, LogLevel
+from ksp_mission_control.control.formatting import format_met
 
 _LEVEL_VARIABLE: dict[LogLevel, str] = {
     LogLevel.DEBUG: "text-muted",
@@ -41,8 +42,7 @@ class DebugConsoleWidget(Static):
         if self._level_colors is None:
             css_vars = self.app.get_css_variables()
             self._level_colors = {
-                level: css_vars.get(var, "#ffffff")
-                for level, var in _LEVEL_VARIABLE.items()
+                level: css_vars.get(var, "#ffffff") for level, var in _LEVEL_VARIABLE.items()
             }
         return self._level_colors
 
@@ -52,15 +52,8 @@ class DebugConsoleWidget(Static):
             return
         colors = self._resolve_colors()
         rich_log = self.query_one("#debug-console-log", RichLog)
-        met_str = _format_met(met)
+        met_str = format_met(met)
         for entry in logs:
             color = colors[entry.level]
             tag = f"[{color}]{entry.level.value:>5}[/{color}]"
             rich_log.write(f"[dim]{met_str}[/dim] {tag}  {entry.message}")
-
-
-def _format_met(met: float) -> str:
-    """Format MET as MM:SS.t for display."""
-    minutes = int(met) // 60
-    seconds = met - minutes * 60
-    return f"T+{minutes:02d}:{seconds:04.1f}"

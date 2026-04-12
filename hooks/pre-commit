@@ -1,0 +1,27 @@
+#!/bin/sh
+# Runs ruff lint (with auto-fix) and format on staged Python files before commit.
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACM -- '*.py')
+
+if [ -z "$STAGED" ]; then
+    exit 0
+fi
+
+# Find ruff relative to this repo's venv
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+RUFF="$REPO_ROOT/.venv/Scripts/ruff.exe"
+
+if [ ! -x "$RUFF" ]; then
+    RUFF="$REPO_ROOT/.venv/bin/ruff"
+fi
+
+if [ ! -x "$RUFF" ]; then
+    echo "ruff not found in .venv - run 'uv sync --dev' first"
+    exit 1
+fi
+
+echo "$STAGED" | xargs "$RUFF" check --fix --quiet
+echo "$STAGED" | xargs "$RUFF" format --quiet
+echo "$STAGED" | xargs git add
+
+exit 0

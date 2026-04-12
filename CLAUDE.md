@@ -30,7 +30,7 @@ KSP Mission Control is a Python TUI application that connects to Kerbal Space Pr
 | Task | Command | Notes |
 |---|---|---|
 | Install deps | `uv sync --dev` | uv is the only package manager (ADR 0003) |
-| Install hooks | `uv run pre-commit install` | Auto-runs ruff fix + format on commit |
+| Install hooks | `cp hooks/pre-commit .git/hooks/pre-commit` | Auto-runs ruff fix + format on commit |
 | Run app | `uv run ksp-mc` | Or `uv run python -m ksp_mission_control` |
 | Run demo mode | `uv run ksp-mc --demo` | Mock data, no KSP needed |
 | Run tests | `uv run pytest` | TDD: write failing test first |

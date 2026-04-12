@@ -56,8 +56,8 @@ uv run ksp-mc --demo
 # Install with dev dependencies
 uv sync --dev
 
-# Install pre-commit hooks (auto-formats and lints on commit)
-uv run pre-commit install
+# Install git hook (auto-formats and lints on commit)
+cp hooks/pre-commit .git/hooks/pre-commit
 
 # Run with Textual dev mode (live CSS reload)
 uv run textual run --dev src/ksp_mission_control/app.py
@@ -87,7 +87,7 @@ uv run mypy
 Contributions are welcome! This project follows TDD -- write a failing test first, then implement.
 
 1. Fork the repo
-2. `uv sync --dev && uv run pre-commit install`
+2. `uv sync --dev && cp hooks/pre-commit .git/hooks/pre-commit`
 3. Create a feature branch
 4. Write tests, then implementation
 5. Open a PR
