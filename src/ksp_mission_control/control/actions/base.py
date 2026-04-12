@@ -351,9 +351,8 @@ class Action(ABC):
     def stop(self, state: VesselState, commands: VesselCommands, log: ActionLogger) -> None:
         """Clean up on abort or completion.
 
-        Default implementation kills throttle (safe default).
-        Subclasses override for custom cleanup. *state* is the last known
-        vessel telemetry so actions can make informed cleanup decisions.
+        Default implementation logs the stop. Subclasses override for custom
+        cleanup. *state* is the last known vessel telemetry so actions can
+        make informed cleanup decisions.
         """
-        commands.throttle = 0.0
-        log.info(f"{self.label} stopped, throttle killed")
+        log.info(f"{self.label} stopped")
