@@ -1,15 +1,31 @@
-#control-split {
+#control-grid {
     height: 1fr;
+    layout: grid;
+    grid-size: 4 2;
+    grid-rows: 1fr 1fr;
+    grid-columns: 1fr 1fr 1fr 1fr;
 }
 
 #telemetry-display {
-    width: 2fr;
+    column-span: 3;
     padding: 1 2;
     overflow-y: auto;
 }
 
 #action-list {
-    width: 1fr;
     padding: 1 2;
+    border-left: solid $accent;
+    overflow-y: auto;
+}
+
+#debug-console {
+    column-span: 3;
+    padding: 1 2;
+    border-top: solid $accent;
+}
+
+#last-control {
+    padding: 1 2;
+    border-top: solid $accent;
     border-left: solid $accent;
 }

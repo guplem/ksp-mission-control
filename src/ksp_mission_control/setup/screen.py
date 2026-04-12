@@ -24,7 +24,7 @@ class SetupScreen(Screen[None]):
     CSS_PATH = "style.tcss"
 
     BINDINGS = [
-        ("q", "app.quit", "Quit"),
+        ("escape", "app.quit", "Quit"),
         ("d", "demo_mode", "Control Room (Demo)"),
         ("c", "control_room", "Control Room"),
         ("r", "rerun_checks", "Re-run Checks"),

@@ -6,9 +6,9 @@ from typing import cast
 
 from textual import work
 from textual.app import ComposeResult
-from textual.containers import Horizontal
+from textual.containers import Container
 from textual.screen import Screen
-from textual.widgets import Footer, Header
+from textual.widgets import Footer, Header, Static
 
 from ksp_mission_control.control.actions.base import Action, VesselState
 from ksp_mission_control.control.actions.runner import RunnerSnapshot
@@ -40,9 +40,11 @@ class ControlScreen(Screen[None]):
     def compose(self) -> ComposeResult:
         yield Header()
         mode = "DEMO" if self._demo else "LIVE"
-        with Horizontal(id="control-split"):
+        with Container(id="control-grid"):
             yield TelemetryDisplayWidget(mode=mode, id="telemetry-display")
             yield ActionListWidget(id="action-list")
+            yield Static("[b]Action Debug Console[/b]", id="debug-console")
+            yield Static("[b]Last Control[/b]", id="last-control")
         yield Footer()
 
     def on_mount(self) -> None:
