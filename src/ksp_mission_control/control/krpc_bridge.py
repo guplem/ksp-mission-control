@@ -10,9 +10,15 @@ from __future__ import annotations
 from ksp_mission_control.control.actions.base import VesselCommands, VesselState
 
 
+class NoActiveVesselError(Exception):
+    """Raised when kRPC reports no active vessel."""
+
+
 def read_vessel_state(conn: object) -> VesselState:
     """Read current vessel telemetry from a kRPC connection into a VesselState."""
     vessel = conn.space_center.active_vessel  # type: ignore[attr-defined]
+    if vessel is None:
+        raise NoActiveVesselError("No active vessel found")
     flight = vessel.flight(vessel.orbit.body.reference_frame)
     orbit = vessel.orbit
     control = vessel.control
@@ -52,6 +58,8 @@ def read_vessel_state(conn: object) -> VesselState:
 def apply_controls(conn: object, controls: VesselCommands) -> None:
     """Apply non-None control values to the vessel via kRPC."""
     vessel = conn.space_center.active_vessel  # type: ignore[attr-defined]
+    if vessel is None:
+        raise NoActiveVesselError("No active vessel found")
     vc = vessel.control
     if controls.throttle is not None:
         vc.throttle = controls.throttle

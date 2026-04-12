@@ -75,15 +75,14 @@ class ActionRunner:
         """
         commands = VesselCommands()
         log = ActionLogger()
-        log.entries.extend(self._pending_logs)
-        self._pending_logs.clear()
         if self._action is not None:
             log.info(f"Aborted: {self._action.label}")
             self._action.stop(commands, log)
             self._action = None
             self._status = None
             self._message = ""
-        return StepResult(commands=commands, logs=log.entries)
+        self._pending_logs.extend(log.entries)
+        return StepResult(commands=commands, logs=[])
 
     def step(self, vessel_state: VesselState, dt: float) -> StepResult:
         """Execute one tick of the current action.

@@ -15,7 +15,11 @@ from ksp_mission_control.config import ConfigManager
 from ksp_mission_control.control.actions.base import Action, LogEntry, VesselCommands, VesselState
 from ksp_mission_control.control.actions.runner import ActionRunner, RunnerSnapshot, StepResult
 from ksp_mission_control.control.demo.demo_state import generate_demo_vessel_state
-from ksp_mission_control.control.krpc_bridge import apply_controls, read_vessel_state
+from ksp_mission_control.control.krpc_bridge import (
+    NoActiveVesselError,
+    apply_controls,
+    read_vessel_state,
+)
 from ksp_mission_control.setup.kRPC_comms.parser import resolve_krpc_connection
 
 
@@ -73,6 +77,11 @@ class ControlSession:
                 self._on_update(
                     vessel_state, self._runner.snapshot(), result.commands, result.logs
                 )
+            except NoActiveVesselError:
+                self._on_error("No active vessel found")
+            except ConnectionError as exc:
+                self._on_error(f"Connection lost: {exc}")
+                return
             except Exception as exc:
                 self._on_error(f"Error reading data: {exc}")
             self._stop_event.wait(0.5)

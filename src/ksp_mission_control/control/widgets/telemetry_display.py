@@ -17,6 +17,10 @@ class TelemetryDisplayWidget(Static):
         padding: 0 0 1 0;
     }
 
+    #telemetry-title.error {
+        color: $error;
+    }
+
     #telemetry-columns {
         height: auto;
     }
@@ -40,15 +44,19 @@ class TelemetryDisplayWidget(Static):
 
     def update_vessel_state(self, state: VesselState) -> None:
         """Format and display the current vessel state across three columns."""
+        title = self.query_one("#telemetry-title", Static)
+        if title.has_class("error"):
+            title.update(f"[b]Control View[/b] ({self._mode})")
+            title.remove_class("error")
         self.query_one("#telemetry-flight", Static).update(_format_flight(state))
         self.query_one("#telemetry-orbit", Static).update(_format_orbit(state))
         self.query_one("#telemetry-resources", Static).update(_format_resources(state))
 
     def show_error(self, message: str) -> None:
-        """Display an error message in place of telemetry."""
-        self.query_one("#telemetry-flight", Static).update(message)
-        self.query_one("#telemetry-orbit", Static).update("")
-        self.query_one("#telemetry-resources", Static).update("")
+        """Display an error message in the title bar, keeping stale telemetry visible."""
+        title = self.query_one("#telemetry-title", Static)
+        title.update(message)
+        title.add_class("error")
 
 
 def _format_flight(state: VesselState) -> str:

@@ -58,7 +58,7 @@ mission_control_theme = Theme(
         "input-selection-background": "#00ff41 25%",
         # Button
         "button-color-foreground": "#0a0a0a",
-        "button-foreground": "#0a0a0a",
+        "button-foreground": "#00ff41",
         "button-focus-text-style": "bold reverse",
         # Header
         "header-foreground": "#00ff41",

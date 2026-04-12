@@ -81,7 +81,9 @@ class ControlScreen(Screen[None]):
         """Update telemetry, action list, last command, and debug console."""
         self.query_one("#telemetry-display", TelemetryDisplayWidget).update_vessel_state(state)
         self.query_one("#action-list", ActionListWidget).update_running(runner_state.action_id)
-        self.query_one("#last-command", LastCommandWidget).update_commands(commands)
+        self.query_one("#last-command", LastCommandWidget).record_commands(
+            commands, action_label=runner_state.action_label, met=state.met
+        )
         self.query_one("#debug-console", DebugConsoleWidget).append_logs(logs, met=state.met)
 
     def _show_error(self, message: str) -> None:
