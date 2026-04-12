@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any, ClassVar
 
 from ksp_mission_control.control.actions.base import (
@@ -17,8 +18,8 @@ from ksp_mission_control.control.actions.base import (
     VesselState,
 )
 
-# Proportional gain: speed error to throttle
-_KP = 0.2
+_KP = 0.3  # Proportional gain: speed error to throttle
+_KD = 0.15  # Derivative gain: damps throttle oscillation via acceleration
 
 
 class LandAction(Action):
@@ -42,27 +43,33 @@ class LandAction(Action):
     def start(self, state: VesselState, param_values: dict[str, Any]) -> None:
         self._target_speed: float = float(param_values["target_speed"])
         self._gear_deployed: bool = False
+        self._prev_vertical_speed: float = state.vertical_speed
 
     def tick(
         self, state: VesselState, commands: VesselCommands, dt: float, log: ActionLogger
     ) -> ActionResult:
-        # Target vertical speed: descend at target_speed (negative = downward)
-        # Scale descent rate with altitude: slower near ground
-        desired_vertical_speed = -self._target_speed
-        if state.altitude_surface > 100.0:
-            # Above 100m, descend faster (up to 5x target speed)
-            altitude_factor = min(5.0, state.altitude_surface / 100.0)
-            desired_vertical_speed = -self._target_speed * altitude_factor
+        # Desired descent speed follows sqrt(altitude) curve for smooth deceleration.
+        # High up: fall faster (sqrt(400)=20 m/s). Near ground: converge to target_speed.
+        # sqrt(4)=2, so at ~4m altitude the curve naturally meets a 2 m/s target.
+        altitude_speed = math.sqrt(max(0.0, state.altitude_surface))
+        desired_vertical_speed = -max(self._target_speed, altitude_speed)
 
         speed_error = desired_vertical_speed - state.vertical_speed
-        # Positive error = descending too fast, need more throttle
-        raw_throttle = 0.5 + _KP * speed_error
+
+        # Estimate acceleration for derivative damping
+        safe_dt = max(dt, 0.01)
+        acceleration = (state.vertical_speed - self._prev_vertical_speed) / safe_dt
+        self._prev_vertical_speed = state.vertical_speed
+
+        # PD controller: P tracks target speed, D damps acceleration to prevent overshoot
+        raw_throttle = 0.5 + _KP * speed_error - _KD * acceleration
         commands.throttle = max(0.0, min(1.0, raw_throttle))
 
         log.debug(
             f"PD: desired_vspd={desired_vertical_speed:+.1f}m/s  "
             f"actual_vspd={state.vertical_speed:+.1f}m/s  "
-            f"error={speed_error:+.1f}  throttle={commands.throttle:.3f}"
+            f"error={speed_error:+.1f}  accel={acceleration:+.1f}  "
+            f"throttle={commands.throttle:.3f}"
         )
 
         commands.sas = True

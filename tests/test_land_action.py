@@ -107,16 +107,16 @@ class TestLandActionTick:
 
     def test_faster_descent_at_high_altitude(self) -> None:
         """Above 100m, descent rate should be faster than target speed."""
-        action = self._make_started_action(target_speed=2.0)
-        # At 300m descending at target_speed (2 m/s) - should want faster descent
+        # Use separate action instances so acceleration estimate doesn't interfere
+        action_high = self._make_started_action(target_speed=2.0)
         state_high = VesselState(altitude_surface=300.0, vertical_speed=-2.0)
         controls_high = VesselCommands()
-        action.tick(state_high, controls_high, dt=0.5, log=ActionLogger())
+        action_high.tick(state_high, controls_high, dt=0.5, log=ActionLogger())
 
-        # At 30m descending at target_speed - should want to maintain
+        action_low = self._make_started_action(target_speed=2.0)
         state_low = VesselState(altitude_surface=30.0, vertical_speed=-2.0)
         controls_low = VesselCommands()
-        action.tick(state_low, controls_low, dt=0.5, log=ActionLogger())
+        action_low.tick(state_low, controls_low, dt=0.5, log=ActionLogger())
 
         # High altitude should have less throttle (wants faster descent)
         assert controls_high.throttle is not None
