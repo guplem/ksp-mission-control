@@ -30,6 +30,16 @@ class TestHoverActionMetadata:
         assert param.default == 100.0
         assert param.unit == "m"
 
+    def test_has_hover_duration_param(self) -> None:
+        param_ids = [p.param_id for p in HoverAction.params]
+        assert "hover_duration" in param_ids
+
+    def test_hover_duration_param_is_optional_with_default(self) -> None:
+        param = next(p for p in HoverAction.params if p.param_id == "hover_duration")
+        assert param.required is False
+        assert param.default == 0.0
+        assert param.unit == "s"
+
 
 class TestHoverActionTick:
     """Tests for the hover PD-controller logic."""
@@ -40,7 +50,13 @@ class TestHoverActionTick:
         action = HoverAction()
         state = VesselState(altitude_surface=initial_altitude)
         action.start(
-            state, {"target_altitude": target, "horizontal_control": 0.0, "land_at_end": False}
+            state,
+            {
+                "target_altitude": target,
+                "hover_duration": 0.0,
+                "horizontal_control": 0.0,
+                "land_at_end": False,
+            },
         )
         return action
 
@@ -118,12 +134,59 @@ class TestHoverActionTick:
         assert controls.throttle is not None
         assert controls.throttle < 0.5
 
-    def test_always_returns_running(self) -> None:
+    def test_always_returns_running_when_no_duration(self) -> None:
         action = self._make_started_action()
         for alt in [0.0, 50.0, 100.0, 200.0, 1000.0]:
             state = VesselState(altitude_surface=alt)
             controls = VesselCommands()
             result = action.tick(state, controls, dt=0.5, log=ActionLogger())
+            assert result.status == ActionStatus.RUNNING
+
+
+class TestHoverActionDuration:
+    """Tests for hover duration countdown after reaching target."""
+
+    def _make_started_action(self, target: float = 100.0, duration: float = 10.0) -> HoverAction:
+        action = HoverAction()
+        state = VesselState(altitude_surface=0.0)
+        action.start(
+            state,
+            {
+                "target_altitude": target,
+                "hover_duration": duration,
+                "horizontal_control": 0.0,
+                "land_at_end": False,
+            },
+        )
+        return action
+
+    def test_does_not_count_before_reaching_target(self) -> None:
+        """Duration timer should not start until altitude is reached."""
+        action = self._make_started_action(target=100.0, duration=5.0)
+        state = VesselState(altitude_surface=50.0)
+        for _ in range(20):
+            controls = VesselCommands()
+            result = action.tick(state, controls, dt=0.5, log=ActionLogger())
+            assert result.status == ActionStatus.RUNNING
+
+    def test_succeeds_after_duration_elapsed(self) -> None:
+        action = self._make_started_action(target=100.0, duration=5.0)
+        at_target = VesselState(altitude_surface=100.0)
+        # First tick reaches target and starts counting (0.5s elapsed)
+        action.tick(at_target, VesselCommands(), dt=0.5, log=ActionLogger())
+        # Accumulate 4.0s more (8 ticks at 0.5s) - total 4.5s, still running
+        for _ in range(8):
+            result = action.tick(at_target, VesselCommands(), dt=0.5, log=ActionLogger())
+            assert result.status == ActionStatus.RUNNING
+        # Next tick: 5.0s total, completes
+        result = action.tick(at_target, VesselCommands(), dt=0.5, log=ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+    def test_zero_duration_means_indefinite(self) -> None:
+        action = self._make_started_action(target=100.0, duration=0.0)
+        at_target = VesselState(altitude_surface=100.0)
+        for _ in range(100):
+            result = action.tick(at_target, VesselCommands(), dt=0.5, log=ActionLogger())
             assert result.status == ActionStatus.RUNNING
 
 
@@ -134,7 +197,13 @@ class TestHoverActionStop:
         action = HoverAction()
         state = VesselState()
         action.start(
-            state, {"target_altitude": 100.0, "horizontal_control": 0.0, "land_at_end": False}
+            state,
+            {
+                "target_altitude": 100.0,
+                "hover_duration": 0.0,
+                "horizontal_control": 0.0,
+                "land_at_end": False,
+            },
         )
         controls = VesselCommands()
         action.stop(state, controls, log=ActionLogger())
@@ -144,7 +213,13 @@ class TestHoverActionStop:
         action = HoverAction()
         state = VesselState()
         action.start(
-            state, {"target_altitude": 100.0, "horizontal_control": 0.0, "land_at_end": False}
+            state,
+            {
+                "target_altitude": 100.0,
+                "hover_duration": 0.0,
+                "horizontal_control": 0.0,
+                "land_at_end": False,
+            },
         )
         controls = VesselCommands()
         action.stop(state, controls, log=ActionLogger())

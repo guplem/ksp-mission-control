@@ -38,6 +38,15 @@ class HoverAction(Action):
             unit="m",
         ),
         ActionParam(
+            param_id="hover_duration",
+            label="Hover Duration",
+            description="Time to maintain hover after reaching target altitude (0 for indefinite)",
+            required=False,
+            param_type=ParamType.FLOAT,
+            default=0.0,
+            unit="s",
+        ),
+        ActionParam(
             param_id="horizontal_control",
             label="Horizontal Travel",
             description="Distance to travel horizontally while maintaining altitude (0 for none)",
@@ -58,10 +67,12 @@ class HoverAction(Action):
 
     def start(self, state: VesselState, param_values: dict[str, Any]) -> None:
         self._target_altitude: float = float(param_values["target_altitude"])
+        self._hover_duration: float = float(param_values["hover_duration"])
         self._horizontal_control: float = float(param_values["horizontal_control"])
         self._land_at_end: bool = bool(param_values["land_at_end"])
         self._ticks: int = 0
         self._reached_target: bool = False
+        self._hover_elapsed: float = 0.0
         self._initial_altitude: float = state.altitude_surface
 
     def tick(
@@ -89,8 +100,21 @@ class HoverAction(Action):
             commands.gear = True
 
         if not self._reached_target and abs(difference) < 5.0:
-            self._reached_target = True  # Update state
-            log.info(f"Reached target altitude: {self._target_altitude:.0f}m")
+            self._reached_target = True
+            if self._hover_duration > 0:
+                log.info(
+                    f"Reached target altitude: {self._target_altitude:.0f}m, "
+                    f"hovering for {self._hover_duration:.0f}s"
+                )
+            else:
+                log.info(f"Reached target altitude: {self._target_altitude:.0f}m")
+
+        if self._reached_target and self._hover_duration > 0:
+            self._hover_elapsed += dt
+            remaining = self._hover_duration - self._hover_elapsed
+            if remaining <= 0:
+                log.info(f"Hover duration complete ({self._hover_duration:.0f}s), stopping")
+                return ActionResult(status=ActionStatus.SUCCEEDED)
 
         # Dynamic threshold for warnings about altitude deviation after reaching target
         deviation_threshold = max(10.0, self._target_altitude * 0.25)
