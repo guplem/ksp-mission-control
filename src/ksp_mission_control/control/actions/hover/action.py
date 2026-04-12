@@ -10,6 +10,7 @@ from ksp_mission_control.control.actions.base import (
     ActionParam,
     ActionResult,
     ActionStatus,
+    ParamType,
     SASMode,
     VesselCommands,
     VesselSituation,
@@ -32,6 +33,7 @@ class HoverAction(Action):
             label="Target Altitude",
             description="Altitude to maintain above surface",
             required=False,
+            param_type=ParamType.FLOAT,
             default=100.0,
             unit="m",
         ),
@@ -40,6 +42,7 @@ class HoverAction(Action):
             label="Horizontal Travel",
             description="Distance to travel horizontally while maintaining altitude (0 for none)",
             required=False,
+            param_type=ParamType.FLOAT,
             default=0.0,
             unit="m",
         ),
@@ -48,6 +51,7 @@ class HoverAction(Action):
             label="Land at End",
             description="Whether to land at the end of the horizontal travel",
             required=False,
+            param_type=ParamType.BOOL,
             default=False,
         ),
     ]
@@ -75,6 +79,7 @@ class HoverAction(Action):
         )
         commands.sas = True
         commands.sas_mode = SASMode.RADIAL
+        commands.rcs = True
 
         if state.altitude_surface > 3.0 and state.gear:
             log.debug(f"Closed landing gear at altitude {state.altitude_surface:.1f}m")

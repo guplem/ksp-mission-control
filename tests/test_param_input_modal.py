@@ -6,7 +6,7 @@ from typing import Any, ClassVar
 
 import pytest
 from textual.app import App, ComposeResult
-from textual.widgets import Input
+from textual.widgets import Input, Switch
 
 from ksp_mission_control.control.actions.base import (
     Action,
@@ -14,6 +14,7 @@ from ksp_mission_control.control.actions.base import (
     ActionParam,
     ActionResult,
     ActionStatus,
+    ParamType,
     VesselCommands,
     VesselState,
 )
@@ -100,6 +101,73 @@ class NoParamAction(Action):
         return ActionResult(status=ActionStatus.RUNNING)
 
 
+class BoolParamAction(Action):
+    """Action with a boolean param."""
+
+    action_id: ClassVar[str] = "boolparam"
+    label: ClassVar[str] = "Bool Param"
+    description: ClassVar[str] = "Action with a boolean param"
+    params: ClassVar[list[ActionParam]] = [
+        ActionParam(
+            param_id="altitude",
+            label="Altitude",
+            description="Target altitude",
+            required=False,
+            default=100.0,
+            unit="m",
+        ),
+        ActionParam(
+            param_id="land_at_end",
+            label="Land at End",
+            description="Whether to land",
+            required=False,
+            param_type=ParamType.BOOL,
+            default=False,
+        ),
+    ]
+
+    def start(self, param_values: dict[str, Any]) -> None:
+        pass
+
+    def tick(
+        self, state: VesselState, controls: VesselCommands, dt: float, log: ActionLogger
+    ) -> ActionResult:
+        return ActionResult(status=ActionStatus.RUNNING)
+
+
+class StrParamAction(Action):
+    """Action with a string param."""
+
+    action_id: ClassVar[str] = "strparam"
+    label: ClassVar[str] = "Str Param"
+    description: ClassVar[str] = "Action with a string param"
+    params: ClassVar[list[ActionParam]] = [
+        ActionParam(
+            param_id="vessel_name",
+            label="Vessel Name",
+            description="Name of the vessel",
+            required=True,
+            param_type=ParamType.STR,
+        ),
+        ActionParam(
+            param_id="note",
+            label="Note",
+            description="Optional note",
+            required=False,
+            param_type=ParamType.STR,
+            default="default note",
+        ),
+    ]
+
+    def start(self, param_values: dict[str, Any]) -> None:
+        pass
+
+    def tick(
+        self, state: VesselState, controls: VesselCommands, dt: float, log: ActionLogger
+    ) -> ActionResult:
+        return ActionResult(status=ActionStatus.RUNNING)
+
+
 # ---------------------------------------------------------------------------
 # Test apps
 # ---------------------------------------------------------------------------
@@ -110,7 +178,7 @@ class SingleParamTestApp(App[None]):
 
     def __init__(self) -> None:
         super().__init__()
-        self.dismissed_value: dict[str, float] | None = "NOT_SET"  # type: ignore[assignment]
+        self.dismissed_value: dict[str, float | bool | str] | None = "NOT_SET"  # type: ignore[assignment]
 
     def compose(self) -> ComposeResult:
         yield from ()
@@ -121,7 +189,7 @@ class SingleParamTestApp(App[None]):
             callback=self._on_dismiss,
         )
 
-    def _on_dismiss(self, result: dict[str, float] | None) -> None:
+    def _on_dismiss(self, result: dict[str, float | bool | str] | None) -> None:
         self.dismissed_value = result
 
 
@@ -130,7 +198,7 @@ class MultiParamTestApp(App[None]):
 
     def __init__(self) -> None:
         super().__init__()
-        self.dismissed_value: dict[str, float] | None = "NOT_SET"  # type: ignore[assignment]
+        self.dismissed_value: dict[str, float | bool | str] | None = "NOT_SET"  # type: ignore[assignment]
 
     def compose(self) -> ComposeResult:
         yield from ()
@@ -141,7 +209,7 @@ class MultiParamTestApp(App[None]):
             callback=self._on_dismiss,
         )
 
-    def _on_dismiss(self, result: dict[str, float] | None) -> None:
+    def _on_dismiss(self, result: dict[str, float | bool | str] | None) -> None:
         self.dismissed_value = result
 
 
@@ -150,7 +218,7 @@ class NoParamTestApp(App[None]):
 
     def __init__(self) -> None:
         super().__init__()
-        self.dismissed_value: dict[str, float] | None = "NOT_SET"  # type: ignore[assignment]
+        self.dismissed_value: dict[str, float | bool | str] | None = "NOT_SET"  # type: ignore[assignment]
 
     def compose(self) -> ComposeResult:
         yield from ()
@@ -161,7 +229,47 @@ class NoParamTestApp(App[None]):
             callback=self._on_dismiss,
         )
 
-    def _on_dismiss(self, result: dict[str, float] | None) -> None:
+    def _on_dismiss(self, result: dict[str, float | bool | str] | None) -> None:
+        self.dismissed_value = result
+
+
+class BoolParamTestApp(App[None]):
+    """Pushes ParamInputModal with a bool-param action."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.dismissed_value: dict[str, float | bool | str] | None = "NOT_SET"  # type: ignore[assignment]
+
+    def compose(self) -> ComposeResult:
+        yield from ()
+
+    def on_mount(self) -> None:
+        self.push_screen(
+            ParamInputModal(BoolParamAction()),
+            callback=self._on_dismiss,
+        )
+
+    def _on_dismiss(self, result: dict[str, float | bool | str] | None) -> None:
+        self.dismissed_value = result
+
+
+class StrParamTestApp(App[None]):
+    """Pushes ParamInputModal with a str-param action."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.dismissed_value: dict[str, float | bool | str] | None = "NOT_SET"  # type: ignore[assignment]
+
+    def compose(self) -> ComposeResult:
+        yield from ()
+
+    def on_mount(self) -> None:
+        self.push_screen(
+            ParamInputModal(StrParamAction()),
+            callback=self._on_dismiss,
+        )
+
+    def _on_dismiss(self, result: dict[str, float | bool | str] | None) -> None:
         self.dismissed_value = result
 
 
@@ -348,3 +456,106 @@ class TestParamInputModalCancel:
             await pilot.press("escape")
             await pilot.pause()
             assert app.dismissed_value is None
+
+
+# ---------------------------------------------------------------------------
+# Tests: Boolean params
+# ---------------------------------------------------------------------------
+
+
+class TestParamInputModalBoolParams:
+    @pytest.mark.asyncio
+    async def test_bool_param_renders_as_switch(self) -> None:
+        async with BoolParamTestApp().run_test() as pilot:
+            await pilot.pause()
+            switch = pilot.app.screen.query_one("#param-land_at_end", Switch)
+            assert switch is not None
+
+    @pytest.mark.asyncio
+    async def test_bool_param_default_false(self) -> None:
+        async with BoolParamTestApp().run_test() as pilot:
+            await pilot.pause()
+            switch = pilot.app.screen.query_one("#param-land_at_end", Switch)
+            assert switch.value is False
+
+    @pytest.mark.asyncio
+    async def test_confirm_includes_bool_param(self) -> None:
+        app = BoolParamTestApp()
+        async with app.run_test(size=(80, 40)) as pilot:
+            await pilot.pause()
+            await pilot.click("#confirm-btn")
+            await pilot.pause()
+            assert app.dismissed_value == {"altitude": 100.0, "land_at_end": False}
+
+    @pytest.mark.asyncio
+    async def test_confirm_with_toggled_bool(self) -> None:
+        app = BoolParamTestApp()
+        async with app.run_test(size=(80, 40)) as pilot:
+            await pilot.pause()
+            switch = pilot.app.screen.query_one("#param-land_at_end", Switch)
+            switch.value = True
+            await pilot.pause()
+            await pilot.click("#confirm-btn")
+            await pilot.pause()
+            assert app.dismissed_value == {"altitude": 100.0, "land_at_end": True}
+
+
+# ---------------------------------------------------------------------------
+# Tests: String params
+# ---------------------------------------------------------------------------
+
+
+class TestParamInputModalStrParams:
+    @pytest.mark.asyncio
+    async def test_str_param_renders_as_input(self) -> None:
+        async with StrParamTestApp().run_test() as pilot:
+            await pilot.pause()
+            inp = pilot.app.screen.query_one("#param-vessel_name", Input)
+            assert inp is not None
+
+    @pytest.mark.asyncio
+    async def test_str_param_prefills_default(self) -> None:
+        async with StrParamTestApp().run_test() as pilot:
+            await pilot.pause()
+            inp = pilot.app.screen.query_one("#param-note", Input)
+            assert inp.value == "default note"
+
+    @pytest.mark.asyncio
+    async def test_str_param_required_empty_rejected(self) -> None:
+        app = StrParamTestApp()
+        async with app.run_test(size=(80, 40)) as pilot:
+            await pilot.pause()
+            # vessel_name is required, leave it empty
+            await pilot.click("#confirm-btn")
+            await pilot.pause()
+            assert isinstance(pilot.app.screen, ParamInputModal)
+            assert app.dismissed_value == "NOT_SET"  # type: ignore[comparison-overlap]
+
+    @pytest.mark.asyncio
+    async def test_str_param_accepts_non_numeric(self) -> None:
+        app = StrParamTestApp()
+        async with app.run_test(size=(80, 40)) as pilot:
+            await pilot.pause()
+            inp = pilot.app.screen.query_one("#param-vessel_name", Input)
+            inp.value = "My Rocket"
+            await pilot.pause()
+            await pilot.click("#confirm-btn")
+            await pilot.pause()
+            assert app.dismissed_value == {
+                "vessel_name": "My Rocket",
+                "note": "default note",
+            }
+
+    @pytest.mark.asyncio
+    async def test_str_param_optional_empty_excluded(self) -> None:
+        app = StrParamTestApp()
+        async with app.run_test(size=(80, 40)) as pilot:
+            await pilot.pause()
+            name_inp = pilot.app.screen.query_one("#param-vessel_name", Input)
+            name_inp.value = "Test"
+            note_inp = pilot.app.screen.query_one("#param-note", Input)
+            note_inp.value = ""
+            await pilot.pause()
+            await pilot.click("#confirm-btn")
+            await pilot.pause()
+            assert app.dismissed_value == {"vessel_name": "Test"}

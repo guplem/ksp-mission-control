@@ -5,12 +5,12 @@ from __future__ import annotations
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Static
+from textual.widgets import Button, Input, Static, Switch
 
-from ksp_mission_control.control.actions.base import Action
+from ksp_mission_control.control.actions.base import Action, ParamType
 
 
-class ParamInputModal(ModalScreen[dict[str, float] | None]):
+class ParamInputModal(ModalScreen[dict[str, float | bool | str] | None]):
     """Modal dialog for editing an action's parameters before execution.
 
     Renders one Input per ActionParam, pre-fills defaults, validates on
@@ -78,11 +78,17 @@ class ParamInputModal(ModalScreen[dict[str, float] | None]):
                 if param.description:
                     param_label.tooltip = param.description
                 yield param_label
-                yield Input(
-                    value=str(param.default) if param.default is not None else "",
-                    placeholder=param.description,
-                    id=f"param-{param.param_id}",
-                )
+                if param.param_type == ParamType.BOOL:
+                    yield Switch(
+                        value=bool(param.default) if param.default is not None else False,
+                        id=f"param-{param.param_id}",
+                    )
+                else:
+                    yield Input(
+                        value=str(param.default) if param.default is not None else "",
+                        placeholder=param.description,
+                        id=f"param-{param.param_id}",
+                    )
             yield Static("", id="modal-error")
             with Horizontal(id="modal-buttons"):
                 yield Button("Confirm", id="confirm-btn", variant="primary")
@@ -97,9 +103,14 @@ class ParamInputModal(ModalScreen[dict[str, float] | None]):
     def _do_confirm(self) -> None:
         """Validate inputs and dismiss with the param dict."""
         error_widget = self.query_one("#modal-error", Static)
-        result: dict[str, float] = {}
+        result: dict[str, float | bool | str] = {}
 
         for param in self._action.params:
+            if param.param_type == ParamType.BOOL:
+                switch = self.query_one(f"#param-{param.param_id}", Switch)
+                result[param.param_id] = switch.value
+                continue
+
             inp = self.query_one(f"#param-{param.param_id}", Input)
             raw = inp.value.strip()
 
@@ -110,12 +121,15 @@ class ParamInputModal(ModalScreen[dict[str, float] | None]):
                     return
                 continue
 
-            try:
-                result[param.param_id] = float(raw)
-            except ValueError:
-                error_widget.update(f"[b]{param.label}[/b] must be a number")
-                inp.focus()
-                return
+            if param.param_type == ParamType.STR:
+                result[param.param_id] = raw
+            else:
+                try:
+                    result[param.param_id] = float(raw)
+                except ValueError:
+                    error_widget.update(f"[b]{param.label}[/b] must be a number")
+                    inp.focus()
+                    return
 
         self.dismiss(result)
 

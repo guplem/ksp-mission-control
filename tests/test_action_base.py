@@ -8,6 +8,7 @@ from ksp_mission_control.control.actions.base import (
     ActionParam,
     ActionResult,
     ActionStatus,
+    ParamType,
     VesselCommands,
     VesselSituation,
     VesselState,
@@ -22,6 +23,15 @@ class TestActionStatus:
         assert ActionStatus.RUNNING.value == "running"
         assert ActionStatus.SUCCEEDED.value == "succeeded"
         assert ActionStatus.FAILED.value == "failed"
+
+
+class TestParamType:
+    """Tests for the ParamType enum."""
+
+    def test_has_expected_members(self) -> None:
+        assert ParamType.FLOAT.value == "float"
+        assert ParamType.BOOL.value == "bool"
+        assert ParamType.STR.value == "str"
 
 
 class TestActionResult:

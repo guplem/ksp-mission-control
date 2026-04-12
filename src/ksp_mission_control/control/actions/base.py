@@ -108,6 +108,14 @@ class ActionResult:
     message: str = ""
 
 
+class ParamType(Enum):
+    """Data type of an action parameter."""
+
+    FLOAT = "float"
+    BOOL = "bool"
+    STR = "str"
+
+
 @dataclass(frozen=True)
 class ActionParam:
     """Typed parameter descriptor for an action.
@@ -120,7 +128,8 @@ class ActionParam:
     label: str
     description: str
     required: bool
-    default: float | None = None
+    param_type: ParamType = ParamType.FLOAT
+    default: float | bool | str | None = None
     unit: str = ""
 
 
