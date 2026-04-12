@@ -98,6 +98,10 @@ def _format_orbit(state: VesselState) -> str:
     )
 
 
+def _on_off(value: bool) -> str:
+    return "ON" if value else "OFF"
+
+
 def _format_resources(state: VesselState) -> str:
     return "\n".join(
         [
@@ -109,9 +113,21 @@ def _format_resources(state: VesselState) -> str:
             "",
             "[b]Configuration[/b]",
             f"Throttle:        {state.throttle * 100:.0f}%",
-            f"SAS:             {'ON' if state.sas else 'OFF'}",
-            f"SAS mode:        {state.sas_mode.split('.')[-1].replace('_', ' ').title() if state.sas_mode else 'N/A'}",
-            f"RCS:             {'ON' if state.rcs else 'OFF'}",
+            f"SAS:             {_on_off(state.sas)}",
+            f"SAS mode:        {state.sas_mode.display_name}",
+            f"RCS:             {_on_off(state.rcs)}",
+            f"Gear:            {_on_off(state.gear)}",
+            f"Legs:            {_on_off(state.legs)}",
+            f"Lights:          {_on_off(state.lights)}",
+            f"Brakes:          {_on_off(state.brakes)}",
             f"Stage:           {state.current_stage} / {state.max_stages}",
+            "",
+            "[b]Deployables[/b]",
+            f"Solar panels:    {_on_off(state.solar_panels)}",
+            f"Antennas:        {_on_off(state.antennas)}",
+            f"Cargo bays:      {_on_off(state.cargo_bays)}",
+            f"Intakes:         {_on_off(state.intakes)}",
+            f"Parachutes:      {_on_off(state.parachutes)}",
+            f"Radiators:       {_on_off(state.radiators)}",
         ]
     )

@@ -53,6 +53,26 @@ class ActionLogger:
         self.entries.append(LogEntry(level=LogLevel.ERROR, message=message))
 
 
+class SASMode(Enum):
+    """SAS autopilot mode, matching kRPC's SASMode enum members."""
+
+    STABILITY_ASSIST = "stability_assist"
+    MANEUVER = "maneuver"
+    PROGRADE = "prograde"
+    RETROGRADE = "retrograde"
+    NORMAL = "normal"
+    ANTI_NORMAL = "anti_normal"
+    RADIAL = "radial"
+    ANTI_RADIAL = "anti_radial"
+    TARGET = "target"
+    ANTI_TARGET = "anti_target"
+
+    @property
+    def display_name(self) -> str:
+        """Human-readable label (e.g. 'Radial', 'Anti Normal')."""
+        return self.value.replace("_", " ").title()
+
+
 class ActionStatus(Enum):
     """Lifecycle status of an action."""
 
@@ -147,14 +167,38 @@ class VesselState:
     """Current throttle setting. 0.0 = off, 1.0 = full thrust."""
     sas: bool = False
     """Whether the Stability Assist System is enabled."""
-    sas_mode: str = ""
-    """Active SAS mode (e.g. 'stability_assist', 'prograde', 'normal')."""
+    sas_mode: SASMode = SASMode.STABILITY_ASSIST
+    """Active SAS autopilot mode."""
     rcs: bool = False
     """Whether the Reaction Control System is enabled."""
+    gear: bool = False
+    """Whether landing gear is deployed."""
+    legs: bool = False
+    """Whether landing legs are deployed."""
+    lights: bool = False
+    """Whether vessel lights are on."""
+    brakes: bool = False
+    """Whether brakes are engaged."""
+    abort: bool = False
+    """Whether the abort action group has been triggered."""
     current_stage: int = 0
     """Currently active stage number."""
     max_stages: int = 0
     """Total number of stages on the vessel."""
+
+    # --- Deployables ---
+    solar_panels: bool = False
+    """Whether solar panels are deployed."""
+    antennas: bool = False
+    """Whether antennas are deployed."""
+    cargo_bays: bool = False
+    """Whether cargo bays are open."""
+    intakes: bool = False
+    """Whether air intakes are open."""
+    parachutes: bool = False
+    """Whether parachutes are deployed."""
+    radiators: bool = False
+    """Whether radiators are deployed."""
 
     # --- Resources ---
     electric_charge: float = 0.0
@@ -175,18 +219,67 @@ class VesselCommands:
     Actions mutate this in tick(); the runner applies non-None fields to kRPC.
     """
 
+    # --- Throttle & staging ---
     throttle: float | None = None
     """Main engine throttle. 0.0 = off, 1.0 = full thrust."""
+    stage: bool | None = None
+    """Set to True to activate the next stage this tick."""
+
+    # --- Rotation axes (-1.0 to 1.0, raw stick input) ---
+    input_pitch: float | None = None
+    """Pitch axis input. -1.0 = nose down, 1.0 = nose up."""
+    input_yaw: float | None = None
+    """Yaw axis input. -1.0 = left, 1.0 = right."""
+    input_roll: float | None = None
+    """Roll axis input. -1.0 = counter-clockwise, 1.0 = clockwise."""
+
+    # --- Translation axes (-1.0 to 1.0, RCS input) ---
+    translate_forward: float | None = None
+    """RCS forward/backward. -1.0 = backward, 1.0 = forward."""
+    translate_right: float | None = None
+    """RCS left/right. -1.0 = left, 1.0 = right."""
+    translate_up: float | None = None
+    """RCS down/up. -1.0 = down, 1.0 = up."""
+
+    # --- Autopilot target angles ---
     pitch: float | None = None
     """Target pitch angle in degrees. 0 = horizontal, 90 = straight up."""
     heading: float | None = None
     """Target heading in degrees. 0 = north, 90 = east, 180 = south, 270 = west."""
+
+    # --- Systems ---
     sas: bool | None = None
     """Stability Assist System. True = enable, False = disable."""
+    sas_mode: SASMode | None = None
+    """SAS autopilot mode."""
     rcs: bool | None = None
     """Reaction Control System. True = enable, False = disable."""
-    stage: bool | None = None
-    """Set to True to activate the next stage this tick."""
+    gear: bool | None = None
+    """Landing gear. True = deploy, False = retract."""
+    legs: bool | None = None
+    """Landing legs. True = deploy, False = retract."""
+    lights: bool | None = None
+    """Vessel lights. True = on, False = off."""
+    brakes: bool | None = None
+    """Brakes. True = engage, False = release."""
+    wheels: bool | None = None
+    """Wheel motor. True = on, False = off."""
+    abort: bool | None = None
+    """Abort action group. True = trigger."""
+
+    # --- Deployables ---
+    solar_panels: bool | None = None
+    """Solar panels. True = deploy, False = retract."""
+    antennas: bool | None = None
+    """Antennas. True = deploy, False = retract."""
+    cargo_bays: bool | None = None
+    """Cargo bays. True = open, False = close."""
+    intakes: bool | None = None
+    """Air intakes. True = open, False = close."""
+    parachutes: bool | None = None
+    """Parachutes. True = deploy."""
+    radiators: bool | None = None
+    """Radiators. True = deploy, False = retract."""
 
 
 class Action(ABC):

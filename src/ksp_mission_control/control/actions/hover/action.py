@@ -10,6 +10,7 @@ from ksp_mission_control.control.actions.base import (
     ActionParam,
     ActionResult,
     ActionStatus,
+    SASMode,
     VesselCommands,
     VesselState,
 )
@@ -44,26 +45,31 @@ class HoverAction(Action):
         self, state: VesselState, commands: VesselCommands, dt: float, log: ActionLogger
     ) -> ActionResult:
         self._ticks += 1
-        error = self._target_altitude - state.altitude_surface
-        raw_throttle = 0.5 + _KP * error - _KD * state.vertical_speed
+        difference = self._target_altitude - state.altitude_surface
+        raw_throttle = 0.5 + _KP * difference - _KD * state.vertical_speed
         commands.throttle = max(0.0, min(1.0, raw_throttle))
         commands.sas = True
+        commands.sas_mode = SASMode.RADIAL
 
         log.debug(
-            f"PD: error={error:+.1f}m  P={_KP * error:+.4f}  D={-_KD * state.vertical_speed:+.4f}"
+            f"PD: error={difference:+.1f}m  P={_KP * difference:+.4f}  D={-_KD * state.vertical_speed:+.4f}"
             f"  raw={raw_throttle:.4f}  clamped={commands.throttle:.3f}"
         )
 
-        if not self._reached_target and abs(error) < 5.0:
+        if not self._reached_target and abs(difference) < 5.0:
             self._reached_target = True
             log.info(f"Reached target altitude: {self._target_altitude:.0f}m")
 
         deviation_threshold = max(10.0, self._target_altitude * 0.25)
-        if self._reached_target and abs(error) > deviation_threshold:
-            log.warn(f"Large altitude deviation: {error:+.0f}m from target (threshold {deviation_threshold:.0f}m)")
+        if self._reached_target and abs(difference) > deviation_threshold:
+            log.warn(
+                f"Large altitude deviation: {difference:+.0f}m from target (threshold {deviation_threshold:.0f}m)"
+            )
 
         if state.altitude_surface < 10.0 and state.vertical_speed < -5.0:
-            log.error(f"Dangerous descent: alt={state.altitude_surface:.0f}m vspd={state.vertical_speed:.1f}m/s")
+            log.error(
+                f"Dangerous descent: alt={state.altitude_surface:.0f}m vspd={state.vertical_speed:.1f}m/s"
+            )
 
         return ActionResult(status=ActionStatus.RUNNING)
 

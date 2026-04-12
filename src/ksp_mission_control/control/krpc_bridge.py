@@ -9,16 +9,41 @@ from __future__ import annotations
 
 from dataclasses import fields
 
-from ksp_mission_control.control.actions.base import VesselCommands, VesselState
+from ksp_mission_control.control.actions.base import SASMode, VesselCommands, VesselState
 
 # Command fields that have a matching field in VesselState for comparison.
-# pitch/heading are NOT included: command pitch is a target, state pitch is
-# the vessel's current orientation. stage is a trigger, not a state.
+# Excluded from comparison (always applied when non-None):
+#   pitch/heading: command = target angle, state = current orientation
+#   stage: one-shot trigger
+#   input_*/translate_*: transient axis inputs, no persistent state
+#   wheels: kRPC write-only, no readable state
 _COMPARABLE_FIELDS: dict[str, str] = {
     "throttle": "throttle",
     "sas": "sas",
+    "sas_mode": "sas_mode",
     "rcs": "rcs",
+    "gear": "gear",
+    "legs": "legs",
+    "lights": "lights",
+    "brakes": "brakes",
+    "abort": "abort",
+    "solar_panels": "solar_panels",
+    "antennas": "antennas",
+    "cargo_bays": "cargo_bays",
+    "intakes": "intakes",
+    "parachutes": "parachutes",
+    "radiators": "radiators",
 }
+
+
+def _parse_sas_mode(raw: str) -> SASMode:
+    """Convert a kRPC SAS mode string to a SASMode enum.
+
+    kRPC ``str(control.sas_mode)`` returns ``'SASMode.radial'``.
+    Extracts the member name and looks it up in our enum.
+    """
+    name = raw.split(".")[-1] if "." in raw else raw
+    return SASMode(name)
 
 
 class NoActiveVesselError(Exception):
@@ -59,10 +84,21 @@ def read_vessel_state(conn: object) -> VesselState:
         roll=flight.roll,
         throttle=control.throttle,
         sas=control.sas,
-        sas_mode=str(control.sas_mode),
+        sas_mode=_parse_sas_mode(str(control.sas_mode)),
         rcs=control.rcs,
+        gear=control.gear,
+        legs=control.legs,
+        lights=control.lights,
+        brakes=control.brakes,
+        abort=control.abort,
         current_stage=control.current_stage,
         max_stages=max((p.stage for p in vessel.parts.all), default=0),
+        solar_panels=control.solar_panels,
+        antennas=control.antennas,
+        cargo_bays=control.cargo_bays,
+        intakes=control.intakes,
+        parachutes=control.parachutes,
+        radiators=control.radiators,
         electric_charge=vessel.resources.amount("ElectricCharge"),
         liquid_fuel=vessel.resources.amount("LiquidFuel"),
         oxidizer=vessel.resources.amount("Oxidizer"),
@@ -106,11 +142,61 @@ def apply_controls(conn: object, controls: VesselCommands) -> None:
     if vessel is None:
         raise NoActiveVesselError("No active vessel found")
     vc = vessel.control
+
+    # Throttle & staging
     if controls.throttle is not None:
         vc.throttle = controls.throttle
-    if controls.sas is not None:
-        vc.sas = controls.sas
-    if controls.rcs is not None:
-        vc.rcs = controls.rcs
     if controls.stage is not None and controls.stage:
         vc.activate_next_stage()
+
+    # Rotation axes
+    if controls.input_pitch is not None:
+        vc.pitch = controls.input_pitch
+    if controls.input_yaw is not None:
+        vc.yaw = controls.input_yaw
+    if controls.input_roll is not None:
+        vc.roll = controls.input_roll
+
+    # Translation axes (RCS)
+    if controls.translate_forward is not None:
+        vc.forward = controls.translate_forward
+    if controls.translate_right is not None:
+        vc.right = controls.translate_right
+    if controls.translate_up is not None:
+        vc.up = controls.translate_up
+
+    # Systems
+    if controls.sas is not None:
+        vc.sas = controls.sas
+    if controls.sas_mode is not None:
+        krpc_sas = getattr(conn.space_center.SASMode, controls.sas_mode.value, None)  # type: ignore[attr-defined]
+        if krpc_sas is not None:
+            vc.sas_mode = krpc_sas
+    if controls.rcs is not None:
+        vc.rcs = controls.rcs
+    if controls.gear is not None:
+        vc.gear = controls.gear
+    if controls.legs is not None:
+        vc.legs = controls.legs
+    if controls.lights is not None:
+        vc.lights = controls.lights
+    if controls.brakes is not None:
+        vc.brakes = controls.brakes
+    if controls.wheels is not None:
+        vc.wheels = controls.wheels
+    if controls.abort is not None:
+        vc.abort = controls.abort
+
+    # Deployables
+    if controls.solar_panels is not None:
+        vc.solar_panels = controls.solar_panels
+    if controls.antennas is not None:
+        vc.antennas = controls.antennas
+    if controls.cargo_bays is not None:
+        vc.cargo_bays = controls.cargo_bays
+    if controls.intakes is not None:
+        vc.intakes = controls.intakes
+    if controls.parachutes is not None:
+        vc.parachutes = controls.parachutes
+    if controls.radiators is not None:
+        vc.radiators = controls.radiators

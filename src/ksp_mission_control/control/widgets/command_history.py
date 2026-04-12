@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, fields
+from typing import cast
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal
 from textual.widgets import Button, Static
 
-from ksp_mission_control.control.actions.base import ActionStatus, VesselCommands
+from ksp_mission_control.control.actions.base import ActionStatus, SASMode, VesselCommands
 from ksp_mission_control.control.formatting import format_met, resolve_theme_colors
 
 _MAX_HISTORY = 10_000
@@ -139,7 +140,7 @@ class CommandHistoryWidget(Static):
     def _resolve_accent(self) -> str:
         """Resolve the accent CSS variable to a hex color, cached after first call."""
         if self._accent_color is None:
-            self._accent_color = resolve_theme_colors(self.app, {"accent": "accent"})["accent"]
+            self._accent_color = self.app.get_css_variables().get("accent", "#ffffff")
         return self._accent_color
 
     def _render_current(self) -> None:
@@ -172,15 +173,51 @@ class CommandHistoryWidget(Static):
         self.query_one("#cmd-last", Button).disabled = self._following
 
 
+_TOGGLE_FIELDS: frozenset[str] = frozenset(
+    {
+        "sas",
+        "rcs",
+        "gear",
+        "legs",
+        "lights",
+        "brakes",
+        "wheels",
+        "solar_panels",
+        "antennas",
+        "cargo_bays",
+        "intakes",
+        "parachutes",
+        "radiators",
+    }
+)
+
+_ANGLE_FIELDS: frozenset[str] = frozenset({"pitch", "heading"})
+
+_AXIS_FIELDS: frozenset[str] = frozenset(
+    {
+        "input_pitch",
+        "input_yaw",
+        "input_roll",
+        "translate_forward",
+        "translate_right",
+        "translate_up",
+    }
+)
+
+
 def _format_field_value(name: str, value: object) -> str:
     """Format a command field value with appropriate units."""
     if name == "throttle":
         return f"{float(value) * 100:.0f}%"  # type: ignore[arg-type]
-    if name in ("pitch", "heading"):
+    if name in _ANGLE_FIELDS:
         return f"{float(value):.1f}\u00b0"  # type: ignore[arg-type]
-    if name in ("sas", "rcs"):
+    if name in _AXIS_FIELDS:
+        return f"{float(value):+.2f}"  # type: ignore[arg-type]
+    if name in _TOGGLE_FIELDS:
         return "ON" if value else "OFF"
-    if name == "stage":
+    if name == "sas_mode":
+        return cast(SASMode, value).display_name
+    if name in ("stage", "abort"):
         return "ACTIVATE" if value else "---"
     return str(value)
 
