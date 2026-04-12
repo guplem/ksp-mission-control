@@ -28,4 +28,5 @@
     padding: 1 2;
     border-top: solid $accent;
     border-left: solid $accent;
+    overflow-y: auto;
 }

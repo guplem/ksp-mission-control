@@ -58,7 +58,7 @@ class HoverAction(Action):
         ActionParam(
             param_id="land_at_end",
             label="Land at End",
-            description="Whether to land at the end of the horizontal travel",
+            description="This is old and will be removed in favour of flight plans",
             required=False,
             param_type=ParamType.BOOL,
             default=False,

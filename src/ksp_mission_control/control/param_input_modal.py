@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Static, Switch
 
@@ -24,6 +24,7 @@ class ParamInputModal(ModalScreen[dict[str, float | bool | str] | None]):
 
     #modal-container {
         width: 60;
+        height: auto;
         max-height: 80%;
         padding: 1 2;
         border: solid $primary;
@@ -49,8 +50,11 @@ class ParamInputModal(ModalScreen[dict[str, float | bool | str] | None]):
     }
 
     #modal-buttons {
+        dock: bottom;
         padding: 1 0 0 0;
         align-horizontal: right;
+        height: auto;
+        background: $surface;
     }
 
     #modal-buttons Button {
@@ -67,7 +71,7 @@ class ParamInputModal(ModalScreen[dict[str, float | bool | str] | None]):
         self._action = action
 
     def compose(self) -> ComposeResult:
-        with Vertical(id="modal-container"):
+        with VerticalScroll(id="modal-container"):
             yield Static(f"[b]{self._action.label}[/b]", id="modal-title")
             yield Static(self._action.description, id="modal-description")
             for param in self._action.params:
