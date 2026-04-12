@@ -177,8 +177,3 @@ class TranslateAction(Action):
 
     def stop(self, state: VesselState, commands: VesselCommands, log: ActionLogger) -> None:
         super().stop(state, commands, log)
-        commands.throttle = 0.0
-        commands.sas = False
-        commands.rcs = False
-        commands.translate_forward = 0.0
-        commands.translate_right = 0.0

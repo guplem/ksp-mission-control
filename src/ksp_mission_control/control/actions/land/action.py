@@ -118,8 +118,7 @@ class LandAction(Action):
             log.info(f"Deployed landing gear at altitude {state.altitude_surface:.1f}m")
 
         if state.situation == VesselSituation.LANDED:
-            commands.brakes = True
-            log.info("Landed successfully, brakes engaged")
+            log.info("Landed successfully")
             return ActionResult(status=ActionStatus.SUCCEEDED)
 
         return ActionResult(status=ActionStatus.RUNNING)
@@ -128,3 +127,4 @@ class LandAction(Action):
         super().stop(state, commands, log)
         commands.throttle = 0.0
         commands.sas = False
+        commands.brakes = True
