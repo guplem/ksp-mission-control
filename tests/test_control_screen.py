@@ -7,8 +7,12 @@ from ksp_mission_control.control.actions.base import (
     LogEntry,
     LogLevel,
     VesselCommands,
+    VesselState,
 )
-from ksp_mission_control.control.screen import TickRecord, _format_tick_history
+from ksp_mission_control.control.screen import _format_tick_history
+from ksp_mission_control.control.tick_record import TickRecord
+
+_DEFAULT_STATE = VesselState()
 
 
 class TestFormatTickHistory:
@@ -18,6 +22,7 @@ class TestFormatTickHistory:
         tick = TickRecord(
             tick_number=1,
             met=5.0,
+            state=_DEFAULT_STATE,
             action_label=None,
             action_status=None,
             logs=[],
@@ -30,11 +35,36 @@ class TestFormatTickHistory:
         assert "No action" in result
         assert "(idle)" in result
 
+    def test_tick_includes_vessel_state(self) -> None:
+        state = VesselState(
+            altitude_surface=150.3,
+            vertical_speed=-2.5,
+            throttle=0.65,
+            sas=True,
+        )
+        tick = TickRecord(
+            tick_number=1,
+            met=10.0,
+            state=state,
+            action_label="Hover",
+            action_status=ActionStatus.RUNNING,
+            logs=[],
+            commands=VesselCommands(throttle=0.7),
+            applied_fields=frozenset({"throttle"}),
+        )
+        result = _format_tick_history([tick])
+        assert "--- State ---" in result
+        assert "Altitude Surface: 150.3000" in result
+        assert "Vertical Speed: -2.5000" in result
+        assert "Throttle: 0.6500" in result
+        assert "Sas: True" in result
+
     def test_tick_with_logs_and_sent_commands(self) -> None:
         commands = VesselCommands(throttle=0.75, sas=True)
         tick = TickRecord(
             tick_number=42,
             met=330.5,
+            state=_DEFAULT_STATE,
             action_label="Hover",
             action_status=ActionStatus.RUNNING,
             logs=[
@@ -60,6 +90,7 @@ class TestFormatTickHistory:
         tick1 = TickRecord(
             tick_number=1,
             met=0.5,
+            state=_DEFAULT_STATE,
             action_label="Hover",
             action_status=ActionStatus.RUNNING,
             logs=[LogEntry(level=LogLevel.INFO, message="Start")],
@@ -69,6 +100,7 @@ class TestFormatTickHistory:
         tick2 = TickRecord(
             tick_number=2,
             met=1.0,
+            state=_DEFAULT_STATE,
             action_label="Hover",
             action_status=ActionStatus.RUNNING,
             logs=[LogEntry(level=LogLevel.INFO, message="Holding")],
@@ -86,6 +118,7 @@ class TestFormatTickHistory:
         tick = TickRecord(
             tick_number=5,
             met=10.0,
+            state=_DEFAULT_STATE,
             action_label="Land",
             action_status=ActionStatus.RUNNING,
             logs=[],
@@ -102,6 +135,7 @@ class TestFormatTickHistory:
         tick = TickRecord(
             tick_number=100,
             met=600.0,
+            state=_DEFAULT_STATE,
             action_label="Land",
             action_status=ActionStatus.SUCCEEDED,
             logs=[LogEntry(level=LogLevel.INFO, message="Finished: Land (succeeded)")],
@@ -110,3 +144,19 @@ class TestFormatTickHistory:
         )
         result = _format_tick_history([tick])
         assert "Land (succeeded)" in result
+
+    def test_state_section_appears_before_logs(self) -> None:
+        tick = TickRecord(
+            tick_number=1,
+            met=5.0,
+            state=_DEFAULT_STATE,
+            action_label="Hover",
+            action_status=ActionStatus.RUNNING,
+            logs=[LogEntry(level=LogLevel.INFO, message="test")],
+            commands=VesselCommands(),
+            applied_fields=frozenset(),
+        )
+        result = _format_tick_history([tick])
+        state_pos = result.index("--- State ---")
+        logs_pos = result.index("--- Logs ---")
+        assert state_pos < logs_pos

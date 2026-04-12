@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, fields
+from dataclasses import fields
+from enum import Enum
 from typing import cast
 
 from textual import work
@@ -14,7 +15,6 @@ from textual.widgets import Footer, Header
 from ksp_mission_control.control.action_picker import ActionPicker
 from ksp_mission_control.control.actions.base import (
     Action,
-    ActionStatus,
     LogEntry,
     VesselCommands,
     VesselState,
@@ -27,6 +27,7 @@ from ksp_mission_control.control.formatting import format_met
 from ksp_mission_control.control.param_input_modal import ParamInputModal
 from ksp_mission_control.control.plan_failure_dialog import PlanFailureDialog
 from ksp_mission_control.control.session import ControlSession
+from ksp_mission_control.control.tick_record import TickRecord
 from ksp_mission_control.control.widgets.action_list import ActionListWidget
 from ksp_mission_control.control.widgets.command_history import (
     CommandHistoryWidget,
@@ -37,19 +38,6 @@ from ksp_mission_control.control.widgets.telemetry_display import TelemetryDispl
 
 _MAX_TICK_HISTORY = 10_000
 """Maximum number of tick records to keep for clipboard export."""
-
-
-@dataclass(frozen=True)
-class TickRecord:
-    """A single tick's logs and resulting commands, for clipboard export."""
-
-    tick_number: int
-    met: float
-    action_label: str | None
-    action_status: ActionStatus | None
-    logs: list[LogEntry]
-    commands: VesselCommands
-    applied_fields: frozenset[str]
 
 
 class ControlScreen(Screen[None]):
@@ -126,6 +114,7 @@ class ControlScreen(Screen[None]):
             TickRecord(
                 tick_number=self._tick_counter,
                 met=state.met,
+                state=state,
                 action_label=runner_state.action_label,
                 action_status=runner_state.status,
                 logs=list(logs),
@@ -271,6 +260,21 @@ class ControlScreen(Screen[None]):
         self.app.pop_screen()
 
 
+def _format_vessel_state(state: VesselState) -> list[str]:
+    """Format vessel state fields as plain text lines."""
+    lines: list[str] = []
+    for field in fields(state):
+        value = getattr(state, field.name)
+        label = field.name.replace("_", " ").title()
+        if isinstance(value, float):
+            lines.append(f"  {label}: {value:.4f}")
+        elif isinstance(value, Enum):
+            lines.append(f"  {label}: {value.value}")
+        else:
+            lines.append(f"  {label}: {value}")
+    return lines
+
+
 def _format_tick_history(ticks: list[TickRecord]) -> str:
     """Format all tick records as plain text for clipboard export."""
     sections: list[str] = []
@@ -281,6 +285,10 @@ def _format_tick_history(ticks: list[TickRecord]) -> str:
 
         header = f"=== Tick #{tick.tick_number} | {format_met(tick.met)} | {action_text} ==="
         lines: list[str] = [header]
+
+        # Vessel state
+        lines.append("--- State ---")
+        lines.extend(_format_vessel_state(tick.state))
 
         # Logs
         if tick.logs:
