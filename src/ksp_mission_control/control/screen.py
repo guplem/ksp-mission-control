@@ -10,8 +10,9 @@ from textual.containers import Horizontal
 from textual.screen import Screen
 from textual.widgets import Footer, Header
 
-from ksp_mission_control.control.actions.base import VesselState
+from ksp_mission_control.control.actions.base import Action, VesselState
 from ksp_mission_control.control.actions.runner import RunnerSnapshot
+from ksp_mission_control.control.param_input_modal import ParamInputModal
 from ksp_mission_control.control.session import ControlSession
 from ksp_mission_control.control.widgets.action_list import ActionListWidget
 from ksp_mission_control.control.widgets.telemetry_display import TelemetryDisplayWidget
@@ -28,7 +29,6 @@ class ControlScreen(Screen[None]):
 
     BINDINGS = [
         ("escape", "go_back", "Back to Setup"),
-        ("q", "app.quit", "Quit"),
         ("a", "abort_action", "Abort Action"),
     ]
 
@@ -76,11 +76,26 @@ class ControlScreen(Screen[None]):
         self.query_one("#telemetry-display", TelemetryDisplayWidget).show_error(message)
 
     def on_action_list_widget_selected(self, event: ActionListWidget.Selected) -> None:
-        """Start the selected action with default parameters."""
+        """Open the parameter dialog for the selected action."""
+        if self._session is None:
+            return
+        action = event.action
+        if action.params:
+            self.app.push_screen(
+                ParamInputModal(action),
+                callback=lambda result: self._start_action_with_params(action, result)
+                if result is not None
+                else None,
+            )
+        else:
+            self._start_action_with_params(action, None)
+
+    def _start_action_with_params(self, action: Action, params: dict[str, float] | None) -> None:
+        """Start the action with the given parameters."""
         if self._session is None:
             return
         try:
-            self._session.start_action(event.action)
+            self._session.start_action(action, params)
         except ValueError as exc:
             self.notify(str(exc), severity="error")
 
@@ -97,8 +112,16 @@ class ControlScreen(Screen[None]):
             self._session.shutdown()
 
     def on_screen_suspend(self) -> None:
-        """Called when this screen is no longer current (popped or replaced)."""
-        self._shutdown()
+        """Called when this screen is no longer current.
+
+        Only shut down when the screen is actually being removed (popped),
+        not when a modal is pushed on top. We detect this by checking
+        whether the new active screen is a ModalScreen overlay.
+        """
+        from textual.screen import ModalScreen  # noqa: PLC0415
+
+        if not isinstance(self.app.screen, ModalScreen):
+            self._shutdown()
 
     def on_unmount(self) -> None:
         """Called when the screen is removed from the DOM (app quit)."""
