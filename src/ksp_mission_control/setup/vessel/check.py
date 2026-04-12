@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import contextlib
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 
 from ksp_mission_control.config import ConfigManager
 from ksp_mission_control.setup.checks import CheckResult, SetupCheck
@@ -23,6 +24,8 @@ class VesselDetectedCheck(SetupCheck):
         self._config_manager = config_manager
 
     def run(self) -> CheckResult:
+        # kRPC calls can hang if KSP is frozen. Run in a thread pool with
+        # a timeout so the setup screen stays responsive.
         settings = resolve_krpc_connection(self._config_manager)
         pool = ThreadPoolExecutor(max_workers=1)
         future = pool.submit(self._query_vessel, settings)
@@ -35,7 +38,7 @@ class VesselDetectedCheck(SetupCheck):
         except Exception as exc:
             return CheckResult(passed=False, message=f"Failed to query vessel ({exc})")
         finally:
-            pool.shutdown(wait=False)
+            pool.shutdown(wait=False)  # don't block on a hung thread
 
     @staticmethod
     def _query_vessel(settings: KrpcServerSettings) -> CheckResult:

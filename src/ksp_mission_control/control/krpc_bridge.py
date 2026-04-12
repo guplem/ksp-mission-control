@@ -7,11 +7,26 @@ module stays decoupled from the game connection.
 
 from __future__ import annotations
 
+from dataclasses import fields
+
 from ksp_mission_control.control.actions.base import VesselCommands, VesselState
+
+# Command fields that have a matching field in VesselState for comparison.
+# pitch/heading are NOT included: command pitch is a target, state pitch is
+# the vessel's current orientation. stage is a trigger, not a state.
+_COMPARABLE_FIELDS: dict[str, str] = {
+    "throttle": "throttle",
+    "sas": "sas",
+    "rcs": "rcs",
+}
 
 
 class NoActiveVesselError(Exception):
-    """Raised when kRPC reports no active vessel."""
+    """Raised when kRPC reports no active vessel.
+
+    This is a transient condition (e.g. player is in the Space Center),
+    not a connection failure. The session keeps polling when it catches this.
+    """
 
 
 def read_vessel_state(conn: object) -> VesselState:
@@ -53,6 +68,36 @@ def read_vessel_state(conn: object) -> VesselState:
         oxidizer=vessel.resources.amount("Oxidizer"),
         mono_propellant=vessel.resources.amount("MonoPropellant"),
     )
+
+
+def filter_commands(
+    commands: VesselCommands, state: VesselState
+) -> tuple[VesselCommands, frozenset[str]]:
+    """Filter out command fields that already match the vessel's current state.
+
+    Returns:
+        - Filtered commands: only fields that differ from the vessel (for kRPC).
+        - Applied fields: names of fields that were actually sent.
+
+    Fields without a comparable state equivalent (pitch, heading, stage) are
+    always applied when non-None.
+    """
+    filtered = VesselCommands()
+    applied: set[str] = set()
+
+    for field in fields(commands):
+        value = getattr(commands, field.name)
+        if value is None:
+            continue
+
+        state_field = _COMPARABLE_FIELDS.get(field.name)
+        if state_field is not None and getattr(state, state_field) == value:
+            continue  # Redundant: vessel already has this value
+
+        setattr(filtered, field.name, value)
+        applied.add(field.name)
+
+    return filtered, frozenset(applied)
 
 
 def apply_controls(conn: object, controls: VesselCommands) -> None:

@@ -9,7 +9,8 @@ from __future__ import annotations
 import contextlib
 import threading
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from typing import Any
 
 from ksp_mission_control.config import ConfigManager
@@ -19,6 +20,7 @@ from ksp_mission_control.control.demo.demo_state import generate_demo_vessel_sta
 from ksp_mission_control.control.krpc_bridge import (
     NoActiveVesselError,
     apply_controls,
+    filter_commands,
     read_vessel_state,
 )
 from ksp_mission_control.setup.kRPC_comms.parser import resolve_krpc_connection
@@ -40,7 +42,9 @@ class ControlSession:
         self,
         *,
         demo: bool,
-        on_update: Callable[[VesselState, RunnerSnapshot, VesselCommands, list[LogEntry]], None],
+        on_update: Callable[
+            [VesselState, RunnerSnapshot, VesselCommands, frozenset[str], list[LogEntry]], None
+        ],
         on_error: Callable[[str], None],
         config_manager: ConfigManager | None = None,
     ) -> None:
@@ -51,14 +55,19 @@ class ControlSession:
         self._conn: object | None = None
         self._runner = ActionRunner()
         self._stop_event = threading.Event()
-        self._retry_event = threading.Event()
         self._tick: int = 0
 
     def run_poll_loop(self) -> None:
         """Blocking poll loop for live mode.
 
-        Connects to kRPC, then loops: read -> step -> apply -> callback.
-        On connection loss or timeout, automatically reconnects after a delay.
+        Two nested loops:
+        - **Outer loop**: keeps getting fresh kRPC connections (reconnect on failure).
+        - **Inner loop**: polls one connection every 0.5s until it dies.
+
+        Errors fall into two categories:
+        - *Transient* (keep polling same connection): NoActiveVesselError, generic exceptions.
+        - *Connection dead* (break to outer loop, reconnect): FutureTimeout, ConnectionError.
+
         Returns only when ``_stop_event`` is set.
         The caller should run this in a ``@work(thread=True)`` worker.
         """
@@ -67,8 +76,8 @@ class ControlSession:
         assert self._config_manager is not None, "config_manager required for live mode"
         settings = resolve_krpc_connection(self._config_manager)
 
+        # Outer loop: each iteration = one connection attempt + poll until it dies
         while not self._stop_event.is_set():
-            # --- connect (or reconnect) ---
             try:
                 self._conn = krpc.connect(
                     name="KSP-MC Control",
@@ -83,13 +92,15 @@ class ControlSession:
                 self._wait_for_reconnect()
                 continue
 
-            # --- poll with this connection ---
+            # Inner loop: poll this connection until it breaks.
+            # kRPC calls are synchronous and can hang forever if KSP freezes.
+            # We run each tick in a thread pool so we can enforce a timeout.
             pool = ThreadPoolExecutor(max_workers=1)
             try:
                 while not self._stop_event.is_set():
                     future = pool.submit(self._poll_tick, conn)
                     try:
-                        vessel_state, step_result = future.result(
+                        vessel_state, step_result, applied_fields = future.result(
                             timeout=_KRPC_CALL_TIMEOUT,
                         )
                         if not self._stop_event.is_set():
@@ -97,40 +108,47 @@ class ControlSession:
                                 vessel_state,
                                 self._runner.snapshot(),
                                 step_result.commands,
+                                applied_fields,
                                 step_result.logs,
                             )
+                    # Connection dead: break to outer loop for reconnect
                     except FutureTimeout:
                         if not self._stop_event.is_set():
                             self._on_error("Connection to vessel lost")
                         break
-                    except NoActiveVesselError:
-                        if not self._stop_event.is_set():
-                            self._on_error("No active vessel found")
                     except ConnectionError as exc:
                         if not self._stop_event.is_set():
                             self._on_error(f"Connection lost: {exc}")
                         break
+                    # Transient: show error but keep polling this connection
+                    except NoActiveVesselError:
+                        if not self._stop_event.is_set():
+                            self._on_error("No active vessel found")
                     except Exception as exc:
                         if not self._stop_event.is_set():
                             self._on_error(f"Error reading data: {exc}")
                     self._stop_event.wait(0.5)
             finally:
+                # wait=False: don't block on a hung kRPC thread; just abandon it
                 pool.shutdown(wait=False)
                 with contextlib.suppress(Exception):
                     conn.close()
 
-            # --- wait before reconnecting ---
+            # Connection died or was never established; wait before reconnecting
             self._wait_for_reconnect()
 
-    def _poll_tick(self, conn: object) -> tuple[VesselState, StepResult]:
-        """Execute one poll iteration: read state, step runner, apply controls.
+    def _poll_tick(self, conn: object) -> tuple[VesselState, StepResult, frozenset[str]]:
+        """Execute one poll iteration: read state, step runner, filter and apply.
 
         Runs in a thread pool so a hung kRPC call can be timed out.
+        Returns the vessel state, step result, and which command fields were
+        actually sent (differed from the vessel's current state).
         """
         vessel_state = read_vessel_state(conn)
         step_result = self._runner.step(vessel_state, dt=0.5)
-        apply_controls(conn, step_result.commands)
-        return vessel_state, step_result
+        filtered, applied_fields = filter_commands(step_result.commands, vessel_state)
+        apply_controls(conn, filtered)
+        return vessel_state, step_result, applied_fields
 
     def demo_tick(self) -> None:
         """Execute one demo iteration.
@@ -141,7 +159,10 @@ class ControlSession:
         self._tick += 1
         vessel_state = generate_demo_vessel_state(self._tick)
         result = self._runner.step(vessel_state, dt=0.5)
-        self._on_update(vessel_state, self._runner.snapshot(), result.commands, result.logs)
+        _filtered, applied_fields = filter_commands(result.commands, vessel_state)
+        self._on_update(
+            vessel_state, self._runner.snapshot(), result.commands, applied_fields, result.logs
+        )
 
     def start_action(self, action: Action, params: dict[str, Any] | None = None) -> None:
         """Begin executing an action. Raises ValueError on invalid params."""
@@ -155,20 +176,12 @@ class ControlSession:
                 apply_controls(self._conn, result.commands)
 
     def _wait_for_reconnect(self) -> None:
-        """Wait for the reconnect interval, or until retry/stop is requested."""
-        self._retry_event.clear()
-        self._retry_event.wait(_RECONNECT_INTERVAL)
-        if not self._stop_event.is_set():
-            self._retry_event.clear()
-
-    def retry_now(self) -> None:
-        """Interrupt the reconnect delay so the next attempt happens immediately."""
-        self._retry_event.set()
+        """Wait before retrying. Returns early if shutdown is requested."""
+        self._stop_event.wait(_RECONNECT_INTERVAL)
 
     def shutdown(self) -> None:
         """Stop the poll loop, abort any running action, and close the connection."""
         self._stop_event.set()
-        self._retry_event.set()
         if self._runner.snapshot().action_id is not None:
             self.abort()
         conn = self._conn

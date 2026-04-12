@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, ClassVar
 
+
 class LogLevel(Enum):
     """Severity level for action debug log entries."""
 

@@ -8,15 +8,15 @@ from textual import work
 from textual.app import ComposeResult
 from textual.containers import Container
 from textual.screen import Screen
-from textual.widgets import Footer, Header, Static
+from textual.widgets import Footer, Header
 
 from ksp_mission_control.control.actions.base import Action, LogEntry, VesselCommands, VesselState
 from ksp_mission_control.control.actions.runner import RunnerSnapshot
 from ksp_mission_control.control.param_input_modal import ParamInputModal
 from ksp_mission_control.control.session import ControlSession
 from ksp_mission_control.control.widgets.action_list import ActionListWidget
+from ksp_mission_control.control.widgets.command_history import CommandHistoryWidget
 from ksp_mission_control.control.widgets.debug_console import DebugConsoleWidget
-from ksp_mission_control.control.widgets.last_command import LastCommandWidget
 from ksp_mission_control.control.widgets.telemetry_display import TelemetryDisplayWidget
 
 
@@ -32,7 +32,6 @@ class ControlScreen(Screen[None]):
     BINDINGS = [
         ("escape", "go_back", "Back to Setup"),
         ("a", "abort_action", "Abort Action"),
-        ("r", "retry_connection", "Retry Connection"),
     ]
 
     def __init__(self, demo: bool = False) -> None:
@@ -47,7 +46,7 @@ class ControlScreen(Screen[None]):
             yield TelemetryDisplayWidget(mode=mode, id="telemetry-display")
             yield ActionListWidget(id="action-list")
             yield DebugConsoleWidget(id="debug-console")
-            yield LastCommandWidget(id="last-command")
+            yield CommandHistoryWidget(id="command-history")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -56,8 +55,12 @@ class ControlScreen(Screen[None]):
         config_manager = cast(MissionControlApp, self.app).config_manager
         self._session = ControlSession(
             demo=self._demo,
-            on_update=lambda s, r, c, l: self.app.call_from_thread(self._update_ui, s, r, c, l),
-            on_error=lambda msg: self.app.call_from_thread(self._show_error, msg),
+            on_update=lambda state, snapshot, commands, applied_fields, logs: (
+                self.app.call_from_thread(
+                    self._update_ui, state, snapshot, commands, applied_fields, logs
+                )
+            ),
+            on_error=lambda message: self.app.call_from_thread(self._show_error, message),
             config_manager=config_manager,
         )
 
@@ -77,13 +80,17 @@ class ControlScreen(Screen[None]):
         state: VesselState,
         runner_state: RunnerSnapshot,
         commands: VesselCommands,
+        applied_fields: frozenset[str],
         logs: list[LogEntry],
     ) -> None:
-        """Update telemetry, action list, last command, and debug console."""
+        """Update telemetry, action list, command history, and debug console."""
         self.query_one("#telemetry-display", TelemetryDisplayWidget).update_vessel_state(state)
         self.query_one("#action-list", ActionListWidget).update_running(runner_state.action_id)
-        self.query_one("#last-command", LastCommandWidget).record_commands(
-            commands, action_label=runner_state.action_label, met=state.met,
+        self.query_one("#command-history", CommandHistoryWidget).record_commands(
+            commands,
+            applied_fields=applied_fields,
+            action_label=runner_state.action_label,
+            met=state.met,
             status=runner_state.status,
         )
         self.query_one("#debug-console", DebugConsoleWidget).append_logs(logs, met=state.met)
@@ -142,11 +149,6 @@ class ControlScreen(Screen[None]):
     def on_unmount(self) -> None:
         """Called when the screen is removed from the DOM (app quit)."""
         self._shutdown()
-
-    def action_retry_connection(self) -> None:
-        """Skip the reconnect delay and retry immediately."""
-        if self._session is not None:
-            self._session.retry_now()
 
     def action_go_back(self) -> None:
         """Return to the setup screen."""

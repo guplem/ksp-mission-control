@@ -1,4 +1,4 @@
-"""LastCommandWidget - paginated history of VesselCommands sent to the ship."""
+"""CommandHistoryWidget - paginated history of VesselCommands sent to the ship."""
 
 from __future__ import annotations
 
@@ -25,10 +25,12 @@ class CommandRecord:
     action_label: str
     met: float
     commands: VesselCommands
+    applied_fields: frozenset[str]
+    """Field names that were actually sent (differed from vessel state)."""
     status: ActionStatus | None = None
 
 
-class LastCommandWidget(Static):
+class CommandHistoryWidget(Static):
     """Paginated history of VesselCommands sent to the ship."""
 
     DEFAULT_CSS = """
@@ -70,19 +72,21 @@ class LastCommandWidget(Static):
     def record_commands(
         self,
         commands: VesselCommands,
+        *,
+        applied_fields: frozenset[str],
         action_label: str | None,
         met: float,
         status: ActionStatus | None = None,
     ) -> None:
-        """Record commands if they contain any non-None values and differ from the last entry."""
-        has_values = any(
-            getattr(commands, field.name) is not None for field in fields(commands)
-        )
-        if not has_values:
+        """Record commands if any field was actually applied to the vessel."""
+        if not applied_fields:
             return
 
         label = action_label or "Manual"
-        record = CommandRecord(action_label=label, met=met, commands=commands, status=status)
+        record = CommandRecord(
+            action_label=label, met=met, commands=commands,
+            applied_fields=applied_fields, status=status,
+        )
 
         if self._history and _commands_equal(self._history[-1].commands, commands):
             return
@@ -148,7 +152,7 @@ class LastCommandWidget(Static):
         )
         self.query_one("#command-history-title", Static).update(title)
         self.query_one("#command-history-content", Static).update(
-            _format_commands(record.commands)
+            _format_commands(record.commands, record.applied_fields)
         )
         total = len(self._history)
         page = self._index + 1
@@ -163,15 +167,23 @@ class LastCommandWidget(Static):
         self.query_one("#cmd-last", Button).disabled = self._following
 
 
-def _format_commands(commands: VesselCommands) -> str:
+def _format_commands(commands: VesselCommands, applied_fields: frozenset[str]) -> str:
+    """Format commands with 3 visual states:
+
+    - None: not commanded at all (dim with ---)
+    - Has value, not applied: redundant, vessel already had this value (dim with value)
+    - Has value, applied: actually sent to vessel (normal)
+    """
     lines: list[str] = []
     for field in fields(commands):
         value = getattr(commands, field.name)
         label = field.name.replace("_", " ").title()
         if value is None:
             lines.append(f"[dim]{label}: ---[/dim]")
-        else:
+        elif field.name in applied_fields:
             lines.append(f"{label}: {value}")
+        else:
+            lines.append(f"[dim]{label}: {value}[/dim]")
     return "\n".join(lines)
 
 
