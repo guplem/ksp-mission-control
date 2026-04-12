@@ -1,6 +1,6 @@
 # KSP Mission Control
 
-A terminal-based mission control console for **Kerbal Space Program**. Connect to your running KSP game via the [kRPC mod](https://krpc.github.io/krpc/) and monitor telemetry, control your vessel, plan maneuvers, and manage missions -- all from a hacker-aesthetic terminal UI.
+A terminal-based mission control console for **Kerbal Space Program**. Connect to your running KSP game via the [kRPC mod](https://krpc.github.io/krpc/) and monitor telemetry, control your vessel, plan maneuvers, and manage missions -- all from a hacker-aesthetic terminal UI thanks to [Textual](https://textual.textualize.io/).
 
 ![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
