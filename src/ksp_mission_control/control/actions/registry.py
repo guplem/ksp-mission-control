@@ -2,11 +2,23 @@
 
 from __future__ import annotations
 
+import importlib
+
 from ksp_mission_control.control.actions.base import Action
 
 
 def get_available_actions() -> list[Action]:
-    """Return the list of all available actions."""
-    from ksp_mission_control.control.actions.hover.action import HoverAction
+    """Return the list of all available actions.
 
-    return [HoverAction()]
+    Reloads action modules from disk each call so code changes
+    take effect without restarting the app.
+    """
+
+    # 1. Import
+    import ksp_mission_control.control.actions.hover.action as hover_module
+
+    # 2. Reload to pick up code changes without restarting the app
+    importlib.reload(hover_module)
+
+    # 3. Instantiate and return
+    return [hover_module.HoverAction()]
