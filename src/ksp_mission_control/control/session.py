@@ -1,4 +1,4 @@
-"""Control session - owns the poll loop, kRPC connection, and ActionRunner.
+"""Control session - owns the poll loop, kRPC connection, and PlanExecutor.
 
 This module has no Textual dependency. The screen bridges session callbacks
 to the UI thread via ``app.call_from_thread()``.
@@ -15,7 +15,9 @@ from typing import Any
 
 from ksp_mission_control.config import ConfigManager
 from ksp_mission_control.control.actions.base import Action, LogEntry, VesselCommands, VesselState
-from ksp_mission_control.control.actions.runner import ActionRunner, RunnerSnapshot, StepResult
+from ksp_mission_control.control.actions.flight_plan import FlightPlan
+from ksp_mission_control.control.actions.plan_executor import PlanExecutor, PlanSnapshot
+from ksp_mission_control.control.actions.runner import RunnerSnapshot, StepResult
 from ksp_mission_control.control.demo.demo_state import generate_demo_vessel_state
 from ksp_mission_control.control.krpc_bridge import (
     NoActiveVesselError,
@@ -33,7 +35,7 @@ _RECONNECT_INTERVAL = 3.0
 
 
 class ControlSession:
-    """Owns the kRPC connection, poll loop, and ActionRunner.
+    """Owns the kRPC connection, poll loop, and PlanExecutor.
 
     Communicates with the UI exclusively through typed callbacks.
     """
@@ -43,7 +45,15 @@ class ControlSession:
         *,
         demo: bool,
         on_update: Callable[
-            [VesselState, RunnerSnapshot, VesselCommands, frozenset[str], list[LogEntry]], None
+            [
+                VesselState,
+                RunnerSnapshot,
+                VesselCommands,
+                frozenset[str],
+                list[LogEntry],
+                PlanSnapshot,
+            ],
+            None,
         ],
         on_error: Callable[[str], None],
         config_manager: ConfigManager | None = None,
@@ -53,7 +63,7 @@ class ControlSession:
         self._on_error = on_error
         self._config_manager = config_manager
         self._conn: object | None = None
-        self._runner = ActionRunner()
+        self._executor = PlanExecutor()
         self._stop_event = threading.Event()
         self._tick: int = 0
         self._last_state: VesselState = VesselState()
@@ -107,10 +117,11 @@ class ControlSession:
                         if not self._stop_event.is_set():
                             self._on_update(
                                 vessel_state,
-                                self._runner.snapshot(),
+                                self._executor.snapshot().runner,
                                 step_result.commands,
                                 applied_fields,
                                 step_result.logs,
+                                self._executor.snapshot(),
                             )
                     # Connection dead: break to outer loop for reconnect
                     except FutureTimeout:
@@ -139,7 +150,7 @@ class ControlSession:
             self._wait_for_reconnect()
 
     def _poll_tick(self, conn: object) -> tuple[VesselState, StepResult, frozenset[str]]:
-        """Execute one poll iteration: read state, step runner, filter and apply.
+        """Execute one poll iteration: read state, step executor, filter and apply.
 
         Runs in a thread pool so a hung kRPC call can be timed out.
         Returns the vessel state, step result, and which command fields were
@@ -147,7 +158,7 @@ class ControlSession:
         """
         vessel_state = read_vessel_state(conn)
         self._last_state = vessel_state
-        step_result = self._runner.step(vessel_state, dt=0.5)
+        step_result = self._executor.step(vessel_state, dt=0.5)
         filtered, applied_fields = filter_commands(step_result.commands, vessel_state)
         apply_controls(conn, filtered)
         return vessel_state, step_result, applied_fields
@@ -155,28 +166,53 @@ class ControlSession:
     def demo_tick(self) -> None:
         """Execute one demo iteration.
 
-        Generates fake vessel state, steps the runner, and calls on_update.
+        Generates fake vessel state, steps the executor, and calls on_update.
         Called by the screen's ``set_interval`` timer on the main thread.
         """
         self._tick += 1
         vessel_state = generate_demo_vessel_state(self._tick)
         self._last_state = vessel_state
-        result = self._runner.step(vessel_state, dt=0.5)
+        result = self._executor.step(vessel_state, dt=0.5)
         _filtered, applied_fields = filter_commands(result.commands, vessel_state)
         self._on_update(
-            vessel_state, self._runner.snapshot(), result.commands, applied_fields, result.logs
+            vessel_state,
+            self._executor.snapshot().runner,
+            result.commands,
+            applied_fields,
+            result.logs,
+            self._executor.snapshot(),
         )
 
     def start_action(self, action: Action, params: dict[str, Any] | None = None) -> None:
-        """Begin executing an action. Raises ValueError on invalid params."""
-        self._runner.start_action(action, self._last_state, params)
+        """Begin executing a single action. Raises ValueError on invalid params."""
+        self._executor.start_action(action, self._last_state, params)
 
-    def abort(self) -> None:
-        """Abort the current action and apply cleanup commands if connected."""
-        result = self._runner.abort()
+    def start_plan(self, plan: FlightPlan) -> None:
+        """Begin executing a flight plan. Raises ValueError on invalid plan."""
+        self._executor.start_plan(plan, self._last_state)
+
+    def continue_plan(self) -> None:
+        """Continue a paused plan (skip failed step). Raises ValueError if not paused."""
+        self._executor.continue_plan(self._last_state)
+
+    def abort_plan(self) -> None:
+        """Abort a paused plan after failure."""
+        result = self._executor.abort_plan()
         if not self._demo and self._conn is not None:
             with contextlib.suppress(Exception):
                 apply_controls(self._conn, result.commands)
+
+    def abort(self) -> None:
+        """Abort the current action and apply cleanup commands if connected."""
+        result = self._executor.abort()
+        if not self._demo and self._conn is not None:
+            with contextlib.suppress(Exception):
+                apply_controls(self._conn, result.commands)
+
+    @property
+    def paused_on_failure(self) -> bool:
+        """Whether the plan executor is paused waiting for user decision."""
+        return self._executor.paused_on_failure
 
     def _wait_for_reconnect(self) -> None:
         """Wait before retrying. Returns early if shutdown is requested."""
@@ -185,7 +221,7 @@ class ControlSession:
     def shutdown(self) -> None:
         """Stop the poll loop, abort any running action, and close the connection."""
         self._stop_event.set()
-        if self._runner.snapshot().action_id is not None:
+        if self._executor.snapshot().runner.action_id is not None:
             self.abort()
         conn = self._conn
         self._conn = None
@@ -195,4 +231,8 @@ class ControlSession:
 
     def snapshot(self) -> RunnerSnapshot:
         """Return an immutable snapshot of the current runner state."""
-        return self._runner.snapshot()
+        return self._executor.snapshot().runner
+
+    def plan_snapshot(self) -> PlanSnapshot:
+        """Return an immutable snapshot of the current plan state."""
+        return self._executor.snapshot()

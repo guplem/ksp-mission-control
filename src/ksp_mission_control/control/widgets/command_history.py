@@ -243,7 +243,5 @@ def _format_commands(commands: VesselCommands, applied_fields: frozenset[str]) -
             lines.append(f"{label}: {formatted}")
         else:
             lines.append(f"[dim]{label}: {formatted}[/dim]")
-    # TODO: Remove dummy lines (testing layout with lots of content)
-    for i in range(20):
-        lines.append(f"[dim]Dummy Field {i}: {i * 1.5:.1f}[/dim]")
+
     return "\n".join(lines) if lines else "[dim]No commands[/dim]"

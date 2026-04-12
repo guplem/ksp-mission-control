@@ -66,7 +66,7 @@ class TestControlSessionDemo:
         updates: list[tuple[VesselState, RunnerSnapshot]] = []
         session = ControlSession(
             demo=True,
-            on_update=lambda state, snapshot, _cmds, _applied, _logs: updates.append(
+            on_update=lambda state, snapshot, _cmds, _applied, _logs, _plan: updates.append(
                 (state, snapshot)
             ),
             on_error=lambda _: None,
@@ -83,7 +83,7 @@ class TestControlSessionDemo:
         states: list[VesselState] = []
         session = ControlSession(
             demo=True,
-            on_update=lambda state, _snapshot, _cmds, _applied, _logs: states.append(state),
+            on_update=lambda state, _snapshot, _cmds, _applied, _logs, _plan: states.append(state),
             on_error=lambda _: None,
         )
 

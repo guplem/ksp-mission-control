@@ -50,20 +50,27 @@ src/ksp_mission_control/
 ├── style.tcss            # App-level global styles
 ├── control/              # Control room feature
 │   ├── screen.py         # ControlScreen (thin UI glue, delegates to session) (ADR 0007)
-│   ├── session.py        # ControlSession (poll loop, connection, ActionRunner) (ADR 0007)
+│   ├── session.py        # ControlSession (poll loop, connection, PlanExecutor) (ADR 0007)
 │   ├── style.tcss        # Control-screen grid layout (4x2: telemetry, actions, console, history)
 │   ├── formatting.py     # Shared formatting: format_met(), resolve_theme_colors()
 │   ├── krpc_bridge.py    # kRPC I/O: read/write + filter_commands() + NoActiveVesselError
-│   ├── param_input_modal.py # ParamInputModal (parameter collection before action start)
+│   ├── param_input_modal.py    # ParamInputModal (parameter collection before action start)
+│   ├── action_picker.py       # ActionPicker (modal for selecting an action to run)
+│   ├── flight_plan_picker.py  # FlightPlanPicker (modal for selecting .plan files)
+│   ├── plan_failure_dialog.py # PlanFailureDialog (continue/abort on step failure)
 │   ├── actions/          # Action execution system (ADR 0006)
 │   │   ├── base.py       # Action ABC, VesselState, VesselCommands, ActionLogger, enums
 │   │   ├── runner.py     # ActionRunner (step-based executor), StepResult
+│   │   ├── plan_executor.py # PlanExecutor (wraps ActionRunner, chains plan steps)
+│   │   ├── flight_plan.py   # FlightPlan, FlightPlanStep, parse_flight_plan()
 │   │   ├── registry.py   # get_available_actions() factory
-│   │   └── hover/        # Hover altitude-hold action
-│   │       └── action.py # HoverAction (PD controller)
+│   │   ├── hover/        # Hover altitude-hold action
+│   │   │   └── action.py # HoverAction (PD controller, hover duration)
+│   │   └── land/         # Landing action
+│   │       └── action.py # LandAction (controlled descent PD controller)
 │   ├── widgets/          # Control-screen widgets
 │   │   ├── telemetry_display.py # TelemetryDisplayWidget (3-column: flight, orbit, resources)
-│   │   ├── action_list.py       # ActionListWidget (available actions + running status)
+│   │   ├── action_list.py       # ActionListWidget (launch buttons, running status, plan steps)
 │   │   ├── debug_console.py     # DebugConsoleWidget (scrolling color-coded action logs)
 │   │   └── command_history.py   # CommandHistoryWidget (paginated command history with navigation)
 │   └── demo/             # Demo mode data (ADR 0004)
@@ -92,6 +99,10 @@ src/ksp_mission_control/
 │       └── welcome_widget.py # WelcomeWidget
 └── widgets/              # Shared/reusable Textual Widgets
     └── welcome_view.py   # WelcomeView
+
+plans/                        # Flight plan files (.plan)
+├── hover-and-land.plan       # Hover then land
+└── altitude-steps.plan       # Step through altitudes then land
 ```
 
 ### Module organization rules
@@ -124,27 +135,31 @@ This project uses **feature-based modules**, not layer-based. Every feature is a
 ### Data flow
 
 ```
-kRPC --read--> krpc_bridge --> VesselState --> ActionRunner.step() --> VesselCommands
-                                                                          |
-                                                              filter_commands(commands, state)
-                                                                    |              |
-                                                              applied_fields   filtered commands
-                                                                    |              |
-                                                                    |       krpc_bridge --write--> kRPC
-                                                                    |
-                                              ControlSession (owns connection + runner + poll loop)
-                                                  |                                      |
-                                              on_update callback                    on_error callback
-                                                  |                                      |
-                                              ControlScreen (UI glue: call_from_thread -> widgets)
+kRPC --read--> krpc_bridge --> VesselState --> PlanExecutor.step() --> VesselCommands
+                                                      |
+                                              ActionRunner.step()
+                                              (single action tick)
+                                                      |
+                                              filter_commands(commands, state)
+                                                    |              |
+                                              applied_fields   filtered commands
+                                                    |              |
+                                                    |       krpc_bridge --write--> kRPC
+                                                    |
+                                  ControlSession (owns connection + executor + poll loop)
+                                      |                                      |
+                                  on_update callback                    on_error callback
+                                      |                                      |
+                                  ControlScreen (UI glue: call_from_thread -> widgets)
 ```
 
 - **Read path**: `krpc_bridge.read_vessel_state()` reads kRPC telemetry into a pure `VesselState` dataclass. In demo mode, `generate_demo_vessel_state()` produces the same dataclass with fake data.
-- **Action loop**: `ActionRunner.step()` passes `VesselState` to the current action's `tick()`, which mutates a `VesselCommands` buffer and collects `LogEntry` messages via `ActionLogger`.
+- **Action loop**: `PlanExecutor.step()` delegates to `ActionRunner.step()`, which passes `VesselState` to the current action's `tick()`, mutating a `VesselCommands` buffer. When a plan is active, PlanExecutor detects action completion and auto-advances to the next step.
 - **Command filtering**: `filter_commands()` compares each command field against the vessel's current state. Only fields that differ are sent to kRPC. Returns `applied_fields` (which fields were actually sent) for the UI.
 - **Write path**: `krpc_bridge.apply_controls()` writes the filtered commands to kRPC. In demo mode, commands are discarded.
 - **Session/screen split**: `ControlSession` owns the poll loop and calls `on_update`/`on_error` callbacks. `ControlScreen` wraps these callbacks with `call_from_thread()` to bridge to the UI thread.
 - **Models are pure (ADR 0004)**: `VesselState` and `VesselCommands` have no kRPC or Textual imports. Actions are testable with constructed states. Demo mode swaps the data source without changing any logic.
+- **Flight plans**: Text files (`.plan`) parsed by `parse_flight_plan()`. Each line is `action_id key=value ...`. Plans are loaded via `FlightPlanPicker` modal. On step failure, `PlanFailureDialog` asks user to continue or abort.
 
 ### Key patterns
 
@@ -155,6 +170,7 @@ kRPC --read--> krpc_bridge --> VesselState --> ActionRunner.step() --> VesselCom
 - **Command buffer + filtering**: `VesselCommands` fields default to `None` ("don't change"). Actions set only the fields they care about. `filter_commands()` compares against vessel state and only sends fields that differ. The UI shows all intended values but dims redundant ones.
 - **Theme color resolution**: Widgets that need theme colors in Rich markup (where CSS variables aren't available) use `resolve_theme_colors(app, mapping)` from `formatting.py`. Results are cached after first call.
 - **CSS theming**: Keep static layout and visual styling in `.tcss`. Use Python style updates only for runtime-dependent values (state, measurements, animations, temporary overrides).
+- **Flight plan execution**: `PlanExecutor` wraps `ActionRunner` and manages step-to-step transitions. It detects action completion by comparing runner snapshots before/after `step()` and checking logs for "succeeded"/"failed". On success, it auto-starts the next step. On failure, it pauses and sets `paused_on_failure` for the UI to show a dialog. Plans are stored as `.plan` text files in the `plans/` directory.
 
 ### Textual UI composition and styling rules (ADR 0001)
 

@@ -10,9 +10,14 @@ from textual.containers import Container
 from textual.screen import Screen
 from textual.widgets import Footer, Header
 
+from ksp_mission_control.control.action_picker import ActionPicker
 from ksp_mission_control.control.actions.base import Action, LogEntry, VesselCommands, VesselState
+from ksp_mission_control.control.actions.flight_plan import FlightPlan
+from ksp_mission_control.control.actions.plan_executor import PlanSnapshot
 from ksp_mission_control.control.actions.runner import RunnerSnapshot
+from ksp_mission_control.control.flight_plan_picker import FlightPlanPicker
 from ksp_mission_control.control.param_input_modal import ParamInputModal
+from ksp_mission_control.control.plan_failure_dialog import PlanFailureDialog
 from ksp_mission_control.control.session import ControlSession
 from ksp_mission_control.control.widgets.action_list import ActionListWidget
 from ksp_mission_control.control.widgets.command_history import CommandHistoryWidget
@@ -38,6 +43,7 @@ class ControlScreen(Screen[None]):
         super().__init__()
         self._demo = demo
         self._session: ControlSession | None = None
+        self._showing_failure_dialog: bool = False
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -55,9 +61,9 @@ class ControlScreen(Screen[None]):
         config_manager = cast(MissionControlApp, self.app).config_manager
         self._session = ControlSession(
             demo=self._demo,
-            on_update=lambda state, snapshot, commands, applied_fields, logs: (
+            on_update=lambda state, snapshot, commands, applied_fields, logs, plan_snap: (
                 self.app.call_from_thread(
-                    self._update_ui, state, snapshot, commands, applied_fields, logs
+                    self._update_ui, state, snapshot, commands, applied_fields, logs, plan_snap
                 )
             ),
             on_error=lambda message: self.app.call_from_thread(self._show_error, message),
@@ -82,10 +88,13 @@ class ControlScreen(Screen[None]):
         commands: VesselCommands,
         applied_fields: frozenset[str],
         logs: list[LogEntry],
+        plan_snap: PlanSnapshot,
     ) -> None:
         """Update telemetry, action list, command history, and debug console."""
         self.query_one("#telemetry-display", TelemetryDisplayWidget).update_vessel_state(state)
-        self.query_one("#action-list", ActionListWidget).update_running(runner_state.action_id)
+        action_list = self.query_one("#action-list", ActionListWidget)
+        action_list.update_running(runner_state.action_id)
+        action_list.update_plan(plan_snap)
         self.query_one("#command-history", CommandHistoryWidget).record_commands(
             commands,
             applied_fields=applied_fields,
@@ -95,25 +104,77 @@ class ControlScreen(Screen[None]):
         )
         self.query_one("#debug-console", DebugConsoleWidget).append_logs(logs, met=state.met)
 
+        # Show failure dialog if plan is paused on failure
+        if (
+            self._session is not None
+            and self._session.paused_on_failure
+            and not self._showing_failure_dialog
+        ):
+            self._showing_failure_dialog = True
+            self.app.push_screen(
+                PlanFailureDialog(plan_snap),
+                callback=self._handle_failure_dialog,
+            )
+
+    def _handle_failure_dialog(self, continue_plan: bool | None) -> None:
+        """Handle the result of the failure confirmation dialog."""
+        self._showing_failure_dialog = False
+        if self._session is None:
+            return
+        if continue_plan:
+            try:
+                self._session.continue_plan()
+            except ValueError as exc:
+                self.notify(str(exc), severity="error")
+        else:
+            self._session.abort_plan()
+            self.query_one("#action-list", ActionListWidget).update_running(None)
+
     def _show_error(self, message: str) -> None:
         self.query_one("#telemetry-display", TelemetryDisplayWidget).show_error(message)
 
-    def on_action_list_widget_selected(self, event: ActionListWidget.Selected) -> None:
-        """Open the parameter dialog for the selected action."""
-        if self._session is None:
+    def on_action_list_widget_run_action_requested(
+        self, event: ActionListWidget.RunActionRequested
+    ) -> None:
+        """Open the action picker dialog."""
+        self.app.push_screen(
+            ActionPicker(),
+            callback=self._handle_action_picked,
+        )
+
+    def _handle_action_picked(self, action: Action | None) -> None:
+        """Handle the selected action from the picker."""
+        if action is None or self._session is None:
             return
-        action = event.action
         if action.params:
             self.app.push_screen(
                 ParamInputModal(action),
                 callback=lambda result: (
-                    self._start_action_with_params(action, result) if result is not None else None
+                    self._handle_action_with_params(action, result) if result is not None else None
                 ),
             )
         else:
-            self._start_action_with_params(action, None)
+            self._handle_action_with_params(action, None)
 
-    def _start_action_with_params(self, action: Action, params: dict[str, float] | None) -> None:
+    def on_action_list_widget_load_plan_requested(
+        self, event: ActionListWidget.LoadPlanRequested
+    ) -> None:
+        """Open the flight plan picker."""
+        self.app.push_screen(
+            FlightPlanPicker(),
+            callback=self._handle_plan_selected,
+        )
+
+    def _handle_plan_selected(self, plan: FlightPlan | None) -> None:
+        """Start the selected flight plan."""
+        if plan is None or self._session is None:
+            return
+        try:
+            self._session.start_plan(plan)
+        except ValueError as exc:
+            self.notify(str(exc), severity="error")
+
+    def _handle_action_with_params(self, action: Action, params: dict[str, float] | None) -> None:
         """Start the action with the given parameters."""
         if self._session is None:
             return

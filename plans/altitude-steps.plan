@@ -1,0 +1,4 @@
+hover  target_altitude=50   hover_duration=5
+hover  target_altitude=100  hover_duration=5
+hover  target_altitude=200  hover_duration=5
+land   target_speed=2

@@ -8,7 +8,8 @@ A terminal-based mission control console for **Kerbal Space Program**. Connect t
 ## Features
 
 - **Live flight telemetry** -- 3-column display: flight data, orbital parameters, resources and configuration, updated every 0.5s
-- **Automated vessel actions** -- tick-based action system with parameter input. Ships with a PD altitude-hold (Hover) action
+- **Automated vessel actions** -- tick-based action system with parameter input. Ships with Hover (PD altitude-hold) and Land (controlled descent) actions
+- **Flight plans** -- load multi-step mission plans from `.plan` text files. Steps execute sequentially with per-step status tracking, auto-advance on success, and a failure dialog to continue or abort
 - **Action debug console** -- scrolling, color-coded log (DEBUG/INFO/WARN/ERROR) with MET timestamps showing action internals
 - **Command history** -- paginated record of every command sent to the vessel, showing which fields were actually applied vs redundant
 - **Auto kRPC setup** -- detects your KSP installation and installs the kRPC mod for you
@@ -48,6 +49,22 @@ To try the UI without KSP running:
 ```bash
 uv run ksp-mc --demo
 ```
+
+## Flight Plans
+
+Create `.plan` files in the `plans/` directory. Each line is an action ID followed by space-separated `key=value` parameters:
+
+```
+# Hover at 50m for 5 seconds, then land
+hover  target_altitude=50  hover_duration=5
+land   target_speed=2
+```
+
+- Lines starting with `#` are comments
+- Empty lines are ignored
+- Missing optional parameters use the action's defaults
+
+Load a plan from the control screen using the **Load Flight Plan** button.
 
 ## Development
 
