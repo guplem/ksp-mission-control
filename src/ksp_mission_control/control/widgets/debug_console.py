@@ -6,7 +6,7 @@ from textual.app import ComposeResult
 from textual.widgets import RichLog, Static
 
 from ksp_mission_control.control.actions.base import LogEntry, LogLevel
-from ksp_mission_control.control.formatting import format_met
+from ksp_mission_control.control.formatting import format_met, resolve_theme_colors
 
 _LEVEL_VARIABLE: dict[LogLevel, str] = {
     LogLevel.DEBUG: "text-muted",
@@ -40,10 +40,7 @@ class DebugConsoleWidget(Static):
     def _resolve_colors(self) -> dict[LogLevel, str]:
         """Resolve theme CSS variables to hex colors, cached after first call."""
         if self._level_colors is None:
-            css_vars = self.app.get_css_variables()
-            self._level_colors = {
-                level: css_vars.get(var, "#ffffff") for level, var in _LEVEL_VARIABLE.items()
-            }
+            self._level_colors = resolve_theme_colors(self.app, _LEVEL_VARIABLE)
         return self._level_colors
 
     def append_logs(self, logs: list[LogEntry], *, met: float) -> None:

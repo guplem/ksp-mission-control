@@ -9,7 +9,7 @@ from textual.containers import Horizontal
 from textual.widgets import Button, Static
 
 from ksp_mission_control.control.actions.base import ActionStatus, VesselCommands
-from ksp_mission_control.control.formatting import format_met
+from ksp_mission_control.control.formatting import format_met, resolve_theme_colors
 
 _MAX_HISTORY = 10_000
 """Maximum number of command records to keep. Oldest entries are dropped."""
@@ -133,17 +133,13 @@ class CommandHistoryWidget(Static):
     def _resolve_colors(self) -> dict[ActionStatus, str]:
         """Resolve theme CSS variables to hex colors, cached after first call."""
         if self._status_colors is None:
-            css_vars = self.app.get_css_variables()
-            self._status_colors = {
-                status: css_vars.get(var, "#ffffff") for status, var in _STATUS_VARIABLE.items()
-            }
+            self._status_colors = resolve_theme_colors(self.app, _STATUS_VARIABLE)
         return self._status_colors
 
     def _resolve_accent(self) -> str:
         """Resolve the accent CSS variable to a hex color, cached after first call."""
         if self._accent_color is None:
-            css_vars = self.app.get_css_variables()
-            self._accent_color = css_vars.get("accent", "#ffffff")
+            self._accent_color = resolve_theme_colors(self.app, {"accent": "accent"})["accent"]
         return self._accent_color
 
     def _render_current(self) -> None:
