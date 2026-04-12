@@ -56,6 +56,7 @@ class ControlSession:
         self._runner = ActionRunner()
         self._stop_event = threading.Event()
         self._tick: int = 0
+        self._last_state: VesselState = VesselState()
 
     def run_poll_loop(self) -> None:
         """Blocking poll loop for live mode.
@@ -145,6 +146,7 @@ class ControlSession:
         actually sent (differed from the vessel's current state).
         """
         vessel_state = read_vessel_state(conn)
+        self._last_state = vessel_state
         step_result = self._runner.step(vessel_state, dt=0.5)
         filtered, applied_fields = filter_commands(step_result.commands, vessel_state)
         apply_controls(conn, filtered)
@@ -158,6 +160,7 @@ class ControlSession:
         """
         self._tick += 1
         vessel_state = generate_demo_vessel_state(self._tick)
+        self._last_state = vessel_state
         result = self._runner.step(vessel_state, dt=0.5)
         _filtered, applied_fields = filter_commands(result.commands, vessel_state)
         self._on_update(
@@ -166,7 +169,7 @@ class ControlSession:
 
     def start_action(self, action: Action, params: dict[str, Any] | None = None) -> None:
         """Begin executing an action. Raises ValueError on invalid params."""
-        self._runner.start_action(action, params)
+        self._runner.start_action(action, self._last_state, params)
 
     def abort(self) -> None:
         """Abort the current action and apply cleanup commands if connected."""

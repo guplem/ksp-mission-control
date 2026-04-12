@@ -43,7 +43,7 @@ class StubAction(Action):
         self.started = False
         self.tick_count = 0
 
-    def start(self, param_values: dict[str, Any]) -> None:
+    def start(self, state: VesselState, param_values: dict[str, Any]) -> None:
         self.started = True
 
     def tick(

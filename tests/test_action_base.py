@@ -9,6 +9,7 @@ from ksp_mission_control.control.actions.base import (
     ActionResult,
     ActionStatus,
     VesselCommands,
+    VesselSituation,
     VesselState,
 )
 
@@ -90,7 +91,7 @@ class TestVesselState:
         assert state.periapsis == 0.0
         assert state.met == 0.0
         assert state.vessel_name == ""
-        assert state.situation == ""
+        assert state.situation == VesselSituation.PRE_LAUNCH
         assert state.body == ""
         assert state.latitude == 0.0
         assert state.longitude == 0.0

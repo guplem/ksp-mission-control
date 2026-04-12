@@ -34,9 +34,14 @@ class TestHoverActionMetadata:
 class TestHoverActionTick:
     """Tests for the hover PD-controller logic."""
 
-    def _make_started_action(self, target: float = 100.0) -> HoverAction:
+    def _make_started_action(
+        self, target: float = 100.0, initial_altitude: float = 0.0
+    ) -> HoverAction:
         action = HoverAction()
-        action.start({"target_altitude": target})
+        state = VesselState(altitude_surface=initial_altitude)
+        action.start(
+            state, {"target_altitude": target, "horizontal_control": 0.0, "land_at_end": False}
+        )
         return action
 
     def test_below_target_high_throttle(self) -> None:
@@ -127,14 +132,20 @@ class TestHoverActionStop:
 
     def test_stop_kills_throttle(self) -> None:
         action = HoverAction()
-        action.start({"target_altitude": 100.0})
+        state = VesselState()
+        action.start(
+            state, {"target_altitude": 100.0, "horizontal_control": 0.0, "land_at_end": False}
+        )
         controls = VesselCommands()
-        action.stop(controls, log=ActionLogger())
+        action.stop(state, controls, log=ActionLogger())
         assert controls.throttle == 0.0
 
     def test_stop_disables_sas(self) -> None:
         action = HoverAction()
-        action.start({"target_altitude": 100.0})
+        state = VesselState()
+        action.start(
+            state, {"target_altitude": 100.0, "horizontal_control": 0.0, "land_at_end": False}
+        )
         controls = VesselCommands()
-        action.stop(controls, log=ActionLogger())
+        action.stop(state, controls, log=ActionLogger())
         assert controls.sas is False

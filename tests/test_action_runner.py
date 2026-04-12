@@ -37,7 +37,7 @@ class StubAction(Action):
     def set_return_status(self, status: ActionStatus) -> None:
         self._return_status = status
 
-    def start(self, param_values: dict[str, Any]) -> None:
+    def start(self, state: VesselState, param_values: dict[str, Any]) -> None:
         self.started = True
         self._param_values = param_values
 
@@ -49,9 +49,9 @@ class StubAction(Action):
         controls.sas = True
         return ActionResult(status=self._return_status)
 
-    def stop(self, controls: VesselCommands, log: ActionLogger) -> None:
+    def stop(self, state: VesselState, controls: VesselCommands, log: ActionLogger) -> None:
         self.stopped = True
-        super().stop(controls, log)
+        super().stop(state, controls, log)
 
 
 class RequiredParamAction(Action):
@@ -64,7 +64,7 @@ class RequiredParamAction(Action):
         ActionParam("altitude", "Altitude", "Target altitude", required=True, unit="m"),
     ]
 
-    def start(self, param_values: dict[str, Any]) -> None:
+    def start(self, state: VesselState, param_values: dict[str, Any]) -> None:
         pass
 
     def tick(
@@ -98,13 +98,13 @@ class TestActionRunnerStartAndStep:
     def test_start_action_with_defaults(self) -> None:
         runner = ActionRunner()
         action = StubAction()
-        runner.start_action(action)
+        runner.start_action(action, VesselState())
         assert action.started
 
     def test_step_calls_tick_and_returns_controls(self) -> None:
         runner = ActionRunner()
         action = StubAction()
-        runner.start_action(action)
+        runner.start_action(action, VesselState())
         result = runner.step(VesselState(), dt=0.5)
         assert action.tick_count == 1
         assert result.commands.throttle == 0.7
@@ -113,7 +113,7 @@ class TestActionRunnerStartAndStep:
     def test_step_increments_tick_count(self) -> None:
         runner = ActionRunner()
         action = StubAction()
-        runner.start_action(action)
+        runner.start_action(action, VesselState())
         runner.step(VesselState(), dt=0.5)
         runner.step(VesselState(), dt=0.5)
         runner.step(VesselState(), dt=0.5)
@@ -122,7 +122,7 @@ class TestActionRunnerStartAndStep:
     def test_snapshot_reflects_running_state(self) -> None:
         runner = ActionRunner()
         action = StubAction()
-        runner.start_action(action)
+        runner.start_action(action, VesselState())
         runner.step(VesselState(), dt=0.5)
         snap = runner.snapshot()
         assert snap.action_id == "stub"
@@ -132,13 +132,13 @@ class TestActionRunnerStartAndStep:
     def test_start_with_explicit_params(self) -> None:
         runner = ActionRunner()
         action = StubAction()
-        runner.start_action(action, param_values={"speed": 20.0})
+        runner.start_action(action, VesselState(), param_values={"speed": 20.0})
         assert action._param_values == {"speed": 20.0}  # noqa: SLF001
 
     def test_start_with_no_params_uses_defaults(self) -> None:
         runner = ActionRunner()
         action = StubAction()
-        runner.start_action(action)
+        runner.start_action(action, VesselState())
         assert action._param_values == {"speed": 10.0}  # noqa: SLF001
 
 
@@ -148,7 +148,7 @@ class TestActionRunnerAbort:
     def test_abort_calls_stop(self) -> None:
         runner = ActionRunner()
         action = StubAction()
-        runner.start_action(action)
+        runner.start_action(action, VesselState())
         runner.step(VesselState(), dt=0.5)
         result = runner.abort()
         assert action.stopped
@@ -157,7 +157,7 @@ class TestActionRunnerAbort:
     def test_abort_clears_state(self) -> None:
         runner = ActionRunner()
         action = StubAction()
-        runner.start_action(action)
+        runner.start_action(action, VesselState())
         runner.step(VesselState(), dt=0.5)
         runner.abort()
         # Subsequent step returns empty controls
@@ -167,7 +167,7 @@ class TestActionRunnerAbort:
     def test_snapshot_after_abort_shows_no_action(self) -> None:
         runner = ActionRunner()
         action = StubAction()
-        runner.start_action(action)
+        runner.start_action(action, VesselState())
         runner.abort()
         snap = runner.snapshot()
         assert snap.action_id is None
@@ -186,7 +186,7 @@ class TestActionRunnerAutoStop:
         runner = ActionRunner()
         action = StubAction()
         action.set_return_status(ActionStatus.SUCCEEDED)
-        runner.start_action(action)
+        runner.start_action(action, VesselState())
         result = runner.step(VesselState(), dt=0.5)
         assert action.stopped
         # Commands from stop() override tick's commands
@@ -196,7 +196,7 @@ class TestActionRunnerAutoStop:
         runner = ActionRunner()
         action = StubAction()
         action.set_return_status(ActionStatus.FAILED)
-        runner.start_action(action)
+        runner.start_action(action, VesselState())
         runner.step(VesselState(), dt=0.5)
         assert action.stopped
 
@@ -204,7 +204,7 @@ class TestActionRunnerAutoStop:
         runner = ActionRunner()
         action = StubAction()
         action.set_return_status(ActionStatus.SUCCEEDED)
-        runner.start_action(action)
+        runner.start_action(action, VesselState())
         runner.step(VesselState(), dt=0.5)
         snap = runner.snapshot()
         assert snap.action_id is None
@@ -218,12 +218,12 @@ class TestActionRunnerParamValidation:
         runner = ActionRunner()
         action = RequiredParamAction()
         with pytest.raises(ValueError, match="altitude"):
-            runner.start_action(action)
+            runner.start_action(action, VesselState())
 
     def test_required_param_provided_succeeds(self) -> None:
         runner = ActionRunner()
         action = RequiredParamAction()
-        runner.start_action(action, param_values={"altitude": 500.0})
+        runner.start_action(action, VesselState(), param_values={"altitude": 500.0})
         # Should not raise
         snap = runner.snapshot()
         assert snap.action_id == "required-param"

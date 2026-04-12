@@ -49,10 +49,12 @@ class ActionRunner:
         self._status: ActionStatus | None = None
         self._message: str = ""
         self._pending_logs: list[LogEntry] = []
+        self._last_state: VesselState = VesselState()
 
     def start_action(
         self,
         action: Action,
+        state: VesselState,
         param_values: dict[str, Any] | None = None,
     ) -> None:
         """Begin executing an action.
@@ -64,7 +66,8 @@ class ActionRunner:
         self._action = action
         self._status = ActionStatus.RUNNING
         self._message = ""
-        action.start(resolved)
+        self._last_state = state
+        action.start(state, resolved)
         self._pending_logs.append(LogEntry(level=LogLevel.INFO, message=f"Started: {action.label}"))
 
     def abort(self) -> StepResult:
@@ -77,7 +80,7 @@ class ActionRunner:
         log = ActionLogger()
         if self._action is not None:
             log.info(f"Aborted: {self._action.label}")
-            self._action.stop(commands, log)
+            self._action.stop(self._last_state, commands, log)
             self._action = None
             self._status = None
             self._message = ""
@@ -96,6 +99,7 @@ class ActionRunner:
         log = ActionLogger()
         log.entries.extend(self._pending_logs)
         self._pending_logs.clear()
+        self._last_state = vessel_state
         if self._action is None:
             return StepResult(commands=commands, logs=log.entries)
 
@@ -106,7 +110,7 @@ class ActionRunner:
         if result.status in (ActionStatus.SUCCEEDED, ActionStatus.FAILED):
             label = self._action.label
             log.info(f"Finished: {label} ({result.status.value})")
-            self._action.stop(commands, log)
+            self._action.stop(vessel_state, commands, log)
             self._action = None
             self._status = None
             self._message = ""

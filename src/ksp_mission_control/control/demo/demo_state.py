@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import random
 
-from ksp_mission_control.control.actions.base import SASMode, VesselState
+from ksp_mission_control.control.actions.base import SASMode, VesselSituation, VesselState
 
 
 def generate_demo_vessel_state(tick: int) -> VesselState:
@@ -20,7 +20,7 @@ def generate_demo_vessel_state(tick: int) -> VesselState:
         periapsis=70000.0 + random.randint(-100, 100),
         met=t * 0.5,
         vessel_name="Demo Craft",
-        situation="flying",
+        situation=VesselSituation.FLYING,
         body="Kerbin",
         latitude=random.uniform(-90, 90),
         longitude=random.uniform(-180, 180),

@@ -73,6 +73,24 @@ class SASMode(Enum):
         return self.value.replace("_", " ").title()
 
 
+class VesselSituation(Enum):
+    """Flight situation of the vessel, matching kRPC's VesselSituation enum members."""
+
+    PRE_LAUNCH = "pre_launch"
+    FLYING = "flying"
+    SUB_ORBITAL = "sub_orbital"
+    ORBITING = "orbiting"
+    ESCAPING = "escaping"
+    LANDED = "landed"
+    SPLASHED = "splashed"
+    DOCKED = "docked"
+
+    @property
+    def display_name(self) -> str:
+        """Human-readable label (e.g. 'Pre Launch', 'Sub Orbital')."""
+        return self.value.replace("_", " ").title()
+
+
 class ActionStatus(Enum):
     """Lifecycle status of an action."""
 
@@ -143,8 +161,8 @@ class VesselState:
     """Mission Elapsed Time since launch, in seconds."""
     vessel_name: str = ""
     """Name of the active vessel."""
-    situation: str = ""
-    """Current flight situation (e.g. 'pre_launch', 'flying', 'orbiting', 'landed')."""
+    situation: VesselSituation = VesselSituation.PRE_LAUNCH
+    """Current flight situation (e.g. PRE_LAUNCH, FLYING, ORBITING, LANDED)."""
 
     # --- Position ---
     body: str = ""
@@ -303,10 +321,11 @@ class Action(ABC):
     """Typed parameter descriptors for this action."""
 
     @abstractmethod
-    def start(self, param_values: dict[str, Any]) -> None:
+    def start(self, state: VesselState, param_values: dict[str, Any]) -> None:
         """Initialize internal state from parameter values.
 
-        Called once before the first tick.
+        Called once before the first tick. *state* is the current vessel
+        telemetry so actions can capture initial conditions.
         """
 
     @abstractmethod
@@ -320,10 +339,12 @@ class Action(ABC):
         and return an ActionResult indicating lifecycle status.
         """
 
-    def stop(self, commands: VesselCommands, log: ActionLogger) -> None:
+    def stop(self, state: VesselState, commands: VesselCommands, log: ActionLogger) -> None:
         """Clean up on abort or completion.
 
         Default implementation kills throttle (safe default).
-        Subclasses override for custom cleanup.
+        Subclasses override for custom cleanup. *state* is the last known
+        vessel telemetry so actions can make informed cleanup decisions.
         """
         commands.throttle = 0.0
+        log.info(f"{self.label} stopped, throttle killed")

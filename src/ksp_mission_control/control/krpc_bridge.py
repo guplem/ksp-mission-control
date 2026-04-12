@@ -9,7 +9,12 @@ from __future__ import annotations
 
 from dataclasses import fields
 
-from ksp_mission_control.control.actions.base import SASMode, VesselCommands, VesselState
+from ksp_mission_control.control.actions.base import (
+    SASMode,
+    VesselCommands,
+    VesselSituation,
+    VesselState,
+)
 
 # Command fields that have a matching field in VesselState for comparison.
 # Excluded from comparison (always applied when non-None):
@@ -46,6 +51,16 @@ def _parse_sas_mode(raw: str) -> SASMode:
     return SASMode(name)
 
 
+def _parse_vessel_situation(raw: str) -> VesselSituation:
+    """Convert a kRPC vessel situation string to a VesselSituation enum.
+
+    kRPC ``str(vessel.situation)`` returns ``'VesselSituation.flying'``.
+    Extracts the member name and looks it up in our enum.
+    """
+    name = raw.split(".")[-1] if "." in raw else raw
+    return VesselSituation(name)
+
+
 class NoActiveVesselError(Exception):
     """Raised when kRPC reports no active vessel.
 
@@ -72,7 +87,7 @@ def read_vessel_state(conn: object) -> VesselState:
         periapsis=orbit.periapsis_altitude,
         met=vessel.met,
         vessel_name=vessel.name,
-        situation=str(vessel.situation),
+        situation=_parse_vessel_situation(str(vessel.situation)),
         body=orbit.body.name,
         latitude=flight.latitude,
         longitude=flight.longitude,
