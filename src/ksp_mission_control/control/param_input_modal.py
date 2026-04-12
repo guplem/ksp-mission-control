@@ -74,7 +74,10 @@ class ParamInputModal(ModalScreen[dict[str, float] | None]):
                 label = f"{param.label} ({param.unit})" if param.unit else param.label
                 if param.required:
                     label += " *"
-                yield Static(label, classes="param-label")
+                param_label = Static(label, classes="param-label")
+                if param.description:
+                    param_label.tooltip = param.description
+                yield param_label
                 yield Input(
                     value=str(param.default) if param.default is not None else "",
                     placeholder=param.description,
