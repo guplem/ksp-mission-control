@@ -142,4 +142,5 @@ class HoverAction(Action):
 
     def stop(self, state: VesselState, commands: VesselCommands, log: ActionLogger) -> None:
         super().stop(state, commands, log)
+        commands.throttle = 0.0
         commands.sas = False
