@@ -8,7 +8,14 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal
 from textual.widgets import Button, Static
 
-from ksp_mission_control.control.actions.base import VesselCommands
+from ksp_mission_control.control.actions.base import ActionStatus, VesselCommands
+
+_STATUS_VARIABLE: dict[ActionStatus, str] = {
+    ActionStatus.RUNNING: "accent",
+    ActionStatus.SUCCEEDED: "success",
+    ActionStatus.FAILED: "error",
+    ActionStatus.PENDING: "warning",
+}
 
 
 @dataclass(frozen=True)
@@ -18,6 +25,7 @@ class CommandRecord:
     action_label: str
     met: float
     commands: VesselCommands
+    status: ActionStatus | None = None
 
 
 class LastCommandWidget(Static):
@@ -47,13 +55,16 @@ class LastCommandWidget(Static):
         self._history: list[CommandRecord] = []
         self._index: int = -1
         self._following: bool = True
+        self._status_colors: dict[ActionStatus, str] | None = None
 
     def compose(self) -> ComposeResult:
         yield Static("[b]Commands[/b]", id="command-history-title")
         yield Static("[dim]No commands yet[/dim]", id="command-history-content")
         with Horizontal(id="command-history-nav"):
+            yield Button("\u25c0\u25c0", id="cmd-first", disabled=True)
             yield Button("\u25c0", id="cmd-prev", disabled=True)
             yield Button("\u25b6", id="cmd-next", disabled=True)
+            yield Button("\u25b6\u25b6", id="cmd-last", disabled=True)
             yield Static("", id="command-history-page")
 
     def record_commands(
@@ -61,6 +72,7 @@ class LastCommandWidget(Static):
         commands: VesselCommands,
         action_label: str | None,
         met: float,
+        status: ActionStatus | None = None,
     ) -> None:
         """Record commands if they contain any non-None values and differ from the last entry."""
         has_values = any(
@@ -70,7 +82,7 @@ class LastCommandWidget(Static):
             return
 
         label = action_label or "Manual"
-        record = CommandRecord(action_label=label, met=met, commands=commands)
+        record = CommandRecord(action_label=label, met=met, commands=commands, status=status)
 
         if self._history and _commands_equal(self._history[-1].commands, commands):
             return
@@ -79,35 +91,76 @@ class LastCommandWidget(Static):
 
         if self._following:
             self._index = len(self._history) - 1
-            self._render_current()
+        self._render_current()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "cmd-prev":
+        if event.button.id == "cmd-first":
+            self._jump(0)
+        elif event.button.id == "cmd-prev":
             self._navigate(-1)
         elif event.button.id == "cmd-next":
             self._navigate(1)
+        elif event.button.id == "cmd-last":
+            self._jump(len(self._history) - 1)
 
     def _navigate(self, delta: int) -> None:
         new_index = self._index + delta
         if 0 <= new_index < len(self._history):
-            self._index = new_index
-            self._following = self._index == len(self._history) - 1
-            self._render_current()
+            self._jump(new_index)
+
+    def _jump(self, index: int) -> None:
+        if not self._history or not (0 <= index < len(self._history)):
+            return
+        self._index = index
+        self._following = self._index == len(self._history) - 1
+        self._render_current()
+
+    def _resolve_colors(self) -> dict[ActionStatus, str]:
+        """Resolve theme CSS variables to hex colors, cached after first call."""
+        if self._status_colors is None:
+            css_vars = self.app.get_css_variables()
+            self._status_colors = {
+                status: css_vars.get(var, "#ffffff")
+                for status, var in _STATUS_VARIABLE.items()
+            }
+        return self._status_colors
+
+    def _resolve_accent(self) -> str:
+        """Resolve the accent CSS variable to a hex color, cached after first call."""
+        if not hasattr(self, "_accent_color"):
+            css_vars = self.app.get_css_variables()
+            self._accent_color: str = css_vars.get("accent", "#ffffff")
+        return self._accent_color
 
     def _render_current(self) -> None:
         if not self._history or self._index < 0:
             return
         record = self._history[self._index]
-        title = f"[b]{record.action_label}[/b]  [dim]{_format_met(record.met)}[/dim]"
+        colors = self._resolve_colors()
+        if record.status is not None and record.status in colors:
+            color = colors[record.status]
+            status_text = f"[bold {color}]{record.status.value}[/bold {color}]"
+        else:
+            status_text = "[dim]---[/dim]"
+        title = (
+            f"[b]{record.action_label}[/b]  {status_text}"
+            f"  [dim]{_format_met(record.met)}[/dim]"
+        )
         self.query_one("#command-history-title", Static).update(title)
         self.query_one("#command-history-content", Static).update(
             _format_commands(record.commands)
         )
         total = len(self._history)
         page = self._index + 1
-        self.query_one("#command-history-page", Static).update(f"{page}/{total}")
+        accent_color = self._resolve_accent()
+        following_indicator = f" [bold {accent_color}]\u25cf[/bold {accent_color}]" if self._following else ""
+        self.query_one("#command-history-page", Static).update(
+            f"{page}/{total}{following_indicator}"
+        )
+        self.query_one("#cmd-first", Button).disabled = self._index <= 0
         self.query_one("#cmd-prev", Button).disabled = self._index <= 0
         self.query_one("#cmd-next", Button).disabled = self._index >= total - 1
+        self.query_one("#cmd-last", Button).disabled = self._following
 
 
 def _format_commands(commands: VesselCommands) -> str:

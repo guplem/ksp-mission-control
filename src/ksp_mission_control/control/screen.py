@@ -32,6 +32,7 @@ class ControlScreen(Screen[None]):
     BINDINGS = [
         ("escape", "go_back", "Back to Setup"),
         ("a", "abort_action", "Abort Action"),
+        ("r", "retry_connection", "Retry Connection"),
     ]
 
     def __init__(self, demo: bool = False) -> None:
@@ -82,7 +83,8 @@ class ControlScreen(Screen[None]):
         self.query_one("#telemetry-display", TelemetryDisplayWidget).update_vessel_state(state)
         self.query_one("#action-list", ActionListWidget).update_running(runner_state.action_id)
         self.query_one("#last-command", LastCommandWidget).record_commands(
-            commands, action_label=runner_state.action_label, met=state.met
+            commands, action_label=runner_state.action_label, met=state.met,
+            status=runner_state.status,
         )
         self.query_one("#debug-console", DebugConsoleWidget).append_logs(logs, met=state.met)
 
@@ -140,6 +142,11 @@ class ControlScreen(Screen[None]):
     def on_unmount(self) -> None:
         """Called when the screen is removed from the DOM (app quit)."""
         self._shutdown()
+
+    def action_retry_connection(self) -> None:
+        """Skip the reconnect delay and retry immediately."""
+        if self._session is not None:
+            self._session.retry_now()
 
     def action_go_back(self) -> None:
         """Return to the setup screen."""

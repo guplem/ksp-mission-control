@@ -136,7 +136,7 @@ class TestSetupScreenChecks:
         """When all checks pass, all_checks_passed should be True."""
         checks = _make_checks(krpc=True, comms=True, vessel=True)
         async with SetupTestApp(checks=checks).run_test() as pilot:
-            await pilot.pause()
+            await pilot.app.workers.wait_for_complete()
             await pilot.pause()
             screen = pilot.app.screen
             assert isinstance(screen, SetupScreen)
@@ -148,8 +148,7 @@ class TestSetupScreenChecks:
         """Passed checks should display [x]."""
         checks = _make_checks(krpc=True, comms=True, vessel=True)
         async with SetupTestApp(checks=checks).run_test() as pilot:
-            # Wait for the worker thread to finish updating all checks
-            await pilot.pause()
+            await pilot.app.workers.wait_for_complete()
             await pilot.pause()
             for check in checks:
                 label = pilot.app.screen.query_one(f"#{check.check_id}-label", Static)
@@ -177,7 +176,7 @@ class TestSetupScreenChecks:
     async def test_control_room_enabled_when_all_pass(self) -> None:
         checks = _make_checks(krpc=True, comms=True, vessel=True)
         async with SetupTestApp(checks=checks).run_test() as pilot:
-            await pilot.pause()
+            await pilot.app.workers.wait_for_complete()
             await pilot.pause()
             screen = pilot.app.screen
             assert isinstance(screen, SetupScreen)
