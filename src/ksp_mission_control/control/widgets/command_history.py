@@ -6,7 +6,7 @@ from dataclasses import dataclass, fields
 from typing import cast
 
 from textual.app import ComposeResult
-from textual.containers import Horizontal
+from textual.containers import Horizontal, VerticalScroll
 from textual.widgets import Button, Static
 
 from ksp_mission_control.control.actions.base import ActionStatus, SASMode, VesselCommands
@@ -35,16 +35,18 @@ class CommandRecord:
     status: ActionStatus | None = None
 
 
-class CommandHistoryWidget(Static):
+class CommandHistoryWidget(VerticalScroll, can_focus=True):
     """Paginated history of VesselCommands sent to the ship."""
 
     DEFAULT_CSS = """
     #command-history-title {
+        height: auto;
         padding: 0 0 1 0;
     }
     #command-history-nav {
         height: auto;
         padding: 1 0 0 0;
+        dock: bottom;
     }
     #command-history-nav Button {
         min-width: 5;
@@ -54,6 +56,7 @@ class CommandHistoryWidget(Static):
     #command-history-page {
         content-align: right middle;
         width: 1fr;
+        padding: 0 1 0 0;
     }
     """
 
@@ -162,10 +165,10 @@ class CommandHistoryWidget(Static):
         page = self._index + 1
         accent_color = self._resolve_accent()
         following_indicator = (
-            f" [bold {accent_color}]\u25cf[/bold {accent_color}]" if self._following else ""
+            f"[bold {accent_color}]\u25cf[/bold {accent_color}] " if self._following else ""
         )
         self.query_one("#command-history-page", Static).update(
-            f"{page}/{total}{following_indicator}"
+            f"{following_indicator}{page}/{total}"
         )
         self.query_one("#cmd-first", Button).disabled = self._index <= 0
         self.query_one("#cmd-prev", Button).disabled = self._index <= 0
@@ -232,13 +235,15 @@ def _format_commands(commands: VesselCommands, applied_fields: frozenset[str]) -
     lines: list[str] = []
     for field in fields(commands):
         value = getattr(commands, field.name)
-        label = field.name.replace("_", " ").title()
         if value is None:
-            lines.append(f"[dim]{label}: ---[/dim]")
+            continue
+        label = field.name.replace("_", " ").title()
+        formatted = _format_field_value(field.name, value)
+        if field.name in applied_fields:
+            lines.append(f"{label}: {formatted}")
         else:
-            formatted = _format_field_value(field.name, value)
-            if field.name in applied_fields:
-                lines.append(f"{label}: {formatted}")
-            else:
-                lines.append(f"[dim]{label}: {formatted}[/dim]")
-    return "\n".join(lines)
+            lines.append(f"[dim]{label}: {formatted}[/dim]")
+    # TODO: Remove dummy lines (testing layout with lots of content)
+    for i in range(20):
+        lines.append(f"[dim]Dummy Field {i}: {i * 1.5:.1f}[/dim]")
+    return "\n".join(lines) if lines else "[dim]No commands[/dim]"
