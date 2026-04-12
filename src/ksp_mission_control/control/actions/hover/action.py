@@ -17,8 +17,12 @@ from ksp_mission_control.control.actions.base import (
     VesselState,
 )
 
-_KP = 0.02  # Proportional gain: altitude error to throttle
-_KD = 0.1  # Derivative gain: vertical speed damping
+# Cascaded velocity controller gains
+# Outer loop: altitude error -> desired vertical speed
+_SPEED_GAIN = 0.5  # m/s desired speed per meter of altitude error
+_MAX_APPROACH_SPEED = 50.0  # cap on climb/descent rate during approach (m/s)
+# Inner loop: speed error -> throttle
+_KP_SPEED = 0.2  # throttle adjustment per m/s of speed error
 
 
 class HoverAction(Action):
@@ -78,15 +82,22 @@ class HoverAction(Action):
     def tick(
         self, state: VesselState, commands: VesselCommands, dt: float, log: ActionLogger
     ) -> ActionResult:
+        # Cascaded velocity controller (same pattern as LandAction):
+        # Outer loop: compute desired vertical speed from altitude error
         difference = self._target_altitude - state.altitude_surface
-        raw_throttle = 0.5 + _KP * difference - _KD * state.vertical_speed
+        desired_vspeed = max(
+            -_MAX_APPROACH_SPEED, min(_MAX_APPROACH_SPEED, _SPEED_GAIN * difference)
+        )
+
+        # Inner loop: throttle tracks desired speed
+        speed_error = desired_vspeed - state.vertical_speed
+        raw_throttle = 0.5 + _KP_SPEED * speed_error
         commands.throttle = max(0.0, min(1.0, raw_throttle))
 
-        # Report internal state for debugging
         log.debug(
-            f"PD: difference={difference:+.1f}m  P={_KP * difference:+.4f}  "
-            f"D={-_KD * state.vertical_speed:+.4f}  raw={raw_throttle:.4f}  "
-            f"clamped={commands.throttle:.3f}"
+            f"hover: diff={difference:+.1f}m  desired_vspd={desired_vspeed:+.1f}m/s  "
+            f"actual_vspd={state.vertical_speed:+.1f}m/s  "
+            f"speed_err={speed_error:+.1f}  throttle={commands.throttle:.3f}"
         )
         commands.sas = True
         commands.sas_mode = SASMode.RADIAL

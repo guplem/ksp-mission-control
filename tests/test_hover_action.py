@@ -107,32 +107,33 @@ class TestHoverActionTick:
         action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert controls.sas is True
 
-    def test_rising_toward_target_reduces_throttle(self) -> None:
-        """Below target but ascending fast - D-term should reduce throttle below 0.5."""
+    def test_ascending_faster_than_desired_reduces_throttle(self) -> None:
+        """5m below target but ascending at 10 m/s (desired ~2.5) - throttle backs off."""
         action = self._make_started_action(target=100.0)
-        state = VesselState(altitude_surface=90.0, vertical_speed=5.0)
+        state = VesselState(altitude_surface=95.0, vertical_speed=10.0)
         controls = VesselCommands()
         action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert controls.throttle is not None
         assert controls.throttle < 0.5
 
-    def test_falling_away_from_target_increases_throttle(self) -> None:
-        """Above target but descending fast - D-term should boost throttle above 0.5."""
+    def test_descending_faster_than_desired_increases_throttle(self) -> None:
+        """10m above target but falling at 10 m/s (desired ~-5) - throttle boosts."""
         action = self._make_started_action(target=100.0)
-        state = VesselState(altitude_surface=110.0, vertical_speed=-5.0)
+        state = VesselState(altitude_surface=110.0, vertical_speed=-10.0)
         controls = VesselCommands()
         action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert controls.throttle is not None
         assert controls.throttle > 0.5
 
-    def test_damping_prevents_full_throttle_near_target(self) -> None:
-        """5m below target but rising at 3 m/s - D-term keeps throttle low."""
+    def test_at_right_speed_for_distance_gives_hover_throttle(self) -> None:
+        """10m below target, ascending at desired speed - throttle near hover point."""
         action = self._make_started_action(target=100.0)
-        state = VesselState(altitude_surface=95.0, vertical_speed=3.0)
+        # desired_vspeed = 0.5 * 10 = 5.0, so vspeed=5.0 is exactly right
+        state = VesselState(altitude_surface=90.0, vertical_speed=5.0)
         controls = VesselCommands()
         action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert controls.throttle is not None
-        assert controls.throttle < 0.5
+        assert abs(controls.throttle - 0.5) < 0.01
 
     def test_always_returns_running_when_no_duration(self) -> None:
         action = self._make_started_action()
