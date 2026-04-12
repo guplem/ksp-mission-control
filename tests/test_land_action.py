@@ -123,6 +123,34 @@ class TestLandActionTick:
         assert controls_low.throttle is not None
         assert controls_high.throttle < controls_low.throttle
 
+    def test_lights_on_first_tick(self) -> None:
+        action = self._make_started_action()
+        state = VesselState(altitude_surface=200.0, vertical_speed=-2.0)
+        controls = VesselCommands()
+        action.tick(state, controls, dt=0.5, log=ActionLogger())
+        assert controls.lights is True
+
+    def test_lights_only_on_first_tick(self) -> None:
+        action = self._make_started_action()
+        state = VesselState(altitude_surface=200.0, vertical_speed=-2.0)
+        # First tick sets lights
+        action.tick(state, VesselCommands(), dt=0.5, log=ActionLogger())
+        # Second tick should not set lights
+        controls = VesselCommands()
+        action.tick(state, controls, dt=0.5, log=ActionLogger())
+        assert controls.lights is None
+
+    def test_brakes_on_landing(self) -> None:
+        action = self._make_started_action()
+        state = VesselState(
+            altitude_surface=0.5,
+            vertical_speed=-0.1,
+            situation=VesselSituation.LANDED,
+        )
+        controls = VesselCommands()
+        action.tick(state, controls, dt=0.5, log=ActionLogger())
+        assert controls.brakes is True
+
     def test_succeeds_on_landed(self) -> None:
         action = self._make_started_action()
         state = VesselState(
