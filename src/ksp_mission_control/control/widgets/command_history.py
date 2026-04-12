@@ -11,6 +11,9 @@ from textual.widgets import Button, Static
 from ksp_mission_control.control.actions.base import ActionStatus, VesselCommands
 from ksp_mission_control.control.formatting import format_met
 
+_MAX_HISTORY = 10_000
+"""Maximum number of command records to keep. Oldest entries are dropped."""
+
 _STATUS_VARIABLE: dict[ActionStatus, str] = {
     ActionStatus.RUNNING: "accent",
     ActionStatus.SUCCEEDED: "success",
@@ -59,6 +62,7 @@ class CommandHistoryWidget(Static):
         self._index: int = -1
         self._following: bool = True
         self._status_colors: dict[ActionStatus, str] | None = None
+        self._accent_color: str | None = None
 
     def compose(self) -> ComposeResult:
         yield Static("[b]Commands[/b]", id="command-history-title")
@@ -92,10 +96,13 @@ class CommandHistoryWidget(Static):
             status=status,
         )
 
-        if self._history and _commands_equal(self._history[-1].commands, commands):
+        if self._history and self._history[-1].commands == commands:
             return
 
         self._history.append(record)
+        if len(self._history) > _MAX_HISTORY:
+            self._history.pop(0)
+            self._index = max(0, self._index - 1)
 
         if self._following:
             self._index = len(self._history) - 1
@@ -134,9 +141,9 @@ class CommandHistoryWidget(Static):
 
     def _resolve_accent(self) -> str:
         """Resolve the accent CSS variable to a hex color, cached after first call."""
-        if not hasattr(self, "_accent_color"):
+        if self._accent_color is None:
             css_vars = self.app.get_css_variables()
-            self._accent_color: str = css_vars.get("accent", "#ffffff")
+            self._accent_color = css_vars.get("accent", "#ffffff")
         return self._accent_color
 
     def _render_current(self) -> None:
@@ -202,8 +209,3 @@ def _format_commands(commands: VesselCommands, applied_fields: frozenset[str]) -
             else:
                 lines.append(f"[dim]{label}: {formatted}[/dim]")
     return "\n".join(lines)
-
-
-def _commands_equal(a: VesselCommands, b: VesselCommands) -> bool:
-    """Compare two VesselCommands by their field values."""
-    return all(getattr(a, field.name) == getattr(b, field.name) for field in fields(a))
