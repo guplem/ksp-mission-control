@@ -12,7 +12,7 @@ from typing import Any
 from ksp_mission_control.control.actions.base import (
     Action,
     ActionStatus,
-    VesselControls,
+    VesselCommands,
     VesselState,
 )
 
@@ -54,13 +54,13 @@ class ActionRunner:
         self._message = ""
         action.start(resolved)
 
-    def abort(self) -> VesselControls:
+    def abort(self) -> VesselCommands:
         """Stop the current action immediately.
 
         Returns cleanup controls (throttle=0 by default) for the caller to apply.
         If no action is running, returns empty controls.
         """
-        controls = VesselControls()
+        controls = VesselCommands()
         if self._action is not None:
             self._action.stop(controls)
             self._action = None
@@ -68,16 +68,16 @@ class ActionRunner:
             self._message = ""
         return controls
 
-    def step(self, vessel_state: VesselState, dt: float) -> VesselControls:
+    def step(self, vessel_state: VesselState, dt: float) -> VesselCommands:
         """Execute one tick of the current action.
 
-        Creates a fresh VesselControls, passes it to the action's tick(),
+        Creates a fresh VesselCommands, passes it to the action's tick(),
         and returns it. If the action signals completion or failure,
         stop() is called automatically.
 
         If no action is running, returns empty controls (all None).
         """
-        controls = VesselControls()
+        controls = VesselCommands()
         if self._action is None:
             return controls
 

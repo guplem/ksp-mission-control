@@ -13,7 +13,7 @@ from ksp_mission_control.control.actions.base import (
     ActionParam,
     ActionResult,
     ActionStatus,
-    VesselControls,
+    VesselCommands,
     VesselState,
 )
 from ksp_mission_control.control.param_input_modal import ParamInputModal
@@ -43,7 +43,7 @@ class SingleParamAction(Action):
     def start(self, param_values: dict[str, Any]) -> None:
         pass
 
-    def tick(self, state: VesselState, controls: VesselControls, dt: float) -> ActionResult:
+    def tick(self, state: VesselState, controls: VesselCommands, dt: float) -> ActionResult:
         return ActionResult(status=ActionStatus.RUNNING)
 
 
@@ -74,7 +74,7 @@ class MultiParamAction(Action):
     def start(self, param_values: dict[str, Any]) -> None:
         pass
 
-    def tick(self, state: VesselState, controls: VesselControls, dt: float) -> ActionResult:
+    def tick(self, state: VesselState, controls: VesselCommands, dt: float) -> ActionResult:
         return ActionResult(status=ActionStatus.RUNNING)
 
 
@@ -89,7 +89,7 @@ class NoParamAction(Action):
     def start(self, param_values: dict[str, Any]) -> None:
         pass
 
-    def tick(self, state: VesselState, controls: VesselControls, dt: float) -> ActionResult:
+    def tick(self, state: VesselState, controls: VesselCommands, dt: float) -> ActionResult:
         return ActionResult(status=ActionStatus.RUNNING)
 
 

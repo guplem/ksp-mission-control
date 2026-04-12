@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ksp_mission_control.control.actions.base import (
     ActionStatus,
-    VesselControls,
+    VesselCommands,
     VesselState,
 )
 from ksp_mission_control.control.actions.hover.action import HoverAction
@@ -41,7 +41,7 @@ class TestHoverActionTick:
     def test_below_target_high_throttle(self) -> None:
         action = self._make_started_action(target=100.0)
         state = VesselState(altitude_surface=50.0)
-        controls = VesselControls()
+        controls = VesselCommands()
         result = action.tick(state, controls, dt=0.5)
         assert controls.throttle is not None
         assert controls.throttle > 0.5
@@ -50,7 +50,7 @@ class TestHoverActionTick:
     def test_above_target_low_throttle(self) -> None:
         action = self._make_started_action(target=100.0)
         state = VesselState(altitude_surface=150.0)
-        controls = VesselControls()
+        controls = VesselCommands()
         result = action.tick(state, controls, dt=0.5)
         assert controls.throttle is not None
         assert controls.throttle < 0.5
@@ -59,7 +59,7 @@ class TestHoverActionTick:
     def test_at_target_mid_throttle(self) -> None:
         action = self._make_started_action(target=100.0)
         state = VesselState(altitude_surface=100.0)
-        controls = VesselControls()
+        controls = VesselCommands()
         action.tick(state, controls, dt=0.5)
         assert controls.throttle is not None
         assert abs(controls.throttle - 0.5) < 0.01
@@ -67,21 +67,21 @@ class TestHoverActionTick:
     def test_throttle_clamped_to_zero(self) -> None:
         action = self._make_started_action(target=100.0)
         state = VesselState(altitude_surface=10000.0)  # way above target
-        controls = VesselControls()
+        controls = VesselCommands()
         action.tick(state, controls, dt=0.5)
         assert controls.throttle == 0.0
 
     def test_throttle_clamped_to_one(self) -> None:
         action = self._make_started_action(target=10000.0)
         state = VesselState(altitude_surface=0.0)  # way below target
-        controls = VesselControls()
+        controls = VesselCommands()
         action.tick(state, controls, dt=0.5)
         assert controls.throttle == 1.0
 
     def test_sas_enabled_during_tick(self) -> None:
         action = self._make_started_action()
         state = VesselState(altitude_surface=50.0)
-        controls = VesselControls()
+        controls = VesselCommands()
         action.tick(state, controls, dt=0.5)
         assert controls.sas is True
 
@@ -89,7 +89,7 @@ class TestHoverActionTick:
         """Below target but ascending fast - D-term should reduce throttle below 0.5."""
         action = self._make_started_action(target=100.0)
         state = VesselState(altitude_surface=90.0, vertical_speed=5.0)
-        controls = VesselControls()
+        controls = VesselCommands()
         action.tick(state, controls, dt=0.5)
         assert controls.throttle is not None
         assert controls.throttle < 0.5
@@ -98,7 +98,7 @@ class TestHoverActionTick:
         """Above target but descending fast - D-term should boost throttle above 0.5."""
         action = self._make_started_action(target=100.0)
         state = VesselState(altitude_surface=110.0, vertical_speed=-5.0)
-        controls = VesselControls()
+        controls = VesselCommands()
         action.tick(state, controls, dt=0.5)
         assert controls.throttle is not None
         assert controls.throttle > 0.5
@@ -107,7 +107,7 @@ class TestHoverActionTick:
         """5m below target but rising at 3 m/s - D-term keeps throttle low."""
         action = self._make_started_action(target=100.0)
         state = VesselState(altitude_surface=95.0, vertical_speed=3.0)
-        controls = VesselControls()
+        controls = VesselCommands()
         action.tick(state, controls, dt=0.5)
         assert controls.throttle is not None
         assert controls.throttle < 0.5
@@ -116,7 +116,7 @@ class TestHoverActionTick:
         action = self._make_started_action()
         for alt in [0.0, 50.0, 100.0, 200.0, 1000.0]:
             state = VesselState(altitude_surface=alt)
-            controls = VesselControls()
+            controls = VesselCommands()
             result = action.tick(state, controls, dt=0.5)
             assert result.status == ActionStatus.RUNNING
 
@@ -127,13 +127,13 @@ class TestHoverActionStop:
     def test_stop_kills_throttle(self) -> None:
         action = HoverAction()
         action.start({"target_altitude": 100.0})
-        controls = VesselControls()
+        controls = VesselCommands()
         action.stop(controls)
         assert controls.throttle == 0.0
 
     def test_stop_disables_sas(self) -> None:
         action = HoverAction()
         action.start({"target_altitude": 100.0})
-        controls = VesselControls()
+        controls = VesselCommands()
         action.stop(controls)
         assert controls.sas is False

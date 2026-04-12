@@ -9,7 +9,7 @@ from ksp_mission_control.control.actions.base import (
     ActionParam,
     ActionResult,
     ActionStatus,
-    VesselControls,
+    VesselCommands,
     VesselState,
 )
 
@@ -37,13 +37,13 @@ class HoverAction(Action):
     def start(self, param_values: dict[str, Any]) -> None:
         self._target_altitude: float = float(param_values["target_altitude"])
 
-    def tick(self, state: VesselState, controls: VesselControls, dt: float) -> ActionResult:
+    def tick(self, state: VesselState, controls: VesselCommands, dt: float) -> ActionResult:
         error = self._target_altitude - state.altitude_surface
         throttle = 0.5 + _KP * error - _KD * state.vertical_speed
         controls.throttle = max(0.0, min(1.0, throttle))
         controls.sas = True
         return ActionResult(status=ActionStatus.RUNNING)
 
-    def stop(self, controls: VesselControls) -> None:
+    def stop(self, controls: VesselCommands) -> None:
         super().stop(controls)
         controls.sas = False

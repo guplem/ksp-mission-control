@@ -13,14 +13,14 @@ The system is designed to grow in phases:
 
 ## Decision
 
-Implement a tick-based action system where actions are pure functions of `VesselState -> VesselControls`, never touching kRPC directly. Inspired by Unity's Update loop pattern.
+Implement a tick-based action system where actions are pure functions of `VesselState -> VesselCommands`, never touching kRPC directly. Inspired by Unity's Update loop pattern.
 
 Core components:
 
 - **`VesselState`**: frozen dataclass snapshot of vessel telemetry (altitude, speed, orbit, resources). Pure Python, no kRPC or Textual imports.
-- **`VesselControls`**: mutable command buffer (throttle, pitch, SAS, etc.). Fields default to `None` meaning "don't change this tick." Actions mutate it; the runner applies non-None fields to kRPC.
+- **`VesselCommands`**: mutable command buffer (throttle, pitch, SAS, etc.). Fields default to `None` meaning "don't change this tick." Actions mutate it; the runner applies non-None fields to kRPC.
 - **`Action` ABC**: declares typed parameters (`ActionParam`), implements `start()` / `tick()` / `stop()` lifecycle. Each action has `ClassVar` metadata (action_id, label, description, params).
-- **`ActionRunner`**: manages the active action. Exposes `step(vessel_state, dt) -> VesselControls` called from the control screen's existing poll loop. Does not own a thread.
+- **`ActionRunner`**: manages the active action. Exposes `step(vessel_state, dt) -> VesselCommands` called from the control screen's existing poll loop. Does not own a thread.
 - **`ActionListWidget`**: ListView-based UI in the control screen's right pane showing available actions and running status.
 
 Action lifecycle: `start(params)` called once, then `tick(state, controls, dt)` called every 0.5s, returning `ActionResult(status, message)`. When status is SUCCEEDED or FAILED, `stop(controls)` is called automatically. User can abort at any time.
@@ -28,14 +28,14 @@ Action lifecycle: `start(params)` called once, then `tick(state, controls, dt)` 
 Data flow:
 
 ```
-kRPC --read--> VesselState --> runner.step() --> VesselControls --write--> kRPC
+kRPC --read--> VesselState --> runner.step() --> VesselCommands --write--> kRPC
 ```
 
 In demo mode, `VesselState` comes from the demo provider and returned controls are discarded.
 
 ## Consequences
 
-- **Positive**: Actions are pure and fully testable. Construct a `VesselState`, call `tick()`, assert on `VesselControls`.
+- **Positive**: Actions are pure and fully testable. Construct a `VesselState`, call `tick()`, assert on `VesselCommands`.
 - **Positive**: Demo mode works identically to live mode (same runner, same actions).
 - **Positive**: Adding new actions requires only a new `Action` subclass and a registry entry.
 - **Positive**: Future flight plans can sequence actions by driving the runner without changing the action or runner code.

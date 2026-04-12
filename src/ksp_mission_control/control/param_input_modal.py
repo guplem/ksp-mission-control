@@ -83,7 +83,7 @@ class ParamInputModal(ModalScreen[dict[str, float] | None]):
             yield Static("", id="modal-error")
             with Horizontal(id="modal-buttons"):
                 yield Button("Confirm", id="confirm-btn", variant="primary")
-                yield Button("Cancel", id="cancel-btn")
+                yield Button("Cancel", id="cancel-btn", variant="error")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "confirm-btn":

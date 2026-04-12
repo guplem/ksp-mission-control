@@ -8,7 +8,7 @@ from ksp_mission_control.control.actions.base import (
     ActionParam,
     ActionResult,
     ActionStatus,
-    VesselControls,
+    VesselCommands,
     VesselState,
 )
 
@@ -114,11 +114,11 @@ class TestVesselState:
             state.altitude_sea = 100.0  # type: ignore[misc]
 
 
-class TestVesselControls:
-    """Tests for the VesselControls mutable command buffer."""
+class TestVesselCommands:
+    """Tests for the VesselCommands mutable command buffer."""
 
     def test_defaults_to_none(self) -> None:
-        controls = VesselControls()
+        controls = VesselCommands()
         assert controls.throttle is None
         assert controls.pitch is None
         assert controls.heading is None
@@ -127,7 +127,7 @@ class TestVesselControls:
         assert controls.stage is None
 
     def test_mutation(self) -> None:
-        controls = VesselControls()
+        controls = VesselCommands()
         controls.throttle = 0.8
         controls.sas = True
         assert controls.throttle == 0.8

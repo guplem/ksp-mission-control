@@ -56,7 +56,7 @@ def _format_flight(state: VesselState) -> str:
         [
             "[b]Overview[/b]",
             f"Vessel:          {state.vessel_name}",
-            f"Situation:       {state.situation}",
+            f"Situation:       {state.situation.split('.')[-1].replace('_', ' ').title()}",
             f"MET:             {state.met:.1f}s",
             "",
             "[b]Flight[/b]",

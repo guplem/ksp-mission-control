@@ -24,7 +24,7 @@
     border-top: solid $accent;
 }
 
-#last-control {
+#last-command {
     padding: 1 2;
     border-top: solid $accent;
     border-left: solid $accent;

@@ -1,7 +1,7 @@
 """Core types for the action execution system.
 
-Defines the Action ABC, VesselState, VesselControls, and supporting types.
-Actions are pure functions of VesselState → VesselControls, never touching
+Defines the Action ABC, VesselState, VesselCommands, and supporting types.
+Actions are pure functions of VesselState → VesselCommands, never touching
 kRPC directly. See ADR 0006 for rationale.
 """
 
@@ -106,7 +106,7 @@ class VesselState:
 
 
 @dataclass
-class VesselControls:
+class VesselCommands:
     """Mutable command buffer for vessel control outputs.
 
     All fields default to None meaning "don't change this tick."
@@ -132,7 +132,7 @@ class Action(ABC):
 
     Subclasses declare ClassVar metadata and implement the tick lifecycle.
     Actions never touch kRPC directly — they read VesselState and mutate
-    VesselControls.
+    VesselCommands.
     """
 
     action_id: ClassVar[str]
@@ -155,14 +155,14 @@ class Action(ABC):
         """
 
     @abstractmethod
-    def tick(self, state: VesselState, controls: VesselControls, dt: float) -> ActionResult:
+    def tick(self, state: VesselState, controls: VesselCommands, dt: float) -> ActionResult:
         """Execute one step of the action.
 
         Read from *state*, mutate *controls* to express desired changes,
         and return an ActionResult indicating lifecycle status.
         """
 
-    def stop(self, controls: VesselControls) -> None:
+    def stop(self, controls: VesselCommands) -> None:
         """Clean up on abort or completion.
 
         Default implementation kills throttle (safe default).

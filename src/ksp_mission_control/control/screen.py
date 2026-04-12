@@ -44,7 +44,7 @@ class ControlScreen(Screen[None]):
             yield TelemetryDisplayWidget(mode=mode, id="telemetry-display")
             yield ActionListWidget(id="action-list")
             yield Static("[b]Action Debug Console[/b]", id="debug-console")
-            yield Static("[b]Last Control[/b]", id="last-control")
+            yield Static("[b]Last Command[/b]", id="last-command")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -85,9 +85,9 @@ class ControlScreen(Screen[None]):
         if action.params:
             self.app.push_screen(
                 ParamInputModal(action),
-                callback=lambda result: self._start_action_with_params(action, result)
-                if result is not None
-                else None,
+                callback=lambda result: (
+                    self._start_action_with_params(action, result) if result is not None else None
+                ),
             )
         else:
             self._start_action_with_params(action, None)

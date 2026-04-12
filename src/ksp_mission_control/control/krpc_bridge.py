@@ -1,13 +1,13 @@
 """Bridge between kRPC connection and the action system's pure types.
 
-Reads kRPC state into VesselState and applies VesselControls back to kRPC.
+Reads kRPC state into VesselState and applies VesselCommands back to kRPC.
 All kRPC-specific access is isolated here so the rest of the control
 module stays decoupled from the game connection.
 """
 
 from __future__ import annotations
 
-from ksp_mission_control.control.actions.base import VesselControls, VesselState
+from ksp_mission_control.control.actions.base import VesselCommands, VesselState
 
 
 def read_vessel_state(conn: object) -> VesselState:
@@ -39,7 +39,7 @@ def read_vessel_state(conn: object) -> VesselState:
     )
 
 
-def apply_controls(conn: object, controls: VesselControls) -> None:
+def apply_controls(conn: object, controls: VesselCommands) -> None:
     """Apply non-None control values to the vessel via kRPC."""
     vessel = conn.space_center.active_vessel  # type: ignore[attr-defined]
     vc = vessel.control

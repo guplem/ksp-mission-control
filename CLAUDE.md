@@ -53,7 +53,7 @@ src/ksp_mission_control/
 │   ├── style.tcss        # Control-screen styles
 │   ├── krpc_bridge.py    # kRPC I/O: read_vessel_state(), apply_controls() (ADR 0002)
 │   ├── actions/          # Action execution system (ADR 0006)
-│   │   ├── base.py       # Action ABC, VesselState, VesselControls, ActionParam, enums
+│   │   ├── base.py       # Action ABC, VesselState, VesselCommands, ActionParam, enums
 │   │   ├── runner.py     # ActionRunner (step-based executor)
 │   │   ├── registry.py   # get_available_actions() factory
 │   │   └── hover/        # Hover altitude-hold action
@@ -117,7 +117,7 @@ This project uses **feature-based modules**, not layer-based. Every feature is a
 ### Data flow
 
 ```
-kRPC Server (KSP) --read--> krpc_bridge --> VesselState --> ActionRunner.step() --> VesselControls --> krpc_bridge --write--> kRPC
+kRPC Server (KSP) --read--> krpc_bridge --> VesselState --> ActionRunner.step() --> VesselCommands --> krpc_bridge --write--> kRPC
                                                   \                                      /
                                               ControlSession (owns connection + runner + poll loop)
                                                   |                                      |
@@ -125,14 +125,14 @@ kRPC Server (KSP) --read--> krpc_bridge --> VesselState --> ActionRunner.step() 
                                                   |                                      |
                                               ControlScreen (UI glue: call_from_thread -> widgets)
 
-Demo mode:        generate_demo_vessel_state() --> VesselState --> ActionRunner.step() --> VesselControls (discarded)
+Demo mode:        generate_demo_vessel_state() --> VesselState --> ActionRunner.step() --> VesselCommands (discarded)
 ```
 
 - **Read path**: `krpc_bridge.read_vessel_state()` reads kRPC telemetry into a pure `VesselState` dataclass. In demo mode, `generate_demo_vessel_state()` produces the same dataclass with fake data.
-- **Action loop**: `ActionRunner.step()` passes `VesselState` to the current action's `tick()`, which mutates a `VesselControls` command buffer.
-- **Write path**: `krpc_bridge.apply_controls()` writes non-None `VesselControls` fields back to kRPC. In demo mode, controls are discarded.
+- **Action loop**: `ActionRunner.step()` passes `VesselState` to the current action's `tick()`, which mutates a `VesselCommands` command buffer.
+- **Write path**: `krpc_bridge.apply_controls()` writes non-None `VesselCommands` fields back to kRPC. In demo mode, controls are discarded.
 - **Session/screen split**: `ControlSession` owns the poll loop and calls `on_update`/`on_error` callbacks. `ControlScreen` wraps these callbacks with `call_from_thread()` to bridge to the UI thread.
-- **Models are pure (ADR 0004)**: `VesselState` and `VesselControls` have no kRPC or Textual imports. Actions are testable with constructed states. Demo mode swaps the data source without changing any logic.
+- **Models are pure (ADR 0004)**: `VesselState` and `VesselCommands` have no kRPC or Textual imports. Actions are testable with constructed states. Demo mode swaps the data source without changing any logic.
 
 ### Key patterns
 
@@ -140,7 +140,7 @@ Demo mode:        generate_demo_vessel_state() --> VesselState --> ActionRunner.
 - **0.5s poll loop**: `ControlSession.run_poll_loop()` blocks with a `threading.Event` wait for live mode; `demo_tick()` is called via `set_interval(0.5)` for demo mode. Each tick: read state, step runner, apply controls, call `on_update`.
 - **Thread bridge**: kRPC calls are synchronous. Use Textual's `@work(thread=True)` for blocking I/O, `app.call_from_thread()` to push updates to the UI thread.
 - **Action tick lifecycle**: Actions implement `start()` / `tick()` / `stop()`. The `ActionRunner` calls `tick()` each poll iteration and auto-stops on SUCCEEDED or FAILED. Actions never touch kRPC directly.
-- **Command buffer pattern**: `VesselControls` fields default to `None` ("don't change"). Actions set only the fields they care about. The bridge applies non-None fields to kRPC.
+- **Command buffer pattern**: `VesselCommands` fields default to `None` ("don't change"). Actions set only the fields they care about. The bridge applies non-None fields to kRPC.
 - **CSS theming**: Keep static layout and visual styling in `.tcss`. Use Python style updates only for runtime-dependent values (state, measurements, animations, temporary overrides).
 
 ### Textual UI composition and styling rules (ADR 0001)

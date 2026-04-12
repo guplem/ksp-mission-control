@@ -10,7 +10,7 @@ from ksp_mission_control.control.actions.base import (
     ActionParam,
     ActionResult,
     ActionStatus,
-    VesselControls,
+    VesselCommands,
     VesselState,
 )
 from ksp_mission_control.control.actions.runner import RunnerSnapshot
@@ -45,7 +45,7 @@ class StubAction(Action):
     def start(self, param_values: dict[str, Any]) -> None:
         self.started = True
 
-    def tick(self, state: VesselState, controls: VesselControls, dt: float) -> ActionResult:
+    def tick(self, state: VesselState, controls: VesselCommands, dt: float) -> ActionResult:
         self.tick_count += 1
         controls.throttle = 0.5
         return ActionResult(status=ActionStatus.RUNNING)
