@@ -1,4 +1,14 @@
-"""HoverAction - PD altitude hold."""
+"""HoverAction - cascaded velocity altitude hold.
+
+Uses a two-loop controller to reach and hold a target altitude:
+  1. Outer loop: converts altitude error into a desired vertical speed
+     (linear gain, capped at _MAX_APPROACH_SPEED).
+  2. Inner loop: adjusts throttle to match the desired vertical speed
+     (P controller around a 0.5 hover baseline).
+
+This gives aggressive climb/descent when far from the target and smooth
+deceleration on approach. Same pattern as LandAction.
+"""
 
 from __future__ import annotations
 
@@ -82,14 +92,20 @@ class HoverAction(Action):
     def tick(
         self, state: VesselState, commands: VesselCommands, dt: float, log: ActionLogger
     ) -> ActionResult:
-        # Cascaded velocity controller (same pattern as LandAction):
-        # Outer loop: compute desired vertical speed from altitude error
+        # --- Throttle control (cascaded velocity controller) ---
+        # Outer loop: how fast should we be climbing/descending right now?
+        # At 100m below target -> desired_vspeed = 50 m/s (capped)
+        # At  10m below target -> desired_vspeed =  5 m/s
+        # At   2m below target -> desired_vspeed =  1 m/s
+        # At target            -> desired_vspeed =  0 m/s
         difference = self._target_altitude - state.altitude_surface
         desired_vspeed = max(
             -_MAX_APPROACH_SPEED, min(_MAX_APPROACH_SPEED, _SPEED_GAIN * difference)
         )
 
-        # Inner loop: throttle tracks desired speed
+        # Inner loop: adjust throttle to match desired speed.
+        # 0.5 is the approximate hover throttle; positive speed_error means
+        # we need to climb faster, so we add throttle (and vice versa).
         speed_error = desired_vspeed - state.vertical_speed
         raw_throttle = 0.5 + _KP_SPEED * speed_error
         commands.throttle = max(0.0, min(1.0, raw_throttle))
@@ -99,17 +115,17 @@ class HoverAction(Action):
             f"actual_vspd={state.vertical_speed:+.1f}m/s  "
             f"speed_err={speed_error:+.1f}  throttle={commands.throttle:.3f}"
         )
+        # --- Orientation: point straight up and use RCS for stability ---
         commands.sas = True
         commands.sas_mode = SASMode.RADIAL
         commands.rcs = True
 
+        # --- Landing gear: retract above 3m
         if state.altitude_surface > 3.0 and state.gear:
             log.debug(f"Closed landing gear at altitude {state.altitude_surface:.1f}m")
             commands.gear = False
-        if state.altitude_surface < 2.0 and not state.gear:
-            log.debug(f"Deployed landing gear at altitude {state.altitude_surface:.1f}m")
-            commands.gear = True
 
+        # --- Target reached detection (within 5m) ---
         if not self._reached_target and abs(difference) < 5.0:
             self._reached_target = True
             if self._hover_duration > 0:
@@ -120,6 +136,7 @@ class HoverAction(Action):
             else:
                 log.info(f"Reached target altitude: {self._target_altitude:.0f}m")
 
+        # --- Hover duration countdown (only after reaching target) ---
         if self._reached_target and self._hover_duration > 0:
             self._hover_elapsed += dt
             remaining = self._hover_duration - self._hover_elapsed
@@ -127,7 +144,8 @@ class HoverAction(Action):
                 log.info(f"Hover duration complete ({self._hover_duration:.0f}s), stopping")
                 return ActionResult(status=ActionStatus.SUCCEEDED)
 
-        # Dynamic threshold for warnings about altitude deviation after reaching target
+        # --- Safety warnings ---
+        # Warn if drifting too far from target (25% of target alt, min 10m)
         deviation_threshold = max(10.0, self._target_altitude * 0.25)
         if self._reached_target and abs(difference) > deviation_threshold:
             log.warn(
@@ -135,12 +153,14 @@ class HoverAction(Action):
                 f"(threshold {deviation_threshold:.0f}m)"
             )
 
-        if state.altitude_surface < 10.0 and state.vertical_speed < -5.0:
+        # Emergency: falling fast near the ground
+        if state.altitude_surface < 100.0 and state.vertical_speed < -5.0:
             log.error(
                 f"Dangerous descent: alt={state.altitude_surface:.0f}m "
                 f"vspd={state.vertical_speed:.1f}m/s"
             )
 
+        # --- Landed detection: back at starting altitude and on the ground ---
         if (
             self._reached_target
             and state.altitude_surface <= (self._initial_altitude + 1.0)
