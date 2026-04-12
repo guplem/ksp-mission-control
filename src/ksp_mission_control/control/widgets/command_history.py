@@ -9,6 +9,7 @@ from textual.containers import Horizontal
 from textual.widgets import Button, Static
 
 from ksp_mission_control.control.actions.base import ActionStatus, VesselCommands
+from ksp_mission_control.control.formatting import format_met
 
 _STATUS_VARIABLE: dict[ActionStatus, str] = {
     ActionStatus.RUNNING: "accent",
@@ -84,8 +85,11 @@ class CommandHistoryWidget(Static):
 
         label = action_label or "Manual"
         record = CommandRecord(
-            action_label=label, met=met, commands=commands,
-            applied_fields=applied_fields, status=status,
+            action_label=label,
+            met=met,
+            commands=commands,
+            applied_fields=applied_fields,
+            status=status,
         )
 
         if self._history and _commands_equal(self._history[-1].commands, commands):
@@ -124,8 +128,7 @@ class CommandHistoryWidget(Static):
         if self._status_colors is None:
             css_vars = self.app.get_css_variables()
             self._status_colors = {
-                status: css_vars.get(var, "#ffffff")
-                for status, var in _STATUS_VARIABLE.items()
+                status: css_vars.get(var, "#ffffff") for status, var in _STATUS_VARIABLE.items()
             }
         return self._status_colors
 
@@ -146,10 +149,7 @@ class CommandHistoryWidget(Static):
             status_text = f"[bold {color}]{record.status.value}[/bold {color}]"
         else:
             status_text = "[dim]---[/dim]"
-        title = (
-            f"[b]{record.action_label}[/b]  {status_text}"
-            f"  [dim]{_format_met(record.met)}[/dim]"
-        )
+        title = f"[b]{record.action_label}[/b]  {status_text}  [dim]{format_met(record.met)}[/dim]"
         self.query_one("#command-history-title", Static).update(title)
         self.query_one("#command-history-content", Static).update(
             _format_commands(record.commands, record.applied_fields)
@@ -157,7 +157,9 @@ class CommandHistoryWidget(Static):
         total = len(self._history)
         page = self._index + 1
         accent_color = self._resolve_accent()
-        following_indicator = f" [bold {accent_color}]\u25cf[/bold {accent_color}]" if self._following else ""
+        following_indicator = (
+            f" [bold {accent_color}]\u25cf[/bold {accent_color}]" if self._following else ""
+        )
         self.query_one("#command-history-page", Static).update(
             f"{page}/{total}{following_indicator}"
         )
@@ -165,6 +167,19 @@ class CommandHistoryWidget(Static):
         self.query_one("#cmd-prev", Button).disabled = self._index <= 0
         self.query_one("#cmd-next", Button).disabled = self._index >= total - 1
         self.query_one("#cmd-last", Button).disabled = self._following
+
+
+def _format_field_value(name: str, value: object) -> str:
+    """Format a command field value with appropriate units."""
+    if name == "throttle":
+        return f"{float(value) * 100:.0f}%"  # type: ignore[arg-type]
+    if name in ("pitch", "heading"):
+        return f"{float(value):.1f}\u00b0"  # type: ignore[arg-type]
+    if name in ("sas", "rcs"):
+        return "ON" if value else "OFF"
+    if name == "stage":
+        return "ACTIVATE" if value else "---"
+    return str(value)
 
 
 def _format_commands(commands: VesselCommands, applied_fields: frozenset[str]) -> str:
@@ -180,22 +195,15 @@ def _format_commands(commands: VesselCommands, applied_fields: frozenset[str]) -
         label = field.name.replace("_", " ").title()
         if value is None:
             lines.append(f"[dim]{label}: ---[/dim]")
-        elif field.name in applied_fields:
-            lines.append(f"{label}: {value}")
         else:
-            lines.append(f"[dim]{label}: {value}[/dim]")
+            formatted = _format_field_value(field.name, value)
+            if field.name in applied_fields:
+                lines.append(f"{label}: {formatted}")
+            else:
+                lines.append(f"[dim]{label}: {formatted}[/dim]")
     return "\n".join(lines)
-
-
-def _format_met(met: float) -> str:
-    """Format MET as MM:SS.t for display."""
-    minutes = int(met) // 60
-    seconds = met - minutes * 60
-    return f"T+{minutes:02d}:{seconds:04.1f}"
 
 
 def _commands_equal(a: VesselCommands, b: VesselCommands) -> bool:
     """Compare two VesselCommands by their field values."""
-    return all(
-        getattr(a, field.name) == getattr(b, field.name) for field in fields(a)
-    )
+    return all(getattr(a, field.name) == getattr(b, field.name) for field in fields(a))
