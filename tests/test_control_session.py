@@ -63,7 +63,7 @@ class TestControlSessionDemo:
         updates: list[tuple[VesselState, RunnerSnapshot]] = []
         session = ControlSession(
             demo=True,
-            on_update=lambda s, r: updates.append((s, r)),
+            on_update=lambda s, r, c: updates.append((s, r)),
             on_error=lambda _: None,
         )
 
@@ -78,7 +78,7 @@ class TestControlSessionDemo:
         states: list[VesselState] = []
         session = ControlSession(
             demo=True,
-            on_update=lambda s, _: states.append(s),
+            on_update=lambda s, _r, _c: states.append(s),
             on_error=lambda _: None,
         )
 
@@ -91,7 +91,7 @@ class TestControlSessionDemo:
     def test_start_action_delegates_to_runner(self) -> None:
         session = ControlSession(
             demo=True,
-            on_update=lambda *_: None,
+            on_update=lambda *_args: None,
             on_error=lambda _: None,
         )
         action = StubAction()
@@ -107,7 +107,7 @@ class TestControlSessionDemo:
     def test_abort_clears_running_action(self) -> None:
         session = ControlSession(
             demo=True,
-            on_update=lambda *_: None,
+            on_update=lambda *_args: None,
             on_error=lambda _: None,
         )
         action = StubAction()
@@ -120,7 +120,7 @@ class TestControlSessionDemo:
     def test_abort_no_action_is_safe(self) -> None:
         session = ControlSession(
             demo=True,
-            on_update=lambda *_: None,
+            on_update=lambda *_args: None,
             on_error=lambda _: None,
         )
 
@@ -131,7 +131,7 @@ class TestControlSessionDemo:
     def test_shutdown_sets_stop_event(self) -> None:
         session = ControlSession(
             demo=True,
-            on_update=lambda *_: None,
+            on_update=lambda *_args: None,
             on_error=lambda _: None,
         )
 
@@ -142,7 +142,7 @@ class TestControlSessionDemo:
     def test_shutdown_aborts_running_action(self) -> None:
         session = ControlSession(
             demo=True,
-            on_update=lambda *_: None,
+            on_update=lambda *_args: None,
             on_error=lambda _: None,
         )
         session.start_action(StubAction())
@@ -154,7 +154,7 @@ class TestControlSessionDemo:
     def test_snapshot_delegates_to_runner(self) -> None:
         session = ControlSession(
             demo=True,
-            on_update=lambda *_: None,
+            on_update=lambda *_args: None,
             on_error=lambda _: None,
         )
 
@@ -171,7 +171,7 @@ class TestControlSessionLive:
         errors: list[str] = []
         session = ControlSession(
             demo=False,
-            on_update=lambda *_: None,
+            on_update=lambda *_args: None,
             on_error=lambda msg: errors.append(msg),
             config_manager=MagicMock(),
         )

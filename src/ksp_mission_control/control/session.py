@@ -12,7 +12,7 @@ from collections.abc import Callable
 from typing import Any
 
 from ksp_mission_control.config import ConfigManager
-from ksp_mission_control.control.actions.base import Action, VesselState
+from ksp_mission_control.control.actions.base import Action, VesselCommands, VesselState
 from ksp_mission_control.control.actions.runner import ActionRunner, RunnerSnapshot
 from ksp_mission_control.control.demo.demo_state import generate_demo_vessel_state
 from ksp_mission_control.control.krpc_bridge import apply_controls, read_vessel_state
@@ -29,7 +29,7 @@ class ControlSession:
         self,
         *,
         demo: bool,
-        on_update: Callable[[VesselState, RunnerSnapshot], None],
+        on_update: Callable[[VesselState, RunnerSnapshot, VesselCommands], None],
         on_error: Callable[[str], None],
         config_manager: ConfigManager | None = None,
     ) -> None:
@@ -68,9 +68,9 @@ class ControlSession:
         while not self._stop_event.is_set():
             try:
                 vessel_state = read_vessel_state(conn)
-                controls = self._runner.step(vessel_state, dt=0.5)
-                apply_controls(conn, controls)
-                self._on_update(vessel_state, self._runner.snapshot())
+                commands = self._runner.step(vessel_state, dt=0.5)
+                apply_controls(conn, commands)
+                self._on_update(vessel_state, self._runner.snapshot(), commands)
             except Exception as exc:
                 self._on_error(f"Error reading data: {exc}")
             self._stop_event.wait(0.5)
@@ -83,8 +83,8 @@ class ControlSession:
         """
         self._tick += 1
         vessel_state = generate_demo_vessel_state(self._tick)
-        self._runner.step(vessel_state, dt=0.5)
-        self._on_update(vessel_state, self._runner.snapshot())
+        commands = self._runner.step(vessel_state, dt=0.5)
+        self._on_update(vessel_state, self._runner.snapshot(), commands)
 
     def start_action(self, action: Action, params: dict[str, Any] | None = None) -> None:
         """Begin executing an action. Raises ValueError on invalid params."""
