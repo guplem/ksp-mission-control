@@ -36,7 +36,7 @@ class VesselDetectedCheck(SetupCheck):
             except Exception as exc:
                 return CheckResult(
                     passed=False,
-                    message=f"No active vessel ({exc})",
+                    message=f"No active vessel)\n{exc}",
                 )
             finally:
                 conn.close()
