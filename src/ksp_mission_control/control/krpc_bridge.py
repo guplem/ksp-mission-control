@@ -15,6 +15,7 @@ def read_vessel_state(conn: object) -> VesselState:
     vessel = conn.space_center.active_vessel  # type: ignore[attr-defined]
     flight = vessel.flight(vessel.orbit.body.reference_frame)
     orbit = vessel.orbit
+    control = vessel.control
     return VesselState(
         altitude_sea=flight.mean_altitude,
         altitude_surface=flight.surface_altitude,
@@ -32,6 +33,14 @@ def read_vessel_state(conn: object) -> VesselState:
         inclination=orbit.inclination,
         eccentricity=orbit.eccentricity,
         period=orbit.period,
+        pitch=flight.pitch,
+        heading=flight.heading,
+        roll=flight.roll,
+        throttle=control.throttle,
+        sas=control.sas,
+        rcs=control.rcs,
+        current_stage=control.current_stage,
+        max_stages=max((p.stage for p in vessel.parts.all), default=0),
         electric_charge=vessel.resources.amount("ElectricCharge"),
         liquid_fuel=vessel.resources.amount("LiquidFuel"),
         oxidizer=vessel.resources.amount("Oxidizer"),

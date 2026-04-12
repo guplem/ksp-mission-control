@@ -94,6 +94,26 @@ class VesselState:
     longitude: float = 0.0
     """Geographic longitude on the body surface, in degrees. -180 to 180."""
 
+    # --- Orientation ---
+    pitch: float = 0.0
+    """Vessel pitch angle in degrees. 0 = horizontal, 90 = straight up."""
+    heading: float = 0.0
+    """Vessel heading in degrees. 0 = north, 90 = east, 180 = south, 270 = west."""
+    roll: float = 0.0
+    """Vessel roll angle in degrees."""
+
+    # --- Configuration ---
+    throttle: float = 0.0
+    """Current throttle setting. 0.0 = off, 1.0 = full thrust."""
+    sas: bool = False
+    """Whether the Stability Assist System is enabled."""
+    rcs: bool = False
+    """Whether the Reaction Control System is enabled."""
+    current_stage: int = 0
+    """Currently active stage number."""
+    max_stages: int = 0
+    """Total number of stages on the vessel."""
+
     # --- Resources ---
     electric_charge: float = 0.0
     """Available electric charge, in units."""

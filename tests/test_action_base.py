@@ -97,6 +97,14 @@ class TestVesselState:
         assert state.inclination == 0.0
         assert state.eccentricity == 0.0
         assert state.period == 0.0
+        assert state.pitch == 0.0
+        assert state.heading == 0.0
+        assert state.roll == 0.0
+        assert state.throttle == 0.0
+        assert state.sas is False
+        assert state.rcs is False
+        assert state.current_stage == 0
+        assert state.max_stages == 0
         assert state.electric_charge == 0.0
         assert state.liquid_fuel == 0.0
         assert state.oxidizer == 0.0

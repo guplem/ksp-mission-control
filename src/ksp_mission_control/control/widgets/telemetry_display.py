@@ -81,6 +81,11 @@ def _format_orbit(state: VesselState) -> str:
             f"Inclination:     {state.inclination:.2f} deg",
             f"Eccentricity:    {state.eccentricity:.4f}",
             f"Period:          {state.period:.1f} s",
+            "",
+            "[b]Orientation[/b]",
+            f"Pitch:           {state.pitch:.1f} deg",
+            f"Heading:         {state.heading:.1f} deg",
+            f"Roll:            {state.roll:.1f} deg",
         ]
     )
 
@@ -93,5 +98,11 @@ def _format_resources(state: VesselState) -> str:
             f"Liquid fuel:     {state.liquid_fuel:.1f}",
             f"Oxidizer:        {state.oxidizer:.1f}",
             f"Mono propellant: {state.mono_propellant:.1f}",
+            "",
+            "[b]Configuration[/b]",
+            f"Throttle:        {state.throttle * 100:.0f}%",
+            f"SAS:             {'ON' if state.sas else 'OFF'}",
+            f"RCS:             {'ON' if state.rcs else 'OFF'}",
+            f"Stage:           {state.current_stage} / {state.max_stages}",
         ]
     )
