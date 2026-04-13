@@ -254,24 +254,48 @@ class ControlScreen(Screen[None]):
         self.app.pop_screen()
 
 
-def _build_vessel_state_element(parent: Element, state: VesselState) -> None:
-    """Add vessel state fields as child elements under *parent*."""
-    state_el = SubElement(parent, "state")
+def _format_field_value_xml(value: object) -> str:
+    """Format a VesselState field value for XML export."""
+    if isinstance(value, float):
+        return f"{value:.4f}"
+    if isinstance(value, Enum):
+        return str(value.value)
+    return str(value)
+
+
+def _build_vessel_state_element(
+    parent: Element, state: VesselState, previous_state: VesselState | None
+) -> None:
+    """Add vessel state fields that changed since *previous_state* under *parent*.
+
+    If *previous_state* is ``None`` (first tick), all fields are included.
+    """
+    changed_fields: list[tuple[str, str]] = []
     for field in fields(state):
         value = getattr(state, field.name)
-        child = SubElement(state_el, field.name)
-        if isinstance(value, float):
-            child.text = f"{value:.4f}"
-        elif isinstance(value, Enum):
-            child.text = str(value.value)
-        else:
-            child.text = str(value)
+        if previous_state is not None and getattr(previous_state, field.name) == value:
+            continue
+        changed_fields.append((field.name, _format_field_value_xml(value)))
+
+    if not changed_fields:
+        return
+
+    state_el = SubElement(parent, "state")
+    for name, text in changed_fields:
+        child = SubElement(state_el, name)
+        child.text = text
 
 
 def _format_tick_history(ticks: list[TickRecord]) -> str:
-    """Format all tick records as XML for clipboard export."""
+    """Format all tick records as XML for clipboard export.
+
+    State fields are delta-compressed: only fields that changed since the
+    previous tick are included. Commands already omit ``None`` fields.
+    Logs are always included in full.
+    """
     root = Element("ticks")
 
+    previous_state: VesselState | None = None
     for tick in ticks:
         tick_el = SubElement(root, "tick", number=str(tick.tick_number), met=format_met(tick.met))
 
@@ -280,8 +304,9 @@ def _format_tick_history(ticks: list[TickRecord]) -> str:
             action_text += f" ({tick.action_status.value})"
         tick_el.set("action", action_text)
 
-        # Vessel state
-        _build_vessel_state_element(tick_el, tick.state)
+        # Vessel state (delta from previous tick)
+        _build_vessel_state_element(tick_el, tick.state, previous_state)
+        previous_state = tick.state
 
         # Logs
         if tick.logs:
