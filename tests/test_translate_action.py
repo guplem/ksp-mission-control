@@ -69,43 +69,75 @@ class TestLatLonToMeters:
 
 
 class TestWorldToVessel:
-    """Tests for world-space to vessel-relative projection."""
+    """Tests for world-space to vessel body-axis projection.
+
+    Returns positive values when the world vector aligns with the positive
+    body direction. No kRPC-specific inversions are applied here.
+    """
+
+    # --- Level vessel (roll=0, pitch=0): degenerates to heading-only rotation ---
 
     def test_heading_north_forward_is_north(self) -> None:
-        """Facing north: north component maps to forward."""
-        fwd, right = _world_to_vessel(10.0, 0.0, 0.0)
+        """Facing north, level: north component maps to forward."""
+        fwd, right, up = _world_to_vessel(10.0, 0.0, 0.0, 0.0, 0.0)
         assert abs(fwd - 10.0) < 0.01
         assert abs(right) < 0.01
+        assert abs(up) < 0.01
 
-    def test_heading_north_east_is_negative_right(self) -> None:
-        """Facing north: east component maps to negative right (kRPC right is inverted)."""
-        fwd, right = _world_to_vessel(0.0, 10.0, 0.0)
-        assert abs(fwd) < 0.01
-        assert abs(right - (-10.0)) < 0.01
-
-    def test_heading_east_north_is_positive_right(self) -> None:
-        """Facing east: north component maps to positive right (kRPC inverted = left = north)."""
-        fwd, right = _world_to_vessel(10.0, 0.0, 90.0)
+    def test_heading_north_east_is_right(self) -> None:
+        """Facing north, level: east component maps to right."""
+        fwd, right, up = _world_to_vessel(0.0, 10.0, 0.0, 0.0, 0.0)
         assert abs(fwd) < 0.01
         assert abs(right - 10.0) < 0.01
+        assert abs(up) < 0.01
+
+    def test_heading_east_north_is_negative_right(self) -> None:
+        """Facing east, level: north component maps to negative right (left)."""
+        fwd, right, up = _world_to_vessel(10.0, 0.0, 90.0, 0.0, 0.0)
+        assert abs(fwd) < 0.01
+        assert abs(right - (-10.0)) < 0.01
+        assert abs(up) < 0.01
 
     def test_heading_east_east_is_forward(self) -> None:
-        """Facing east: east component maps to forward."""
-        fwd, right = _world_to_vessel(0.0, 10.0, 90.0)
+        """Facing east, level: east component maps to forward."""
+        fwd, right, up = _world_to_vessel(0.0, 10.0, 90.0, 0.0, 0.0)
         assert abs(fwd - 10.0) < 0.01
         assert abs(right) < 0.01
 
     def test_heading_south_north_is_backward(self) -> None:
-        """Facing south: north component maps to backward (negative forward)."""
-        fwd, right = _world_to_vessel(10.0, 0.0, 180.0)
+        """Facing south, level: north component maps to backward (negative forward)."""
+        fwd, right, up = _world_to_vessel(10.0, 0.0, 180.0, 0.0, 0.0)
         assert abs(fwd - (-10.0)) < 0.01
         assert abs(right) < 0.01
 
     def test_heading_west_east_is_backward(self) -> None:
-        """Facing west (270): east maps to backward."""
-        fwd, right = _world_to_vessel(0.0, 10.0, 270.0)
+        """Facing west, level: east maps to backward."""
+        fwd, right, up = _world_to_vessel(0.0, 10.0, 270.0, 0.0, 0.0)
         assert abs(fwd - (-10.0)) < 0.01
         assert abs(right) < 0.01
+
+    # --- Rolled vessel (roll=-90): body right is vertical, body up is horizontal ---
+
+    def test_roll_minus90_north_maps_to_up(self) -> None:
+        """Facing west, roll=-90, pitch=0: north maps entirely to body up."""
+        fwd, right, up = _world_to_vessel(10.0, 0.0, 270.0, 0.0, -90.0)
+        assert abs(fwd) < 0.01
+        assert abs(right) < 0.01
+        assert abs(up - 10.0) < 0.01
+
+    def test_roll_minus90_east_maps_to_backward(self) -> None:
+        """Facing west, roll=-90, pitch=0: east maps to backward (negative forward)."""
+        fwd, right, up = _world_to_vessel(0.0, 10.0, 270.0, 0.0, -90.0)
+        assert abs(fwd - (-10.0)) < 0.01
+        assert abs(right) < 0.01
+        assert abs(up) < 0.01
+
+    def test_roll_minus90_with_pitch_north_maps_mostly_to_up(self) -> None:
+        """Facing west, roll=-90, pitch=15: north maps mostly to body up."""
+        fwd, right, up = _world_to_vessel(10.0, 0.0, 270.0, 15.0, -90.0)
+        assert abs(up) > 9.0  # Mostly in body up
+        assert abs(fwd) < 1.0
+        assert abs(right) < 1.0
 
 
 class TestTranslateActionMetadata:
@@ -175,10 +207,14 @@ class TestTranslateActionTick:
         east_meters: float = 0.0,
         altitude: float = 100.0,
         heading: float = 0.0,
+        pitch: float = 0.0,
+        roll: float = 0.0,
     ) -> VesselState:
         return VesselState(
             altitude_surface=altitude,
             heading=heading,
+            pitch=pitch,
+            roll=roll,
             latitude=self._START_LAT + _meters_to_lat(north_meters),
             longitude=self._START_LON + _meters_to_lon(east_meters, self._START_LAT),
             body_radius=_KERBIN_RADIUS,
@@ -221,12 +257,12 @@ class TestTranslateActionTick:
         assert controls.sas_mode == SASMode.RADIAL
         assert controls.rcs is True
 
-    # --- Forward/right RCS when facing north ---
+    # --- Level vessel (roll=0): forward and right used ---
 
-    def test_north_target_facing_north_uses_forward(self) -> None:
-        """Target is north, facing north: forward positive, right ~0."""
+    def test_north_target_facing_north_level(self) -> None:
+        """Target north, facing north, level: positive translate_forward."""
         action = self._make_started_action(distance_north=100.0, distance_east=0.0)
-        state = self._state_at_offset(altitude=100.0, heading=0.0)
+        state = self._state_at_offset(altitude=100.0, heading=0.0, roll=0.0)
         controls = VesselCommands()
         action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert controls.translate_forward is not None
@@ -234,45 +270,60 @@ class TestTranslateActionTick:
         assert controls.translate_right is not None
         assert abs(controls.translate_right) < 0.01
 
-    def test_east_target_facing_north_uses_negative_right(self) -> None:
-        """Target is east, facing north: negative right (kRPC inverted), forward ~0."""
+    def test_east_target_facing_north_level(self) -> None:
+        """Target east, facing north, level: positive translate_right."""
         action = self._make_started_action(distance_north=0.0, distance_east=100.0)
-        state = self._state_at_offset(altitude=100.0, heading=0.0)
+        state = self._state_at_offset(altitude=100.0, heading=0.0, roll=0.0)
         controls = VesselCommands()
         action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert controls.translate_right is not None
-        assert controls.translate_right < 0.0
+        assert controls.translate_right > 0.0
         assert controls.translate_forward is not None
         assert abs(controls.translate_forward) < 0.01
 
-    # --- Works regardless of vessel heading ---
-
-    def test_east_target_facing_east_uses_forward(self) -> None:
-        """Target is east, facing east: forward positive."""
+    def test_east_target_facing_east_level(self) -> None:
+        """Target east, facing east, level: positive translate_forward."""
         action = self._make_started_action(distance_north=0.0, distance_east=100.0)
-        state = self._state_at_offset(altitude=100.0, heading=90.0)
+        state = self._state_at_offset(altitude=100.0, heading=90.0, roll=0.0)
         controls = VesselCommands()
         action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert controls.translate_forward is not None
         assert controls.translate_forward > 0.0
 
-    def test_north_target_facing_west_uses_negative_right(self) -> None:
-        """Target is north, facing west (270): kRPC negative right pushes right = north."""
-        action = self._make_started_action(distance_north=100.0, distance_east=0.0)
-        state = self._state_at_offset(altitude=100.0, heading=270.0)
-        controls = VesselCommands()
-        action.tick(state, controls, dt=0.5, log=ActionLogger())
-        assert controls.translate_right is not None
-        assert controls.translate_right < 0.0
-
-    def test_south_target_facing_north_uses_backward(self) -> None:
-        """Target is south, facing north: backward = negative forward."""
+    def test_south_target_facing_north_level(self) -> None:
+        """Target south, facing north, level: negative translate_forward."""
         action = self._make_started_action(distance_north=-100.0, distance_east=0.0)
-        state = self._state_at_offset(altitude=100.0, heading=0.0)
+        state = self._state_at_offset(altitude=100.0, heading=0.0, roll=0.0)
         controls = VesselCommands()
         action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert controls.translate_forward is not None
         assert controls.translate_forward < 0.0
+
+    # --- Rolled vessel (roll=-90): translate_up drives horizontal motion ---
+
+    def test_north_target_facing_west_rolled(self) -> None:
+        """Target north, heading 270, roll -90: body up = north, so positive translate_up."""
+        action = self._make_started_action(distance_north=100.0, distance_east=0.0)
+        state = self._state_at_offset(altitude=100.0, heading=270.0, pitch=0.0, roll=-90.0)
+        controls = VesselCommands()
+        action.tick(state, controls, dt=0.5, log=ActionLogger())
+        assert controls.translate_up is not None
+        assert controls.translate_up > 0.0
+        assert controls.translate_forward is not None
+        assert abs(controls.translate_forward) < 0.01
+        assert controls.translate_right is not None
+        assert abs(controls.translate_right) < 0.01
+
+    def test_east_target_facing_west_rolled(self) -> None:
+        """Target east, heading 270, roll -90: body forward = west, so negative translate_forward."""
+        action = self._make_started_action(distance_north=0.0, distance_east=100.0)
+        state = self._state_at_offset(altitude=100.0, heading=270.0, pitch=0.0, roll=-90.0)
+        controls = VesselCommands()
+        action.tick(state, controls, dt=0.5, log=ActionLogger())
+        assert controls.translate_forward is not None
+        assert controls.translate_forward < 0.0
+        assert controls.translate_up is not None
+        assert abs(controls.translate_up) < 0.01
 
     # --- RCS clamped ---
 
@@ -291,6 +342,14 @@ class TestTranslateActionTick:
         action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert controls.translate_right is not None
         assert -1.0 <= controls.translate_right <= 1.0
+
+    def test_translate_up_clamped(self) -> None:
+        action = self._make_started_action(distance_north=10000.0)
+        state = self._state_at_offset(altitude=100.0, heading=270.0, roll=-90.0)
+        controls = VesselCommands()
+        action.tick(state, controls, dt=0.5, log=ActionLogger())
+        assert controls.translate_up is not None
+        assert -1.0 <= controls.translate_up <= 1.0
 
     # --- Deceleration ---
 
@@ -374,3 +433,4 @@ class TestTranslateActionStop:
         action.stop(state, controls, log=ActionLogger())
         assert controls.translate_forward == 0.0
         assert controls.translate_right == 0.0
+        assert controls.translate_up == 0.0

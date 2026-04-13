@@ -1,21 +1,24 @@
 """TranslateAction - multi-axis RCS horizontal movement.
 
 Moves the vessel a specified number of meters North/South and East/West
-using RCS translation on two axes (forward and right), while the main
-engines maintain altitude.
+using RCS translation on three axes (forward, right, up), while the
+main engines maintain altitude.
 
 Strategy
 --------
 Instead of rotating the vessel to face the target, this action keeps
 the vessel's current orientation and decomposes the desired velocity
-into vessel-relative axes:
+into vessel-relative axes using the full 3D orientation (heading,
+pitch, roll):
 
   - **translate_forward**: RCS thrust along the vessel's forward axis
   - **translate_right**: RCS thrust along the vessel's right axis
+  - **translate_up**: RCS thrust along the vessel's up axis
 
-The world-space desired velocity (north/east) is projected onto the
-vessel's heading to compute how much forward and right RCS is needed.
-This works regardless of which direction the vessel is facing.
+All three axes are needed because the vessel may be significantly
+rolled (e.g., -90 degrees in SAS radial mode), which rotates the body
+axes away from the horizontal plane. A heading-only 2D projection
+would put all horizontal force into the wrong body axis.
 
 Velocity control
 ----------------
@@ -96,19 +99,49 @@ def _world_to_vessel(
     north: float,
     east: float,
     heading_deg: float,
-) -> tuple[float, float]:
-    """Project a world-space (north, east) vector onto vessel-relative (forward, right).
+    pitch_deg: float,
+    roll_deg: float,
+) -> tuple[float, float, float]:
+    """Project a world-space (north, east) vector onto vessel body axes.
 
-    Uses the vessel's current heading to rotate the vector. This lets us
-    drive translate_forward and translate_right without rotating the vessel.
+    Uses the full 3D orientation (heading, pitch, roll) to compute the
+    vessel's body axes in world space, then projects the desired vector
+    onto each axis via dot product. Returns positive values when the world
+    vector has a component in the positive body direction (forward, right,
+    or up).
 
-    Returns (forward_component, right_component).
+    A heading-only 2D projection fails when the vessel has significant
+    roll (e.g., -90 degrees in SAS radial mode), because the body "right"
+    axis is no longer horizontal. The full 3D rotation correctly distributes
+    the desired force across forward, right, and up.
+
+    Returns (forward_component, right_component, up_component).
     """
-    heading_rad = math.radians(heading_deg)
-    forward = north * math.cos(heading_rad) + east * math.sin(heading_rad)
-    # kRPC's control.right axis is inverted: positive = left, negative = right.
-    right = north * math.sin(heading_rad) - east * math.cos(heading_rad)
-    return forward, right
+    h = math.radians(heading_deg)
+    p = math.radians(pitch_deg)
+    r = math.radians(roll_deg)
+
+    cos_h, sin_h = math.cos(h), math.sin(h)
+    cos_p, sin_p = math.cos(p), math.sin(p)
+    cos_r, sin_r = math.cos(r), math.sin(r)
+
+    # Body axes in world space (north, east components).
+    # Derived from the heading -> pitch -> roll Euler rotation sequence.
+    fwd_n = cos_h * cos_p
+    fwd_e = sin_h * cos_p
+
+    right_n = -cos_r * sin_h - sin_r * cos_h * sin_p
+    right_e = cos_r * cos_h - sin_r * sin_h * sin_p
+
+    up_n = sin_r * sin_h - cos_r * cos_h * sin_p
+    up_e = -sin_r * cos_h - cos_r * sin_h * sin_p
+
+    # Project world vector onto each body axis (dot product).
+    forward = fwd_n * north + fwd_e * east
+    right = right_n * north + right_e * east
+    up = up_n * north + up_e * east
+
+    return forward, right, up
 
 
 # ---------------------------------------------------------------------------
@@ -233,23 +266,28 @@ class TranslateAction(Action):
         error_east = desired_velocity_east - velocity_east
 
         # ── 8. Project onto vessel axes ─────────────────────────────────────
-        # Convert world-space velocity error to vessel-relative (forward, right)
-        # using the vessel's current heading. No rotation needed.
-        error_forward, error_right = _world_to_vessel(
+        # Convert world-space velocity error to vessel body axes using the
+        # full 3D orientation. All three axes are needed because the vessel
+        # may have significant roll (e.g., -90 deg in SAS radial mode).
+        body_fwd, body_right, body_up = _world_to_vessel(
             error_north,
             error_east,
             state.heading,
+            state.pitch,
+            state.roll,
         )
 
-        commands.translate_forward = max(-1.0, min(1.0, _RCS_GAIN * error_forward))
-        commands.translate_right = max(-1.0, min(1.0, _RCS_GAIN * error_right))
+        commands.translate_forward = max(-1.0, min(1.0, _RCS_GAIN * body_fwd))
+        commands.translate_right = max(-1.0, min(1.0, _RCS_GAIN * body_right))
+        commands.translate_up = max(-1.0, min(1.0, _RCS_GAIN * body_up))
 
         # ── 9. Debug log ───────────────────────────────────────────────────
         log.debug(
             f"translate: remaining N={remaining_north:+.1f}m E={remaining_east:+.1f}m "
             f"dist={remaining_distance:.1f}m  "
             f"speed={actual_speed:.1f}/{desired_speed:.1f}m/s  "
-            f"fwd={commands.translate_forward:+.2f} right={commands.translate_right:+.2f}  "
+            f"fwd={commands.translate_forward:+.2f} right={commands.translate_right:+.2f} "
+            f"up={commands.translate_up:+.2f}  "
             f"alt_err={altitude_error:+.1f}m throttle={commands.throttle:.3f}"
         )
 
@@ -261,3 +299,4 @@ class TranslateAction(Action):
         commands.rcs = False
         commands.translate_forward = 0.0
         commands.translate_right = 0.0
+        commands.translate_up = 0.0
