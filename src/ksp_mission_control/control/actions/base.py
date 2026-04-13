@@ -398,6 +398,8 @@ class VesselState:
     """Currently active stage number."""
     max_stages: int = 0
     """Total number of stages on the vessel."""
+    engines_flamed_out: int = 0
+    """Number of active engines that have run out of fuel (flameout)."""
 
     # --- Deployables ---
     solar_panels: bool = False
@@ -641,9 +643,7 @@ class Action(ABC):
         """
 
     @abstractmethod
-    def tick(
-        self, state: VesselState, commands: VesselCommands, dt: float, log: ActionLogger
-    ) -> ActionResult:
+    def tick(self, state: VesselState, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         """Execute one step of the action.
 
         Read from *state*, mutate *commands* to express desired changes,

@@ -160,6 +160,7 @@ def read_vessel_state(conn: object) -> VesselState:
         abort=control.abort,
         current_stage=control.current_stage,
         max_stages=max((p.stage for p in vessel.parts.all), default=0),
+        engines_flamed_out=sum(1 for e in vessel.parts.engines if e.active and not e.has_fuel),
         solar_panels=control.solar_panels,
         antennas=control.antennas,
         cargo_bays=control.cargo_bays,
@@ -173,9 +174,7 @@ def read_vessel_state(conn: object) -> VesselState:
     )
 
 
-def filter_commands(
-    commands: VesselCommands, state: VesselState
-) -> tuple[VesselCommands, frozenset[str]]:
+def filter_commands(commands: VesselCommands, state: VesselState) -> tuple[VesselCommands, frozenset[str]]:
     """Filter out command fields that already match the vessel's current state.
 
     Returns:
