@@ -37,7 +37,6 @@ from ksp_mission_control.control.actions.base import (
     ActionResult,
     ActionStatus,
     ParamType,
-    SASMode,
     SpeedMode,
     VesselCommands,
     VesselState,
@@ -213,16 +212,22 @@ class LaunchAction(Action):
 
         # Check if finished
         if state.apoapsis >= self._target_altitude - self.tolerance_altitude:
-            return ActionResult(status=ActionStatus.SUCCEEDED)
+            return ActionResult(status=ActionStatus.SUCCEEDED, message="Target apoapsis reached")
 
-        commands.throttle = 1.0  # full throttle until we reach apoapsis
-
-        commands.sas = True
-        commands.sas_mode = SASMode.RADIAL  # point away from the surface normal to start vertical, then gravity turn will adjust pitch
-
+        # General Configuration
         commands.speed_mode = SpeedMode.ORBIT  # show orbital speed on navball
-        commands.autopilot_roll = self._launch_heading  # keep the vessel pointed in the right compass direction for the desired inclination
-        commands.autopilot_pitch = self._pitch_for_altitude(state.altitude_sea, self._turn_start_altitude, self._turn_end_altitude)
+        commands.autopilot = True
+
+        # Rotation
+        if state.altitude_surface > _GRAVITY_TURN_CLEARANCE:
+            commands.autopilot_roll = 0  # For the time being, just go east
+            # commands.autopilot_roll = self._launch_heading  # keep the vessel pointed in the right compass direction for the desired inclination
+
+            # if (state.autopilot_roll_error < 5) or (state.autopilot_roll_error > -5):
+            # commands.autopilot_pitch = self._pitch_for_altitude(state.altitude_sea, self._turn_start_altitude, self._turn_end_altitude)
+
+        # Throttle control
+        commands.throttle = 1.0  # full throttle until we reach apoapsis
 
         if state.available_thrust <= 1:
             commands.stage = True
