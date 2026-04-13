@@ -399,6 +399,50 @@ class TestTranslateActionTick:
         result = action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert result.status == ActionStatus.SUCCEEDED
 
+    # --- Braking ---
+
+    def test_brakes_when_going_too_fast_near_target(self) -> None:
+        """When actual speed >> desired speed, heading should flip to retrograde."""
+        action = self._make_started_action(distance_north=50.0)
+        # First tick far away to establish position
+        state_far = self._state_at_offset(north_meters=35.0, altitude=100.0, heading=0.0)
+        action.tick(state_far, VesselCommands(), dt=0.5, log=ActionLogger())
+        # Second tick: big jump = high velocity, close to target
+        # Moved 12m in 0.5s = 24 m/s, but desired speed for 3m remaining is ~3 m/s
+        state_close = self._state_at_offset(north_meters=47.0, altitude=100.0, heading=0.0)
+        controls = VesselCommands()
+        action.tick(state_close, controls, dt=0.5, log=ActionLogger())
+        # Should be braking: heading ~180 (retrograde of northward travel)
+        assert controls.autopilot_heading is not None
+        assert abs(controls.autopilot_heading - 180.0) < 30.0  # roughly retrograde
+
+    def test_no_braking_when_slow(self) -> None:
+        """When speed is within desired range, heading should point toward target."""
+        action = self._make_started_action(distance_north=100.0)
+        # First tick to establish position
+        state1 = self._state_at_offset(north_meters=0.0, altitude=100.0, heading=0.0)
+        action.tick(state1, VesselCommands(), dt=0.5, log=ActionLogger())
+        # Second tick: small move = low velocity, far from target
+        state2 = self._state_at_offset(north_meters=0.1, altitude=100.0, heading=0.0)
+        controls = VesselCommands()
+        action.tick(state2, controls, dt=0.5, log=ActionLogger())
+        # Should be pointing toward target (north = 0 degrees), not retrograde
+        assert controls.autopilot_heading is not None
+        assert abs(controls.autopilot_heading - 0.0) < 10.0
+
+    def test_braking_translate_forward_is_positive(self) -> None:
+        """During braking, translate_forward should be positive (pushing against motion)."""
+        action = self._make_started_action(distance_north=50.0)
+        state_far = self._state_at_offset(north_meters=35.0, altitude=100.0, heading=180.0)
+        action.tick(state_far, VesselCommands(), dt=0.5, log=ActionLogger())
+        # Big jump to trigger braking
+        state_close = self._state_at_offset(north_meters=47.0, altitude=100.0, heading=180.0)
+        controls = VesselCommands()
+        action.tick(state_close, controls, dt=0.5, log=ActionLogger())
+        # Heading aligned with retrograde, translate_forward should be positive
+        assert controls.translate_forward is not None
+        assert controls.translate_forward >= 0.0
+
 
 class TestTranslateActionStop:
     """Tests for TranslateAction cleanup on stop."""

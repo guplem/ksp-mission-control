@@ -1,10 +1,13 @@
 """TranslateAction - orient-then-translate horizontal movement.
 
 Strategy:
-  1. Orient: engage the kRPC autopilot targeting pitch=90 (upright) and
-     heading toward the destination. Wait until heading aligns.
+  1. Orient: engage the kRPC autopilot targeting heading toward the
+     destination. Wait until heading aligns.
   2. Translate: use translate_forward (RCS) to move toward the target.
-     A velocity P controller ramps up to max_speed and brakes on approach.
+     A velocity P controller ramps up to max_speed.
+  3. Brake: when going too fast for the remaining distance, rotate to
+     face retrograde (opposite travel direction) and push forward to
+     decelerate, preventing overshoot.
 
 Altitude is held throughout using the same cascaded velocity controller as
 HoverAction. Position is tracked via lat/lon coordinates.
@@ -39,6 +42,7 @@ _HORIZONTAL_GAIN = 0.1  # desired speed per meter of remaining distance (scales 
 _FORWARD_GAIN = 0.2  # translate_forward per m/s of forward velocity error
 _ARRIVAL_DISTANCE = 2.0  # meters: consider target reached below this
 _ARRIVAL_SPEED = 1.0  # m/s: must be slower than this to complete
+_BRAKE_SPEED_THRESHOLD = 0.5  # m/s: minimum speed to determine travel direction for braking
 
 
 def _lat_lon_to_meters(
@@ -182,30 +186,54 @@ class TranslateAction(Action):
         # Disable SAS (autopilot handles orientation)
         commands.sas = False
 
-        # --- Heading control ---
-        target_hdg = _target_heading(remaining_north, remaining_east)
-        commands.autopilot_heading = target_hdg
-        hdg_error = _heading_error(target_hdg, state.heading)
-        aligned = abs(hdg_error) < _HEADING_ALIGNED_THRESHOLD
+        # --- Desired speed for current distance ---
+        desired_forward_speed = min(
+            self._max_speed,
+            _HORIZONTAL_GAIN * remaining_distance * self._max_speed,
+        )
 
-        # --- Forward translation: only when heading is aligned ---
-        if aligned:
-            desired_forward_speed = min(
-                self._max_speed,
-                _HORIZONTAL_GAIN * remaining_distance * self._max_speed,
-            )
-            if remaining_distance > 0:
-                actual_forward_speed = (
-                    actual_north_velocity * remaining_north + actual_east_velocity * remaining_east
-                ) / remaining_distance
+        # --- Determine phase: braking, translating, or orienting ---
+        # Brake when going significantly faster than desired and we can determine
+        # travel direction. Point retrograde and push forward to decelerate.
+        braking = (
+            actual_speed > desired_forward_speed + _BRAKE_SPEED_THRESHOLD
+            and actual_speed > _BRAKE_SPEED_THRESHOLD
+        )
+
+        if braking:
+            # Point opposite to travel direction (retrograde)
+            travel_hdg = _target_heading(actual_north_velocity, actual_east_velocity)
+            retrograde_hdg = (travel_hdg + 180.0) % 360.0
+            commands.autopilot_heading = retrograde_hdg
+            hdg_error = _heading_error(retrograde_hdg, state.heading)
+            aligned = abs(hdg_error) < _HEADING_ALIGNED_THRESHOLD
+            # Push forward (which is now retrograde) to brake
+            if aligned:
+                brake_force = _FORWARD_GAIN * (actual_speed - desired_forward_speed)
+                commands.translate_forward = max(0.0, min(1.0, brake_force))
             else:
-                actual_forward_speed = 0.0
-            forward_error = desired_forward_speed - actual_forward_speed
-            commands.translate_forward = max(-1.0, min(1.0, _FORWARD_GAIN * forward_error))
+                commands.translate_forward = 0.0
+            phase = "braking"
         else:
-            commands.translate_forward = 0.0
+            # Normal: orient toward target and translate forward
+            target_hdg = _target_heading(remaining_north, remaining_east)
+            commands.autopilot_heading = target_hdg
+            hdg_error = _heading_error(target_hdg, state.heading)
+            aligned = abs(hdg_error) < _HEADING_ALIGNED_THRESHOLD
+            if aligned:
+                if remaining_distance > 0:
+                    actual_forward_speed = (
+                        actual_north_velocity * remaining_north
+                        + actual_east_velocity * remaining_east
+                    ) / remaining_distance
+                else:
+                    actual_forward_speed = 0.0
+                forward_error = desired_forward_speed - actual_forward_speed
+                commands.translate_forward = max(-1.0, min(1.0, _FORWARD_GAIN * forward_error))
+            else:
+                commands.translate_forward = 0.0
+            phase = "translating" if aligned else "orienting"
 
-        phase = "translating" if aligned else "orienting"
         log.debug(
             f"translate [{phase}]: remaining N={remaining_north:+.1f}m E={remaining_east:+.1f}m "
             f"dist={remaining_distance:.1f}m  hdg_err={hdg_error:+.1f}deg  "
