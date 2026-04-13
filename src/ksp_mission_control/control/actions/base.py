@@ -104,6 +104,37 @@ class VesselSituation(Enum):
         return self.value.replace("_", " ").title()
 
 
+class ReferenceFrame(Enum):
+    """Coordinate reference frame for autopilot direction vectors.
+
+    Maps to kRPC reference frame objects in the bridge. Use with
+    AutopilotDirection to point the vessel at an arbitrary 3D vector.
+
+    Members:
+        VESSEL_SURFACE: Aligned with the vessel's surface position.
+            +x = zenith (up), +y = north, +z = east.
+        VESSEL_ORBITAL: Aligned with the vessel's orbital velocity.
+            +x = prograde, +y = normal, +z = radial.
+        VESSEL: The vessel's own reference frame (moves and rotates with it).
+            +x = vessel right, +y = vessel forward, +z = vessel down.
+        BODY: Centered on the orbited body, rotates with it.
+            Useful for targeting fixed surface locations.
+        BODY_NON_ROTATING: Centered on the orbited body, does not rotate.
+            Useful for targeting celestial directions.
+    """
+
+    VESSEL_SURFACE = "vessel_surface"
+    VESSEL_ORBITAL = "vessel_orbital"
+    VESSEL = "vessel"
+    BODY = "body"
+    BODY_NON_ROTATING = "body_non_rotating"
+
+    @property
+    def display_name(self) -> str:
+        """Human-readable label (e.g. 'Vessel Surface', 'Body Non Rotating')."""
+        return self.value.replace("_", " ").title()
+
+
 class ActionStatus(Enum):
     """Lifecycle status of an action."""
 
@@ -144,6 +175,99 @@ class ActionParam:
     param_type: ParamType = ParamType.FLOAT
     default: float | bool | str | None = None
     unit: str = ""
+
+
+@dataclass(frozen=True)
+class AutopilotDirection:
+    """Target direction for the kRPC autopilot as a 3D vector in a reference frame.
+
+    Instead of pitch/heading angles, this lets you point the vessel at an
+    arbitrary direction vector. Useful for orbit-relative maneuvers or
+    targeting celestial directions.
+
+    Example::
+
+        # Point prograde in the orbital frame:
+        commands.autopilot_direction = AutopilotDirection(
+            vector=(1.0, 0.0, 0.0),
+            reference_frame=ReferenceFrame.VESSEL_ORBITAL,
+        )
+
+    Note: Setting autopilot_direction overrides autopilot_pitch/autopilot_heading.
+    """
+
+    vector: tuple[float, float, float]
+    """Direction vector (x, y, z) in the chosen reference frame."""
+    reference_frame: ReferenceFrame
+    """Coordinate frame that the vector is expressed in."""
+
+
+@dataclass(frozen=True)
+class AutopilotConfig:
+    """PID tuning configuration for the kRPC autopilot.
+
+    Controls how aggressively the autopilot rotates the vessel toward its
+    target orientation. All tuple fields are per-axis: (pitch, yaw, roll).
+
+    By default, kRPC auto-tunes PID gains based on the vessel's moment of
+    inertia and available torque. You can adjust auto-tune targets
+    (time_to_peak, overshoot) or disable auto-tune entirely and provide
+    manual PID gains.
+
+    Examples::
+
+        # Reset to automatic tuning with kRPC defaults:
+        commands.autopilot_config = AutopilotConfig.AUTO
+
+        # Auto-tune but respond faster (1s instead of 3s to peak):
+        commands.autopilot_config = AutopilotConfig(time_to_peak=(1.0, 1.0, 1.0))
+
+        # Fully manual PID gains (disables auto-tune):
+        commands.autopilot_config = AutopilotConfig(
+            auto_tune=False,
+            pitch_pid_gains=(2.0, 0.0, 0.5),
+            yaw_pid_gains=(2.0, 0.0, 0.5),
+            roll_pid_gains=(1.0, 0.0, 0.3),
+        )
+
+    Fields:
+        auto_tune: When True, kRPC calculates PID gains from vessel properties.
+            time_to_peak and overshoot guide the auto-tuner. When False, you
+            must provide manual PID gains via pitch/yaw/roll_pid_gains.
+        time_to_peak: Target time (seconds) to reach the target orientation
+            per axis. Lower = snappier response but more overshoot risk.
+        overshoot: Target overshoot fraction (0.01 = 1%) per axis.
+            Lower = more precise but slower to settle.
+        stopping_time: Max time (seconds) to kill angular rotation per axis.
+            Controls the maximum angular velocity the autopilot allows.
+        deceleration_time: Time (seconds) to decelerate as it approaches the
+            target per axis. Higher = smoother but slower approach.
+        attenuation_angle: Angle (degrees) at which the autopilot starts
+            attenuating velocity per axis. Fine-tuning for near-target behavior.
+        roll_threshold: Angle (degrees) the vessel must be within the target
+            direction before the autopilot starts correcting roll.
+        pitch_pid_gains: Manual (Kp, Ki, Kd) gains for pitch. Ignored when
+            auto_tune is True (overwritten by auto-tuner).
+        yaw_pid_gains: Manual (Kp, Ki, Kd) gains for yaw.
+        roll_pid_gains: Manual (Kp, Ki, Kd) gains for roll.
+    """
+
+    AUTO: ClassVar[AutopilotConfig]
+    """Convenience constant: automatic tuning with kRPC defaults."""
+
+    auto_tune: bool = True
+    time_to_peak: tuple[float, float, float] = (3.0, 3.0, 3.0)
+    overshoot: tuple[float, float, float] = (0.01, 0.01, 0.01)
+    stopping_time: tuple[float, float, float] = (0.5, 0.5, 0.5)
+    deceleration_time: tuple[float, float, float] = (5.0, 5.0, 5.0)
+    attenuation_angle: tuple[float, float, float] = (1.0, 1.0, 1.0)
+    roll_threshold: float = 5.0
+    pitch_pid_gains: tuple[float, float, float] | None = None
+    yaw_pid_gains: tuple[float, float, float] | None = None
+    roll_pid_gains: tuple[float, float, float] | None = None
+
+
+AutopilotConfig.AUTO = AutopilotConfig()
 
 
 @dataclass(frozen=True)
@@ -203,6 +327,16 @@ class VesselState:
     """Vessel heading in degrees. 0 = north, 90 = east, 180 = south, 270 = west."""
     roll: float = 0.0
     """Vessel roll angle in degrees."""
+
+    # --- Autopilot feedback (read-only from kRPC auto_pilot) ---
+    autopilot_error: float = 0.0
+    """Angular error between current and target direction, in degrees."""
+    autopilot_pitch_error: float = 0.0
+    """Pitch error between current and target, in degrees."""
+    autopilot_heading_error: float = 0.0
+    """Heading error between current and target, in degrees."""
+    autopilot_roll_error: float = 0.0
+    """Roll error between current and target, in degrees."""
 
     # --- Configuration ---
     throttle: float = 0.0
@@ -292,6 +426,12 @@ class VesselCommands:
     """Autopilot target pitch in degrees. 0 = horizontal, 90 = straight up."""
     autopilot_heading: float | None = None
     """Autopilot target heading in degrees. 0 = north, 90 = east, 180 = south, 270 = west."""
+    autopilot_roll: float | None = None
+    """Autopilot target roll in degrees. Set to NaN to disable roll targeting."""
+    autopilot_direction: AutopilotDirection | None = None
+    """Target direction as a 3D vector. Overrides autopilot_pitch/autopilot_heading when set."""
+    autopilot_config: AutopilotConfig | None = None
+    """PID tuning for the autopilot. None = don't change. AutopilotConfig.AUTO = reset to auto."""
 
     # --- Systems ---
     sas: bool | None = None

@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import fields
 
 from ksp_mission_control.control.actions.base import (
+    ReferenceFrame,
     SASMode,
     SpeedMode,
     VesselCommands,
@@ -19,7 +20,8 @@ from ksp_mission_control.control.actions.base import (
 
 # Command fields that have a matching field in VesselState for comparison.
 # Excluded from comparison (always applied when non-None):
-#   autopilot_pitch/autopilot_heading: command = target angle, state = current orientation
+#   autopilot_pitch/autopilot_heading/autopilot_roll: command = target, state = actual
+#   autopilot_direction/autopilot_config: transient configuration, no state equivalent
 #   stage: one-shot trigger
 #   input_*/translate_*: transient axis inputs, no persistent state
 #   wheels: kRPC write-only, no readable state
@@ -89,6 +91,7 @@ def read_vessel_state(conn: object) -> VesselState:
     flight = vessel.flight(vessel.orbit.body.reference_frame)
     orbit = vessel.orbit
     control = vessel.control
+    ap = vessel.auto_pilot
     navball = conn.space_center  # type: ignore[attr-defined]
     return VesselState(
         altitude_sea=flight.mean_altitude,
@@ -111,6 +114,10 @@ def read_vessel_state(conn: object) -> VesselState:
         pitch=flight.pitch,
         heading=flight.heading,
         roll=flight.roll,
+        autopilot_error=ap.error,
+        autopilot_pitch_error=ap.pitch_error,
+        autopilot_heading_error=ap.heading_error,
+        autopilot_roll_error=ap.roll_error,
         throttle=control.throttle,
         sas=control.sas,
         sas_mode=_parse_sas_mode(str(control.sas_mode)),
@@ -172,6 +179,7 @@ def apply_controls(conn: object, controls: VesselCommands) -> None:
     if vessel is None:
         raise NoActiveVesselError("No active vessel found")
     vc = vessel.control
+    orbit = vessel.orbit
 
     # Throttle & staging
     if controls.throttle is not None:
@@ -208,6 +216,34 @@ def apply_controls(conn: object, controls: VesselCommands) -> None:
         ap.target_pitch = controls.autopilot_pitch
     if controls.autopilot_heading is not None:
         ap.target_heading = controls.autopilot_heading
+    if controls.autopilot_roll is not None:
+        ap.target_roll = controls.autopilot_roll
+    if controls.autopilot_direction is not None:
+        direction = controls.autopilot_direction
+        frame_map = {
+            ReferenceFrame.VESSEL_SURFACE: vessel.surface_reference_frame,
+            ReferenceFrame.VESSEL_ORBITAL: vessel.orbital_reference_frame,
+            ReferenceFrame.VESSEL: vessel.reference_frame,
+            ReferenceFrame.BODY: orbit.body.reference_frame,
+            ReferenceFrame.BODY_NON_ROTATING: orbit.body.non_rotating_reference_frame,
+        }
+        ap.reference_frame = frame_map[direction.reference_frame]
+        ap.target_direction = direction.vector
+    if controls.autopilot_config is not None:
+        cfg = controls.autopilot_config
+        ap.auto_tune = cfg.auto_tune
+        ap.time_to_peak = cfg.time_to_peak
+        ap.overshoot = cfg.overshoot
+        ap.stopping_time = cfg.stopping_time
+        ap.deceleration_time = cfg.deceleration_time
+        ap.attenuation_angle = cfg.attenuation_angle
+        ap.roll_threshold = cfg.roll_threshold
+        if cfg.pitch_pid_gains is not None:
+            ap.pitch_pid_gains = cfg.pitch_pid_gains
+        if cfg.yaw_pid_gains is not None:
+            ap.yaw_pid_gains = cfg.yaw_pid_gains
+        if cfg.roll_pid_gains is not None:
+            ap.roll_pid_gains = cfg.roll_pid_gains
 
     # Systems
     if controls.sas is not None:
