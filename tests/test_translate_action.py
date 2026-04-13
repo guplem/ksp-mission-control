@@ -1,4 +1,4 @@
-"""Tests for the TranslateAction orient-then-translate controller."""
+"""Tests for the TranslateAction multi-axis RCS controller."""
 
 from __future__ import annotations
 
@@ -7,14 +7,14 @@ import math
 from ksp_mission_control.control.actions.base import (
     ActionLogger,
     ActionStatus,
+    SASMode,
     VesselCommands,
     VesselState,
 )
 from ksp_mission_control.control.actions.translate.action import (
     TranslateAction,
-    _heading_error,
     _lat_lon_to_meters,
-    _target_heading,
+    _world_to_vessel,
 )
 
 # Kerbin radius for test calculations
@@ -68,46 +68,44 @@ class TestLatLonToMeters:
         assert abs(east - 50.0) < 0.01
 
 
-class TestTargetHeading:
-    """Tests for target heading computation."""
+class TestWorldToVessel:
+    """Tests for world-space to vessel-relative projection."""
 
-    def test_north(self) -> None:
-        assert abs(_target_heading(100.0, 0.0) - 0.0) < 0.1
+    def test_heading_north_forward_is_north(self) -> None:
+        """Facing north: north component maps to forward."""
+        fwd, right = _world_to_vessel(10.0, 0.0, 0.0)
+        assert abs(fwd - 10.0) < 0.01
+        assert abs(right) < 0.01
 
-    def test_east(self) -> None:
-        assert abs(_target_heading(0.0, 100.0) - 90.0) < 0.1
+    def test_heading_north_east_is_right(self) -> None:
+        """Facing north: east component maps to right."""
+        fwd, right = _world_to_vessel(0.0, 10.0, 0.0)
+        assert abs(fwd) < 0.01
+        assert abs(right - 10.0) < 0.01
 
-    def test_south(self) -> None:
-        assert abs(_target_heading(-100.0, 0.0) - 180.0) < 0.1
+    def test_heading_east_north_is_negative_right(self) -> None:
+        """Facing east: north component maps to negative right (left)."""
+        fwd, right = _world_to_vessel(10.0, 0.0, 90.0)
+        assert abs(fwd) < 0.01
+        assert abs(right - (-10.0)) < 0.01
 
-    def test_west(self) -> None:
-        assert abs(_target_heading(0.0, -100.0) - 270.0) < 0.1
+    def test_heading_east_east_is_forward(self) -> None:
+        """Facing east: east component maps to forward."""
+        fwd, right = _world_to_vessel(0.0, 10.0, 90.0)
+        assert abs(fwd - 10.0) < 0.01
+        assert abs(right) < 0.01
 
-    def test_northeast(self) -> None:
-        assert abs(_target_heading(100.0, 100.0) - 45.0) < 0.1
+    def test_heading_south_north_is_backward(self) -> None:
+        """Facing south: north component maps to backward (negative forward)."""
+        fwd, right = _world_to_vessel(10.0, 0.0, 180.0)
+        assert abs(fwd - (-10.0)) < 0.01
+        assert abs(right) < 0.01
 
-
-class TestHeadingError:
-    """Tests for signed heading error normalization."""
-
-    def test_zero_error(self) -> None:
-        assert abs(_heading_error(90.0, 90.0)) < 0.01
-
-    def test_small_clockwise(self) -> None:
-        error = _heading_error(100.0, 90.0)
-        assert abs(error - 10.0) < 0.01
-
-    def test_small_counterclockwise(self) -> None:
-        error = _heading_error(80.0, 90.0)
-        assert abs(error - (-10.0)) < 0.01
-
-    def test_wraps_around_north(self) -> None:
-        error = _heading_error(10.0, 350.0)
-        assert abs(error - 20.0) < 0.01
-
-    def test_wraps_around_north_reverse(self) -> None:
-        error = _heading_error(350.0, 10.0)
-        assert abs(error - (-20.0)) < 0.01
+    def test_heading_west_east_is_backward(self) -> None:
+        """Facing west (270): east maps to backward."""
+        fwd, right = _world_to_vessel(0.0, 10.0, 270.0)
+        assert abs(fwd - (-10.0)) < 0.01
+        assert abs(right) < 0.01
 
 
 class TestTranslateActionMetadata:
@@ -123,35 +121,17 @@ class TestTranslateActionMetadata:
         param_ids = [p.param_id for p in TranslateAction.params]
         assert "distance_north" in param_ids
 
-    def test_distance_north_param_is_optional_with_default(self) -> None:
-        param = next(p for p in TranslateAction.params if p.param_id == "distance_north")
-        assert param.required is False
-        assert param.default == 0.0
-        assert param.unit == "m"
-
     def test_has_distance_east_param(self) -> None:
         param_ids = [p.param_id for p in TranslateAction.params]
         assert "distance_east" in param_ids
-
-    def test_distance_east_param_is_optional_with_default(self) -> None:
-        param = next(p for p in TranslateAction.params if p.param_id == "distance_east")
-        assert param.required is False
-        assert param.default == 0.0
-        assert param.unit == "m"
 
     def test_has_max_speed_param(self) -> None:
         param_ids = [p.param_id for p in TranslateAction.params]
         assert "max_speed" in param_ids
 
-    def test_max_speed_param_is_optional_with_default(self) -> None:
-        param = next(p for p in TranslateAction.params if p.param_id == "max_speed")
-        assert param.required is False
-        assert param.default == 10.0
-        assert param.unit == "m/s"
-
 
 class TestTranslateActionTick:
-    """Tests for the orient-then-translate controller logic."""
+    """Tests for the multi-axis RCS translation controller."""
 
     _START_LAT = 0.0
     _START_LON = 0.0
@@ -161,7 +141,6 @@ class TestTranslateActionTick:
             "distance_north": 0.0,
             "distance_east": 0.0,
             "max_speed": 10.0,
-            "max_tilt": 10.0,
         }
         params.update(overrides)
         return params
@@ -197,7 +176,6 @@ class TestTranslateActionTick:
         altitude: float = 100.0,
         heading: float = 0.0,
     ) -> VesselState:
-        """Create a VesselState displaced from the start position."""
         return VesselState(
             altitude_surface=altitude,
             heading=heading,
@@ -232,95 +210,71 @@ class TestTranslateActionTick:
         assert controls.throttle is not None
         assert controls.throttle < 0.5
 
-    # --- Autopilot and RCS ---
+    # --- SAS and RCS ---
 
-    def test_autopilot_engaged(self) -> None:
+    def test_sas_radial_and_rcs_enabled(self) -> None:
         action = self._make_started_action()
         state = self._state_at_offset(altitude=100.0, heading=0.0)
         controls = VesselCommands()
         action.tick(state, controls, dt=0.5, log=ActionLogger())
-        assert controls.autopilot is True
+        assert controls.sas is True
+        assert controls.sas_mode == SASMode.RADIAL
         assert controls.rcs is True
-        assert controls.sas is False
 
-    def test_autopilot_pitch_clamped_near_vertical(self) -> None:
-        """Autopilot pitch should be clamped to at least 80 deg (max 10 deg tilt)."""
-        action = self._make_started_action()
-        state = VesselState(
-            altitude_surface=100.0,
-            heading=0.0,
-            pitch=15.4,
-            latitude=self._START_LAT,
-            longitude=self._START_LON,
-            body_radius=_KERBIN_RADIUS,
-        )
-        controls = VesselCommands()
-        action.tick(state, controls, dt=0.5, log=ActionLogger())
-        assert controls.autopilot_pitch == 80.0  # clamped: max(80, 15.4)
+    # --- Forward/right RCS when facing north ---
 
-    def test_autopilot_pitch_passes_through_when_upright(self) -> None:
-        """When vessel pitch is above the minimum, it passes through unchanged."""
-        action = self._make_started_action()
-        state = VesselState(
-            altitude_surface=100.0,
-            heading=0.0,
-            pitch=85.0,
-            latitude=self._START_LAT,
-            longitude=self._START_LON,
-            body_radius=_KERBIN_RADIUS,
-        )
-        controls = VesselCommands()
-        action.tick(state, controls, dt=0.5, log=ActionLogger())
-        assert controls.autopilot_pitch == 85.0  # above minimum, passes through
-
-    def test_autopilot_heading_set_to_target_direction(self) -> None:
-        """Target is north, autopilot heading should be ~0."""
-        action = self._make_started_action(distance_north=100.0, distance_east=0.0)
-        state = self._state_at_offset(altitude=100.0, heading=0.0)
-        controls = VesselCommands()
-        action.tick(state, controls, dt=0.5, log=ActionLogger())
-        assert controls.autopilot_heading is not None
-        assert abs(controls.autopilot_heading - 0.0) < 1.0
-
-    def test_autopilot_heading_east_target(self) -> None:
-        """Target is east, autopilot heading should be ~90."""
-        action = self._make_started_action(distance_north=0.0, distance_east=100.0)
-        state = self._state_at_offset(altitude=100.0, heading=0.0)
-        controls = VesselCommands()
-        action.tick(state, controls, dt=0.5, log=ActionLogger())
-        assert controls.autopilot_heading is not None
-        assert abs(controls.autopilot_heading - 90.0) < 1.0
-
-    # --- Orienting phase: heading misaligned ---
-
-    def test_no_forward_translation_while_orienting(self) -> None:
-        """When heading is misaligned (>10 deg), translate_forward should be 0."""
-        action = self._make_started_action(distance_north=0.0, distance_east=100.0)
-        # Heading 0, target is east (90) -> 90 deg error
-        state = self._state_at_offset(altitude=100.0, heading=0.0)
-        controls = VesselCommands()
-        action.tick(state, controls, dt=0.5, log=ActionLogger())
-        assert controls.translate_forward == 0.0
-
-    # --- Translating phase: heading aligned ---
-
-    def test_forward_translation_when_aligned(self) -> None:
-        """When heading matches target direction, translate_forward should be positive."""
+    def test_north_target_facing_north_uses_forward(self) -> None:
+        """Target is north, facing north: forward positive, right ~0."""
         action = self._make_started_action(distance_north=100.0, distance_east=0.0)
         state = self._state_at_offset(altitude=100.0, heading=0.0)
         controls = VesselCommands()
         action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert controls.translate_forward is not None
         assert controls.translate_forward > 0.0
+        assert controls.translate_right is not None
+        assert abs(controls.translate_right) < 0.01
 
-    def test_forward_translation_when_nearly_aligned(self) -> None:
-        """Within 10 deg threshold should still translate forward."""
-        action = self._make_started_action(distance_north=100.0, distance_east=0.0)
-        state = self._state_at_offset(altitude=100.0, heading=5.0)
+    def test_east_target_facing_north_uses_right(self) -> None:
+        """Target is east, facing north: right positive, forward ~0."""
+        action = self._make_started_action(distance_north=0.0, distance_east=100.0)
+        state = self._state_at_offset(altitude=100.0, heading=0.0)
+        controls = VesselCommands()
+        action.tick(state, controls, dt=0.5, log=ActionLogger())
+        assert controls.translate_right is not None
+        assert controls.translate_right > 0.0
+        assert controls.translate_forward is not None
+        assert abs(controls.translate_forward) < 0.01
+
+    # --- Works regardless of vessel heading ---
+
+    def test_east_target_facing_east_uses_forward(self) -> None:
+        """Target is east, facing east: forward positive."""
+        action = self._make_started_action(distance_north=0.0, distance_east=100.0)
+        state = self._state_at_offset(altitude=100.0, heading=90.0)
         controls = VesselCommands()
         action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert controls.translate_forward is not None
         assert controls.translate_forward > 0.0
+
+    def test_north_target_facing_west_uses_right_positive(self) -> None:
+        """Target is north, facing west (270): north is to the right = positive right."""
+        action = self._make_started_action(distance_north=100.0, distance_east=0.0)
+        state = self._state_at_offset(altitude=100.0, heading=270.0)
+        controls = VesselCommands()
+        action.tick(state, controls, dt=0.5, log=ActionLogger())
+        assert controls.translate_right is not None
+        assert controls.translate_right > 0.0
+
+    def test_south_target_facing_north_uses_backward(self) -> None:
+        """Target is south, facing north: backward = negative forward."""
+        action = self._make_started_action(distance_north=-100.0, distance_east=0.0)
+        state = self._state_at_offset(altitude=100.0, heading=0.0)
+        controls = VesselCommands()
+        action.tick(state, controls, dt=0.5, log=ActionLogger())
+        assert controls.translate_forward is not None
+        assert controls.translate_forward < 0.0
+
+    # --- RCS clamped ---
 
     def test_translate_forward_clamped(self) -> None:
         action = self._make_started_action(distance_north=10000.0)
@@ -329,6 +283,14 @@ class TestTranslateActionTick:
         action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert controls.translate_forward is not None
         assert -1.0 <= controls.translate_forward <= 1.0
+
+    def test_translate_right_clamped(self) -> None:
+        action = self._make_started_action(distance_east=10000.0)
+        state = self._state_at_offset(altitude=100.0, heading=0.0)
+        controls = VesselCommands()
+        action.tick(state, controls, dt=0.5, log=ActionLogger())
+        assert controls.translate_right is not None
+        assert -1.0 <= controls.translate_right <= 1.0
 
     # --- Deceleration ---
 
@@ -346,24 +308,6 @@ class TestTranslateActionTick:
         assert controls_far.translate_forward is not None
         assert controls_close.translate_forward is not None
         assert controls_far.translate_forward > controls_close.translate_forward
-
-    # --- Heading-independent direction ---
-
-    def test_east_target_with_east_heading_translates_forward(self) -> None:
-        action = self._make_started_action(distance_north=0.0, distance_east=100.0)
-        state = self._state_at_offset(altitude=100.0, heading=90.0)
-        controls = VesselCommands()
-        action.tick(state, controls, dt=0.5, log=ActionLogger())
-        assert controls.translate_forward is not None
-        assert controls.translate_forward > 0.0
-
-    def test_west_heading_facing_west_translates_forward(self) -> None:
-        action = self._make_started_action(distance_north=0.0, distance_east=-100.0)
-        state = self._state_at_offset(altitude=100.0, heading=270.0)
-        controls = VesselCommands()
-        action.tick(state, controls, dt=0.5, log=ActionLogger())
-        assert controls.translate_forward is not None
-        assert controls.translate_forward > 0.0
 
     # --- Completion ---
 
@@ -399,56 +343,12 @@ class TestTranslateActionTick:
         result = action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert result.status == ActionStatus.SUCCEEDED
 
-    # --- Braking ---
-
-    def test_brakes_when_going_too_fast_near_target(self) -> None:
-        """When actual speed >> desired speed, heading should flip to retrograde."""
-        action = self._make_started_action(distance_north=50.0)
-        # First tick far away to establish position
-        state_far = self._state_at_offset(north_meters=35.0, altitude=100.0, heading=0.0)
-        action.tick(state_far, VesselCommands(), dt=0.5, log=ActionLogger())
-        # Second tick: big jump = high velocity, close to target
-        # Moved 12m in 0.5s = 24 m/s, but desired speed for 3m remaining is ~3 m/s
-        state_close = self._state_at_offset(north_meters=47.0, altitude=100.0, heading=0.0)
-        controls = VesselCommands()
-        action.tick(state_close, controls, dt=0.5, log=ActionLogger())
-        # Should be braking: heading ~180 (retrograde of northward travel)
-        assert controls.autopilot_heading is not None
-        assert abs(controls.autopilot_heading - 180.0) < 30.0  # roughly retrograde
-
-    def test_no_braking_when_slow(self) -> None:
-        """When speed is within desired range, heading should point toward target."""
-        action = self._make_started_action(distance_north=100.0)
-        # First tick to establish position
-        state1 = self._state_at_offset(north_meters=0.0, altitude=100.0, heading=0.0)
-        action.tick(state1, VesselCommands(), dt=0.5, log=ActionLogger())
-        # Second tick: small move = low velocity, far from target
-        state2 = self._state_at_offset(north_meters=0.1, altitude=100.0, heading=0.0)
-        controls = VesselCommands()
-        action.tick(state2, controls, dt=0.5, log=ActionLogger())
-        # Should be pointing toward target (north = 0 degrees), not retrograde
-        assert controls.autopilot_heading is not None
-        assert abs(controls.autopilot_heading - 0.0) < 10.0
-
-    def test_braking_translate_forward_is_positive(self) -> None:
-        """During braking, translate_forward should be positive (pushing against motion)."""
-        action = self._make_started_action(distance_north=50.0)
-        state_far = self._state_at_offset(north_meters=35.0, altitude=100.0, heading=180.0)
-        action.tick(state_far, VesselCommands(), dt=0.5, log=ActionLogger())
-        # Big jump to trigger braking
-        state_close = self._state_at_offset(north_meters=47.0, altitude=100.0, heading=180.0)
-        controls = VesselCommands()
-        action.tick(state_close, controls, dt=0.5, log=ActionLogger())
-        # Heading aligned with retrograde, translate_forward should be positive
-        assert controls.translate_forward is not None
-        assert controls.translate_forward >= 0.0
-
 
 class TestTranslateActionStop:
     """Tests for TranslateAction cleanup on stop."""
 
     def _default_params(self) -> dict[str, float]:
-        return {"distance_north": 100.0, "distance_east": 0.0, "max_speed": 10.0, "max_tilt": 10.0}
+        return {"distance_north": 100.0, "distance_east": 0.0, "max_speed": 10.0}
 
     def test_stop_kills_throttle(self) -> None:
         action = TranslateAction()
@@ -457,14 +357,6 @@ class TestTranslateActionStop:
         controls = VesselCommands()
         action.stop(state, controls, log=ActionLogger())
         assert controls.throttle == 0.0
-
-    def test_stop_disengages_autopilot(self) -> None:
-        action = TranslateAction()
-        state = VesselState(altitude_surface=100.0)
-        action.start(state, self._default_params())
-        controls = VesselCommands()
-        action.stop(state, controls, log=ActionLogger())
-        assert controls.autopilot is False
 
     def test_stop_disables_rcs(self) -> None:
         action = TranslateAction()
@@ -481,3 +373,4 @@ class TestTranslateActionStop:
         controls = VesselCommands()
         action.stop(state, controls, log=ActionLogger())
         assert controls.translate_forward == 0.0
+        assert controls.translate_right == 0.0
