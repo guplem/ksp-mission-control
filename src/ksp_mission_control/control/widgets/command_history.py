@@ -11,6 +11,8 @@ from textual.widgets import Button, Static
 
 from ksp_mission_control.control.actions.base import (
     ActionStatus,
+    AutopilotConfig,
+    AutopilotDirection,
     SASMode,
     SpeedMode,
     VesselCommands,
@@ -163,18 +165,12 @@ class CommandHistoryWidget(VerticalScroll, can_focus=True):
             status_text = "[dim]---[/dim]"
         title = f"[b]{record.action_label}[/b]  {status_text}  [dim]{format_met(record.met)}[/dim]"
         self.query_one("#command-history-title", Static).update(title)
-        self.query_one("#command-history-content", Static).update(
-            _format_commands(record.commands, record.applied_fields)
-        )
+        self.query_one("#command-history-content", Static).update(_format_commands(record.commands, record.applied_fields))
         total = len(self._history)
         page = self._index + 1
         accent_color = self._resolve_accent()
-        following_indicator = (
-            f"[bold {accent_color}]\u25cf[/bold {accent_color}] " if self._following else ""
-        )
-        self.query_one("#command-history-page", Static).update(
-            f"{following_indicator}{page}/{total}"
-        )
+        following_indicator = f"[bold {accent_color}]\u25cf[/bold {accent_color}] " if self._following else ""
+        self.query_one("#command-history-page", Static).update(f"{following_indicator}{page}/{total}")
         self.query_one("#cmd-first", Button).disabled = self._index <= 0
         self.query_one("#cmd-prev", Button).disabled = self._index <= 0
         self.query_one("#cmd-next", Button).disabled = self._index >= total - 1
@@ -199,7 +195,13 @@ _TOGGLE_FIELDS: frozenset[str] = frozenset(
     }
 )
 
-_ANGLE_FIELDS: frozenset[str] = frozenset({"pitch", "heading"})
+_ANGLE_FIELDS: frozenset[str] = frozenset(
+    {
+        "autopilot_pitch",
+        "autopilot_heading",
+        "autopilot_roll",
+    }
+)
 
 _AXIS_FIELDS: frozenset[str] = frozenset(
     {
@@ -213,20 +215,42 @@ _AXIS_FIELDS: frozenset[str] = frozenset(
 )
 
 
+def _format_direction(direction: AutopilotDirection) -> str:
+    """Format an AutopilotDirection as a readable vector + frame."""
+    x, y, z = direction.vector
+    return f"({x:.2f}, {y:.2f}, {z:.2f}) {direction.reference_frame.display_name}"
+
+
+def _format_autopilot_config(config: AutopilotConfig) -> str:
+    """Format AutopilotConfig as a compact summary."""
+    if config == AutopilotConfig.AUTO:
+        return "Auto"
+    if config.auto_tune:
+        peak = config.time_to_peak
+        return f"Auto (peak {peak[0]:.1f}s)"
+    return "Manual PID"
+
+
 def format_field_value(name: str, value: object) -> str:
     """Format a command field value with appropriate units."""
     if name == "throttle":
         return f"{float(value) * 100:.0f}%"  # type: ignore[arg-type]
     if name in _ANGLE_FIELDS:
-        return f"{float(value):.1f}\u00b0"  # type: ignore[arg-type]
+        return f"{float(value):.2f} deg"  # type: ignore[arg-type]
     if name in _AXIS_FIELDS:
         return f"{float(value):+.2f}"  # type: ignore[arg-type]
     if name in _TOGGLE_FIELDS:
         return "ON" if value else "OFF"
+    if name == "autopilot":
+        return "ENGAGE" if value else "DISENGAGE"
     if name == "sas_mode":
         return cast(SASMode, value).display_name
     if name == "speed_mode":
         return cast(SpeedMode, value).display_name
+    if name == "autopilot_direction":
+        return _format_direction(cast(AutopilotDirection, value))
+    if name == "autopilot_config":
+        return _format_autopilot_config(cast(AutopilotConfig, value))
     if name in ("stage", "abort"):
         return "ACTIVATE" if value else "---"
     return str(value)
