@@ -225,6 +225,36 @@ class TestReadVesselState:
         assert state.autopilot_heading_error == -1.5
         assert state.autopilot_roll_error == 0.3
 
+    def test_autopilot_errors_default_when_not_engaged(self) -> None:
+        """Autopilot error properties raise when not engaged; bridge returns 0."""
+        conn = _make_mock_conn()
+        ap = conn.space_center.active_vessel.auto_pilot
+
+        class _NotEngagedError(Exception):
+            pass
+
+        # Replace error properties with descriptors that raise
+        error_prop = property(lambda self: (_ for _ in ()).throw(_NotEngagedError))
+        patched_type = type(
+            "PatchedAP",
+            (),
+            {
+                **{k: v for k, v in vars(ap).items()},
+                "error": error_prop,
+                "pitch_error": error_prop,
+                "heading_error": error_prop,
+                "roll_error": error_prop,
+            },
+        )
+        patched_ap = patched_type()
+        conn.space_center.active_vessel.auto_pilot = patched_ap
+
+        state = read_vessel_state(conn)
+        assert state.autopilot_error == 0.0
+        assert state.autopilot_pitch_error == 0.0
+        assert state.autopilot_heading_error == 0.0
+        assert state.autopilot_roll_error == 0.0
+
     def test_reads_orientation_fields(self) -> None:
         conn = _make_mock_conn()
         state = read_vessel_state(conn)

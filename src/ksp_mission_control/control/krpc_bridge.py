@@ -92,6 +92,17 @@ def read_vessel_state(conn: object) -> VesselState:
     orbit = vessel.orbit
     control = vessel.control
     ap = vessel.auto_pilot
+    # Autopilot error properties raise when the autopilot is not engaged.
+    try:
+        ap_error = ap.error
+        ap_pitch_error = ap.pitch_error
+        ap_heading_error = ap.heading_error
+        ap_roll_error = ap.roll_error
+    except Exception:
+        ap_error = 0.0
+        ap_pitch_error = 0.0
+        ap_heading_error = 0.0
+        ap_roll_error = 0.0
     navball = conn.space_center  # type: ignore[attr-defined]
     return VesselState(
         altitude_sea=flight.mean_altitude,
@@ -129,10 +140,10 @@ def read_vessel_state(conn: object) -> VesselState:
         pitch=flight.pitch,
         heading=flight.heading,
         roll=flight.roll,
-        autopilot_error=ap.error,
-        autopilot_pitch_error=ap.pitch_error,
-        autopilot_heading_error=ap.heading_error,
-        autopilot_roll_error=ap.roll_error,
+        autopilot_error=ap_error,
+        autopilot_pitch_error=ap_pitch_error,
+        autopilot_heading_error=ap_heading_error,
+        autopilot_roll_error=ap_roll_error,
         throttle=control.throttle,
         sas=control.sas,
         sas_mode=_parse_sas_mode(str(control.sas_mode)),
