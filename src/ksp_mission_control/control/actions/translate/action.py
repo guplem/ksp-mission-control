@@ -111,12 +111,22 @@ class TranslateAction(Action):
             default=10.0,
             unit="m/s",
         ),
+        ActionParam(
+            param_id="max_tilt",
+            label="Max Tilt",
+            description="Maximum tilt from vertical (90=upright). Higher=faster but loses altitude",
+            required=False,
+            param_type=ParamType.FLOAT,
+            default=10.0,
+            unit="deg",
+        ),
     ]
 
     def start(self, state: VesselState, param_values: dict[str, Any]) -> None:
         self._distance_north: float = float(param_values["distance_north"])
         self._distance_east: float = float(param_values["distance_east"])
         self._max_speed: float = float(param_values["max_speed"])
+        self._max_tilt: float = float(param_values["max_tilt"])
         self._target_altitude: float = state.altitude_surface
         self._start_latitude: float = state.latitude
         self._start_longitude: float = state.longitude
@@ -164,11 +174,10 @@ class TranslateAction(Action):
         raw_throttle = 0.5 + _KP_SPEED * speed_error
         commands.throttle = max(0.0, min(1.0, raw_throttle))
 
-        # --- Autopilot: hold current pitch, rotate heading toward target ---
-        # Use the vessel's current pitch so the autopilot only controls heading
-        # and doesn't fight the throttle-based altitude hold.
+        # --- Autopilot: clamp pitch near vertical, rotate heading toward target ---
+        # Limit tilt to _MAX_TILT degrees from vertical (90) to avoid altitude loss.
         commands.autopilot = True
-        commands.autopilot_pitch = state.pitch
+        commands.autopilot_pitch = max(90.0 - self._max_tilt, state.pitch)
         commands.rcs = True
         # Disable SAS (autopilot handles orientation)
         commands.sas = False

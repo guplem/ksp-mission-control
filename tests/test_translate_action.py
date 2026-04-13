@@ -161,6 +161,7 @@ class TestTranslateActionTick:
             "distance_north": 0.0,
             "distance_east": 0.0,
             "max_speed": 10.0,
+            "max_tilt": 10.0,
         }
         params.update(overrides)
         return params
@@ -242,8 +243,8 @@ class TestTranslateActionTick:
         assert controls.rcs is True
         assert controls.sas is False
 
-    def test_autopilot_pitch_matches_vessel_pitch(self) -> None:
-        """Autopilot pitch should match current vessel pitch to avoid fighting altitude hold."""
+    def test_autopilot_pitch_clamped_near_vertical(self) -> None:
+        """Autopilot pitch should be clamped to at least 80 deg (max 10 deg tilt)."""
         action = self._make_started_action()
         state = VesselState(
             altitude_surface=100.0,
@@ -255,7 +256,22 @@ class TestTranslateActionTick:
         )
         controls = VesselCommands()
         action.tick(state, controls, dt=0.5, log=ActionLogger())
-        assert controls.autopilot_pitch == 15.4
+        assert controls.autopilot_pitch == 80.0  # clamped: max(80, 15.4)
+
+    def test_autopilot_pitch_passes_through_when_upright(self) -> None:
+        """When vessel pitch is above the minimum, it passes through unchanged."""
+        action = self._make_started_action()
+        state = VesselState(
+            altitude_surface=100.0,
+            heading=0.0,
+            pitch=85.0,
+            latitude=self._START_LAT,
+            longitude=self._START_LON,
+            body_radius=_KERBIN_RADIUS,
+        )
+        controls = VesselCommands()
+        action.tick(state, controls, dt=0.5, log=ActionLogger())
+        assert controls.autopilot_pitch == 85.0  # above minimum, passes through
 
     def test_autopilot_heading_set_to_target_direction(self) -> None:
         """Target is north, autopilot heading should be ~0."""
@@ -388,7 +404,7 @@ class TestTranslateActionStop:
     """Tests for TranslateAction cleanup on stop."""
 
     def _default_params(self) -> dict[str, float]:
-        return {"distance_north": 100.0, "distance_east": 0.0, "max_speed": 10.0}
+        return {"distance_north": 100.0, "distance_east": 0.0, "max_speed": 10.0, "max_tilt": 10.0}
 
     def test_stop_kills_throttle(self) -> None:
         action = TranslateAction()
