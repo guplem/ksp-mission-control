@@ -77,17 +77,17 @@ class TestWorldToVessel:
         assert abs(fwd - 10.0) < 0.01
         assert abs(right) < 0.01
 
-    def test_heading_north_east_is_right(self) -> None:
-        """Facing north: east component maps to right."""
+    def test_heading_north_east_is_negative_right(self) -> None:
+        """Facing north: east component maps to negative right (kRPC right is inverted)."""
         fwd, right = _world_to_vessel(0.0, 10.0, 0.0)
         assert abs(fwd) < 0.01
-        assert abs(right - 10.0) < 0.01
+        assert abs(right - (-10.0)) < 0.01
 
-    def test_heading_east_north_is_negative_right(self) -> None:
-        """Facing east: north component maps to negative right (left)."""
+    def test_heading_east_north_is_positive_right(self) -> None:
+        """Facing east: north component maps to positive right (kRPC inverted = left = north)."""
         fwd, right = _world_to_vessel(10.0, 0.0, 90.0)
         assert abs(fwd) < 0.01
-        assert abs(right - (-10.0)) < 0.01
+        assert abs(right - 10.0) < 0.01
 
     def test_heading_east_east_is_forward(self) -> None:
         """Facing east: east component maps to forward."""
@@ -234,14 +234,14 @@ class TestTranslateActionTick:
         assert controls.translate_right is not None
         assert abs(controls.translate_right) < 0.01
 
-    def test_east_target_facing_north_uses_right(self) -> None:
-        """Target is east, facing north: right positive, forward ~0."""
+    def test_east_target_facing_north_uses_negative_right(self) -> None:
+        """Target is east, facing north: negative right (kRPC inverted), forward ~0."""
         action = self._make_started_action(distance_north=0.0, distance_east=100.0)
         state = self._state_at_offset(altitude=100.0, heading=0.0)
         controls = VesselCommands()
         action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert controls.translate_right is not None
-        assert controls.translate_right > 0.0
+        assert controls.translate_right < 0.0
         assert controls.translate_forward is not None
         assert abs(controls.translate_forward) < 0.01
 
@@ -256,14 +256,14 @@ class TestTranslateActionTick:
         assert controls.translate_forward is not None
         assert controls.translate_forward > 0.0
 
-    def test_north_target_facing_west_uses_right_positive(self) -> None:
-        """Target is north, facing west (270): north is to the right = positive right."""
+    def test_north_target_facing_west_uses_negative_right(self) -> None:
+        """Target is north, facing west (270): kRPC negative right pushes right = north."""
         action = self._make_started_action(distance_north=100.0, distance_east=0.0)
         state = self._state_at_offset(altitude=100.0, heading=270.0)
         controls = VesselCommands()
         action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert controls.translate_right is not None
-        assert controls.translate_right > 0.0
+        assert controls.translate_right < 0.0
 
     def test_south_target_facing_north_uses_backward(self) -> None:
         """Target is south, facing north: backward = negative forward."""

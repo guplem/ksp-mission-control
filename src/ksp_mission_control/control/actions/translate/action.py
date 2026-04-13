@@ -106,7 +106,8 @@ def _world_to_vessel(
     """
     heading_rad = math.radians(heading_deg)
     forward = north * math.cos(heading_rad) + east * math.sin(heading_rad)
-    right = -north * math.sin(heading_rad) + east * math.cos(heading_rad)
+    # kRPC's control.right axis is inverted: positive = left, negative = right.
+    right = north * math.sin(heading_rad) - east * math.cos(heading_rad)
     return forward, right
 
 
