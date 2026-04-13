@@ -298,10 +298,10 @@ class VesselState:
     """Dynamic pressure (0.5 * air_density * velocity^2), in Pascals. 0 in vacuum."""
     static_pressure: float = 0.0
     """Atmospheric static pressure, in Pascals. 0 in vacuum."""
-    drag: float = 0.0
-    """Magnitude of aerodynamic drag force, in Newtons. 0 in vacuum."""
-    lift: float = 0.0
-    """Magnitude of aerodynamic lift force, in Newtons. 0 in vacuum."""
+    drag: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    """Aerodynamic drag force vector, in Newtons. (0,0,0) in vacuum."""
+    lift: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    """Aerodynamic lift force vector, in Newtons. (0,0,0) in vacuum."""
     g_force: float = 0.0
     """Current g-force experienced by the vessel. 1.0 on Kerbin's surface at rest."""
 

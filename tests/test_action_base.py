@@ -119,8 +119,8 @@ class TestVesselState:
         assert state.roll == 0.0
         assert state.dynamic_pressure == 0.0
         assert state.static_pressure == 0.0
-        assert state.drag == 0.0
-        assert state.lift == 0.0
+        assert state.drag == (0.0, 0.0, 0.0)
+        assert state.lift == (0.0, 0.0, 0.0)
         assert state.g_force == 0.0
         assert state.time_to_apoapsis == 0.0
         assert state.time_to_periapsis == 0.0
@@ -237,15 +237,11 @@ class TestVesselStateDerived:
         assert VesselState(static_pressure=0.0).in_atmosphere is False
 
     def test_above_atmosphere_in_space(self) -> None:
-        state = VesselState(
-            altitude_sea=80000.0, body_has_atmosphere=True, body_atmosphere_depth=70000.0
-        )
+        state = VesselState(altitude_sea=80000.0, body_has_atmosphere=True, body_atmosphere_depth=70000.0)
         assert state.above_atmosphere is True
 
     def test_above_atmosphere_inside(self) -> None:
-        state = VesselState(
-            altitude_sea=50000.0, body_has_atmosphere=True, body_atmosphere_depth=70000.0
-        )
+        state = VesselState(altitude_sea=50000.0, body_has_atmosphere=True, body_atmosphere_depth=70000.0)
         assert state.above_atmosphere is False
 
     def test_above_atmosphere_no_atmosphere_body(self) -> None:
@@ -376,15 +372,9 @@ class TestAutopilotDirection:
             direction.vector = (0.0, 0.0, 1.0)  # type: ignore[misc]
 
     def test_equality(self) -> None:
-        direction_a = AutopilotDirection(
-            vector=(1.0, 0.0, 0.0), reference_frame=ReferenceFrame.VESSEL_ORBITAL
-        )
-        direction_b = AutopilotDirection(
-            vector=(1.0, 0.0, 0.0), reference_frame=ReferenceFrame.VESSEL_ORBITAL
-        )
-        direction_c = AutopilotDirection(
-            vector=(0.0, 1.0, 0.0), reference_frame=ReferenceFrame.VESSEL_ORBITAL
-        )
+        direction_a = AutopilotDirection(vector=(1.0, 0.0, 0.0), reference_frame=ReferenceFrame.VESSEL_ORBITAL)
+        direction_b = AutopilotDirection(vector=(1.0, 0.0, 0.0), reference_frame=ReferenceFrame.VESSEL_ORBITAL)
+        direction_c = AutopilotDirection(vector=(0.0, 1.0, 0.0), reference_frame=ReferenceFrame.VESSEL_ORBITAL)
         assert direction_a == direction_b
         assert direction_a != direction_c
 

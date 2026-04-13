@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 from textual.app import ComposeResult
 from textual.containers import Horizontal
 from textual.widgets import Static
@@ -80,6 +82,11 @@ def _format_time(seconds: float) -> str:
     return f"{hours}h {mins:02d}m {secs:02d}s"
 
 
+def _magnitude(vector: tuple[float, float, float]) -> float:
+    """Compute the magnitude of a 3D vector."""
+    return math.sqrt(vector[0] ** 2 + vector[1] ** 2 + vector[2] ** 2)
+
+
 def _format_force(newtons: float) -> str:
     """Format force in N or kN."""
     if newtons >= 1000:
@@ -118,8 +125,8 @@ def _format_flight(state: VesselState) -> str:
             "[b]Atmosphere[/b]",
             f"Dynamic press.:  {state.dynamic_pressure / 1000:.2f} kPa",
             f"Static press.:   {state.static_pressure / 1000:.2f} kPa",
-            f"Drag:            {_format_force(state.drag)}",
-            f"Lift:            {_format_force(state.lift)}",
+            f"Drag:            {_format_force(_magnitude(state.drag))}",
+            f"Lift:            {_format_force(_magnitude(state.lift))}",
         ]
     )
 

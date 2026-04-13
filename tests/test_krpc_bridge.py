@@ -98,8 +98,8 @@ def _make_mock_conn(
         speed=2180.0,
         dynamic_pressure=5000.0,
         static_pressure=10000.0,
-        drag=200.0,
-        lift=50.0,
+        drag=(100.0, 100.0, 100.0),
+        lift=(25.0, 25.0, 25.0),
         g_force=1.2,
         latitude=-0.1,
         longitude=74.5,
@@ -267,8 +267,8 @@ class TestReadVesselState:
         state = read_vessel_state(conn)
         assert state.dynamic_pressure == 5000.0
         assert state.static_pressure == 10000.0
-        assert state.drag == 200.0
-        assert state.lift == 50.0
+        assert state.drag == (100.0, 100.0, 100.0)
+        assert state.lift == (25.0, 25.0, 25.0)
         assert state.g_force == 1.2
 
     def test_reads_orbital_timing(self) -> None:
@@ -618,9 +618,7 @@ class TestFilterCommands:
         assert "autopilot_roll" in applied
 
     def test_autopilot_direction_always_applied(self) -> None:
-        direction = AutopilotDirection(
-            vector=(1.0, 0.0, 0.0), reference_frame=ReferenceFrame.VESSEL_ORBITAL
-        )
+        direction = AutopilotDirection(vector=(1.0, 0.0, 0.0), reference_frame=ReferenceFrame.VESSEL_ORBITAL)
         commands = VesselCommands(autopilot_direction=direction)
         state = VesselState()
         filtered, applied = filter_commands(commands, state)
