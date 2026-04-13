@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import fields
 from enum import Enum
 from typing import cast
+from xml.etree.ElementTree import Element, SubElement, tostring
 
 from textual import work
 from textual.app import ComposeResult
@@ -260,66 +261,67 @@ class ControlScreen(Screen[None]):
         self.app.pop_screen()
 
 
-def _format_vessel_state(state: VesselState) -> list[str]:
-    """Format vessel state fields as plain text lines."""
-    lines: list[str] = []
+def _build_vessel_state_element(parent: Element, state: VesselState) -> None:
+    """Add vessel state fields as child elements under *parent*."""
+    state_el = SubElement(parent, "state")
     for field in fields(state):
         value = getattr(state, field.name)
-        label = field.name.replace("_", " ").title()
+        child = SubElement(state_el, field.name)
         if isinstance(value, float):
-            lines.append(f"  {label}: {value:.4f}")
+            child.text = f"{value:.4f}"
         elif isinstance(value, Enum):
-            lines.append(f"  {label}: {value.value}")
+            child.text = str(value.value)
         else:
-            lines.append(f"  {label}: {value}")
-    return lines
+            child.text = str(value)
 
 
 def _format_tick_history(ticks: list[TickRecord]) -> str:
-    """Format all tick records as plain text for clipboard export."""
-    sections: list[str] = []
+    """Format all tick records as XML for clipboard export."""
+    root = Element("ticks")
+
     for tick in ticks:
+        tick_el = SubElement(root, "tick", number=str(tick.tick_number), met=format_met(tick.met))
+
         action_text = tick.action_label or "No action"
         if tick.action_status is not None:
             action_text += f" ({tick.action_status.value})"
-
-        header = f"=== Tick #{tick.tick_number} | {format_met(tick.met)} | {action_text} ==="
-        lines: list[str] = [header]
+        tick_el.set("action", action_text)
 
         # Vessel state
-        lines.append("--- State ---")
-        lines.extend(_format_vessel_state(tick.state))
+        _build_vessel_state_element(tick_el, tick.state)
 
         # Logs
         if tick.logs:
-            lines.append("--- Logs ---")
+            logs_el = SubElement(tick_el, "logs")
             for entry in tick.logs:
-                lines.append(f"  {entry.level.value:>5}  {entry.message}")
+                log_el = SubElement(logs_el, "log", level=entry.level.value)
+                log_el.text = entry.message
 
-        # Commands sent (applied)
-        sent_lines: list[str] = []
-        redundant_lines: list[str] = []
+        # Commands
+        has_sent = False
+        has_redundant = False
+        sent_el: Element | None = None
+        redundant_el: Element | None = None
+
         for field in fields(tick.commands):
             value = getattr(tick.commands, field.name)
             if value is None:
                 continue
-            label = field.name.replace("_", " ").title()
             formatted = format_field_value(field.name, value)
             if field.name in tick.applied_fields:
-                sent_lines.append(f"  {label}: {formatted}")
+                if not has_sent:
+                    sent_el = SubElement(tick_el, "commands", type="sent")
+                    has_sent = True
+                cmd_el = SubElement(sent_el, field.name)  # type: ignore[arg-type]
+                cmd_el.text = formatted
             else:
-                redundant_lines.append(f"  {label}: {formatted}")
+                if not has_redundant:
+                    redundant_el = SubElement(tick_el, "commands", type="redundant")
+                    has_redundant = True
+                cmd_el = SubElement(redundant_el, field.name)  # type: ignore[arg-type]
+                cmd_el.text = formatted
 
-        if sent_lines:
-            lines.append("--- Commands (sent) ---")
-            lines.extend(sent_lines)
-        if redundant_lines:
-            lines.append("--- Commands (redundant) ---")
-            lines.extend(redundant_lines)
+        if not tick.logs and not has_sent and not has_redundant:
+            SubElement(tick_el, "idle")
 
-        if not tick.logs and not sent_lines and not redundant_lines:
-            lines.append("  (idle)")
-
-        sections.append("\n".join(lines))
-
-    return "\n\n".join(sections) + "\n"
+    return tostring(root, encoding="unicode", xml_declaration=True) + "\n"

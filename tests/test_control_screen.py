@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from xml.etree.ElementTree import fromstring
+
 from ksp_mission_control.control.actions.base import (
     ActionStatus,
     LogEntry,
@@ -16,7 +18,7 @@ _DEFAULT_STATE = VesselState()
 
 
 class TestFormatTickHistory:
-    """Tests for _format_tick_history plain-text export."""
+    """Tests for _format_tick_history XML export."""
 
     def test_idle_tick_with_no_logs_or_commands(self) -> None:
         tick = TickRecord(
@@ -30,10 +32,13 @@ class TestFormatTickHistory:
             applied_fields=frozenset(),
         )
         result = _format_tick_history([tick])
-        assert "Tick #1" in result
-        assert "T+00:05.0" in result
-        assert "No action" in result
-        assert "(idle)" in result
+        root = fromstring(result)
+        tick_el = root.find("tick")
+        assert tick_el is not None
+        assert tick_el.get("number") == "1"
+        assert tick_el.get("met") == "T+00:05.0"
+        assert tick_el.get("action") == "No action"
+        assert tick_el.find("idle") is not None
 
     def test_tick_includes_vessel_state(self) -> None:
         state = VesselState(
@@ -53,11 +58,13 @@ class TestFormatTickHistory:
             applied_fields=frozenset({"throttle"}),
         )
         result = _format_tick_history([tick])
-        assert "--- State ---" in result
-        assert "Altitude Surface: 150.3000" in result
-        assert "Vertical Speed: -2.5000" in result
-        assert "Throttle: 0.6500" in result
-        assert "Sas: True" in result
+        root = fromstring(result)
+        state_el = root.find("tick/state")
+        assert state_el is not None
+        assert state_el.findtext("altitude_surface") == "150.3000"
+        assert state_el.findtext("vertical_speed") == "-2.5000"
+        assert state_el.findtext("throttle") == "0.6500"
+        assert state_el.findtext("sas") == "True"
 
     def test_tick_with_logs_and_sent_commands(self) -> None:
         commands = VesselCommands(throttle=0.75, sas=True)
@@ -75,18 +82,31 @@ class TestFormatTickHistory:
             applied_fields=frozenset({"throttle"}),
         )
         result = _format_tick_history([tick])
-        assert "Tick #42" in result
-        assert "T+05:30.5" in result
-        assert "Hover (running)" in result
-        assert "--- Logs ---" in result
-        assert "INFO  Holding altitude" in result
-        assert "DEBUG  PD output: 0.75" in result
-        assert "--- Commands (sent) ---" in result
-        assert "Throttle: 75%" in result
-        assert "--- Commands (redundant) ---" in result
-        assert "Sas: ON" in result
+        root = fromstring(result)
+        tick_el = root.find("tick")
+        assert tick_el is not None
+        assert tick_el.get("met") == "T+05:30.5"
+        assert tick_el.get("action") == "Hover (running)"
 
-    def test_multiple_ticks_separated_by_blank_line(self) -> None:
+        # Logs
+        logs = tick_el.findall("logs/log")
+        assert len(logs) == 2
+        assert logs[0].get("level") == "INFO"
+        assert logs[0].text == "Holding altitude"
+        assert logs[1].get("level") == "DEBUG"
+        assert logs[1].text == "PD output: 0.75"
+
+        # Sent commands
+        sent = tick_el.find("commands[@type='sent']")
+        assert sent is not None
+        assert sent.findtext("throttle") == "75%"
+
+        # Redundant commands
+        redundant = tick_el.find("commands[@type='redundant']")
+        assert redundant is not None
+        assert redundant.findtext("sas") == "ON"
+
+    def test_multiple_ticks(self) -> None:
         tick1 = TickRecord(
             tick_number=1,
             met=0.5,
@@ -108,10 +128,11 @@ class TestFormatTickHistory:
             applied_fields=frozenset({"throttle"}),
         )
         result = _format_tick_history([tick1, tick2])
-        assert "Tick #1" in result
-        assert "Tick #2" in result
-        # Ticks are separated by a blank line
-        assert "\n\n" in result
+        root = fromstring(result)
+        ticks = root.findall("tick")
+        assert len(ticks) == 2
+        assert ticks[0].get("number") == "1"
+        assert ticks[1].get("number") == "2"
 
     def test_tick_with_only_redundant_commands(self) -> None:
         commands = VesselCommands(sas=True, rcs=True)
@@ -126,10 +147,14 @@ class TestFormatTickHistory:
             applied_fields=frozenset(),
         )
         result = _format_tick_history([tick])
-        assert "--- Commands (sent) ---" not in result
-        assert "--- Commands (redundant) ---" in result
-        assert "Sas: ON" in result
-        assert "Rcs: ON" in result
+        root = fromstring(result)
+        tick_el = root.find("tick")
+        assert tick_el is not None
+        assert tick_el.find("commands[@type='sent']") is None
+        redundant = tick_el.find("commands[@type='redundant']")
+        assert redundant is not None
+        assert redundant.findtext("sas") == "ON"
+        assert redundant.findtext("rcs") == "ON"
 
     def test_tick_with_succeeded_status(self) -> None:
         tick = TickRecord(
@@ -143,7 +168,10 @@ class TestFormatTickHistory:
             applied_fields=frozenset(),
         )
         result = _format_tick_history([tick])
-        assert "Land (succeeded)" in result
+        root = fromstring(result)
+        tick_el = root.find("tick")
+        assert tick_el is not None
+        assert tick_el.get("action") == "Land (succeeded)"
 
     def test_state_section_appears_before_logs(self) -> None:
         tick = TickRecord(
@@ -157,6 +185,25 @@ class TestFormatTickHistory:
             applied_fields=frozenset(),
         )
         result = _format_tick_history([tick])
-        state_pos = result.index("--- State ---")
-        logs_pos = result.index("--- Logs ---")
-        assert state_pos < logs_pos
+        root = fromstring(result)
+        tick_el = root.find("tick")
+        assert tick_el is not None
+        children = list(tick_el)
+        tag_names = [child.tag for child in children]
+        assert tag_names.index("state") < tag_names.index("logs")
+
+    def test_output_is_valid_xml_with_declaration(self) -> None:
+        tick = TickRecord(
+            tick_number=1,
+            met=0.0,
+            state=_DEFAULT_STATE,
+            action_label=None,
+            action_status=None,
+            logs=[],
+            commands=VesselCommands(),
+            applied_fields=frozenset(),
+        )
+        result = _format_tick_history([tick])
+        assert result.startswith("<?xml")
+        # Should parse without error
+        fromstring(result)
