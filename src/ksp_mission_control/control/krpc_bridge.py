@@ -103,7 +103,11 @@ def read_vessel_state(conn: object) -> VesselState:
         ap_pitch_error = 0.0
         ap_heading_error = 0.0
         ap_roll_error = 0.0
-    navball = conn.space_center  # type: ignore[attr-defined]
+    # navball.speed_mode may not be available in all kRPC versions.
+    try:
+        speed_mode_raw = str(conn.space_center.navball.speed_mode)  # type: ignore[attr-defined]
+    except (AttributeError, Exception):
+        speed_mode_raw = "orbit"
     return VesselState(
         altitude_sea=flight.mean_altitude,
         altitude_surface=flight.surface_altitude,
@@ -147,7 +151,7 @@ def read_vessel_state(conn: object) -> VesselState:
         throttle=control.throttle,
         sas=control.sas,
         sas_mode=_parse_sas_mode(str(control.sas_mode)),
-        speed_mode=_parse_speed_mode(str(navball.navball.speed_mode)),
+        speed_mode=_parse_speed_mode(speed_mode_raw),
         rcs=control.rcs,
         gear=control.gear,
         legs=control.legs,
