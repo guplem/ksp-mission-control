@@ -72,6 +72,9 @@ def _make_mock_conn(
     body = SimpleNamespace(
         name="Kerbin",
         equatorial_radius=600000.0,
+        surface_gravity=9.81,
+        has_atmosphere=True,
+        atmosphere_depth=70000.0,
         reference_frame=body_ref_frame,
         non_rotating_reference_frame=body_non_rotating_ref_frame,
     )
@@ -83,6 +86,8 @@ def _make_mock_conn(
         inclination=0.5,
         eccentricity=0.007,
         period=2400.0,
+        time_to_apoapsis=300.0,
+        time_to_periapsis=900.0,
         body=body,
     )
 
@@ -91,6 +96,11 @@ def _make_mock_conn(
         surface_altitude=74800.0,
         vertical_speed=1.5,
         speed=2180.0,
+        dynamic_pressure=5000.0,
+        static_pressure=10000.0,
+        drag=200.0,
+        lift=50.0,
+        g_force=1.2,
         latitude=-0.1,
         longitude=74.5,
         pitch=45.0,
@@ -154,6 +164,11 @@ def _make_mock_conn(
             met=120.0,
             name="Test Vessel",
             situation=situation,
+            mass=5000.0,
+            dry_mass=2000.0,
+            available_thrust=50000.0,
+            max_thrust=60000.0,
+            specific_impulse=320.0,
             surface_reference_frame=vessel_surface_ref,
             orbital_reference_frame=vessel_orbital_ref,
             reference_frame=vessel_ref,
@@ -217,11 +232,45 @@ class TestReadVesselState:
         assert state.heading == 90.0
         assert state.roll == 0.0
 
-    def test_reads_body_radius(self) -> None:
+    def test_reads_atmospheric_data(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        assert state.dynamic_pressure == 5000.0
+        assert state.static_pressure == 10000.0
+        assert state.drag == 200.0
+        assert state.lift == 50.0
+        assert state.g_force == 1.2
+
+    def test_reads_orbital_timing(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        assert state.time_to_apoapsis == 300.0
+        assert state.time_to_periapsis == 900.0
+
+    def test_reads_vessel_mass_and_thrust(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        assert state.mass == 5000.0
+        assert state.dry_mass == 2000.0
+        assert state.available_thrust == 50000.0
+        assert state.max_thrust == 60000.0
+        assert state.specific_impulse == 320.0
+
+    def test_reads_body_properties(self) -> None:
         conn = _make_mock_conn()
         state = read_vessel_state(conn)
         assert state.body_radius == 600000.0
+        assert state.surface_gravity == 9.81
         assert state.body == "Kerbin"
+        assert state.body_has_atmosphere is True
+        assert state.body_atmosphere_depth == 70000.0
+
+    def test_reads_body_without_atmosphere(self) -> None:
+        conn = _make_mock_conn()
+        conn.space_center.active_vessel.orbit.body.has_atmosphere = False
+        state = read_vessel_state(conn)
+        assert state.body_has_atmosphere is False
+        assert state.body_atmosphere_depth == 0.0
 
     def test_no_active_vessel_raises(self) -> None:
         conn = _make_mock_conn(active_vessel=False)

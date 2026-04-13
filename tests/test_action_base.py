@@ -117,6 +117,21 @@ class TestVesselState:
         assert state.pitch == 0.0
         assert state.heading == 0.0
         assert state.roll == 0.0
+        assert state.dynamic_pressure == 0.0
+        assert state.static_pressure == 0.0
+        assert state.drag == 0.0
+        assert state.lift == 0.0
+        assert state.g_force == 0.0
+        assert state.time_to_apoapsis == 0.0
+        assert state.time_to_periapsis == 0.0
+        assert state.mass == 0.0
+        assert state.dry_mass == 0.0
+        assert state.available_thrust == 0.0
+        assert state.max_thrust == 0.0
+        assert state.specific_impulse == 0.0
+        assert state.surface_gravity == 9.81
+        assert state.body_has_atmosphere is True
+        assert state.body_atmosphere_depth == 70000.0
         assert state.autopilot_error == 0.0
         assert state.autopilot_pitch_error == 0.0
         assert state.autopilot_heading_error == 0.0
@@ -149,6 +164,134 @@ class TestVesselState:
         state = VesselState()
         with pytest.raises(AttributeError):
             state.altitude_sea = 100.0  # type: ignore[misc]
+
+
+class TestVesselStateDerived:
+    """Tests for derived @property methods on VesselState."""
+
+    def test_twr_normal(self) -> None:
+        state = VesselState(available_thrust=50000.0, mass=5000.0, surface_gravity=9.81)
+        expected = 50000.0 / (5000.0 * 9.81)
+        assert abs(state.twr - expected) < 0.001
+
+    def test_twr_zero_mass(self) -> None:
+        state = VesselState(available_thrust=50000.0, mass=0.0, surface_gravity=9.81)
+        assert state.twr == 0.0
+
+    def test_twr_zero_gravity(self) -> None:
+        state = VesselState(available_thrust=50000.0, mass=5000.0, surface_gravity=0.0)
+        assert state.twr == 0.0
+
+    def test_max_twr(self) -> None:
+        state = VesselState(max_thrust=60000.0, mass=5000.0, surface_gravity=9.81)
+        expected = 60000.0 / (5000.0 * 9.81)
+        assert abs(state.max_twr - expected) < 0.001
+
+    def test_delta_v_normal(self) -> None:
+        state = VesselState(specific_impulse=320.0, mass=5000.0, dry_mass=2000.0)
+        expected = 320.0 * 9.80665 * math.log(5000.0 / 2000.0)
+        assert abs(state.delta_v - expected) < 0.01
+
+    def test_delta_v_no_engines(self) -> None:
+        state = VesselState(specific_impulse=0.0, mass=5000.0, dry_mass=2000.0)
+        assert state.delta_v == 0.0
+
+    def test_delta_v_no_fuel(self) -> None:
+        state = VesselState(specific_impulse=320.0, mass=2000.0, dry_mass=2000.0)
+        assert state.delta_v == 0.0
+
+    def test_delta_v_zero_dry_mass(self) -> None:
+        state = VesselState(specific_impulse=320.0, mass=5000.0, dry_mass=0.0)
+        assert state.delta_v == 0.0
+
+    def test_fuel_fraction_normal(self) -> None:
+        state = VesselState(mass=5000.0, dry_mass=2000.0)
+        assert abs(state.fuel_fraction - 0.6) < 0.001
+
+    def test_fuel_fraction_no_fuel(self) -> None:
+        state = VesselState(mass=2000.0, dry_mass=2000.0)
+        assert state.fuel_fraction == 0.0
+
+    def test_fuel_fraction_zero_mass(self) -> None:
+        state = VesselState(mass=0.0, dry_mass=0.0)
+        assert state.fuel_fraction == 0.0
+
+    def test_time_to_impact_descending(self) -> None:
+        state = VesselState(altitude_surface=100.0, vertical_speed=-10.0)
+        assert abs(state.time_to_impact - 10.0) < 0.001
+
+    def test_time_to_impact_ascending(self) -> None:
+        state = VesselState(altitude_surface=100.0, vertical_speed=5.0)
+        assert state.time_to_impact == float("inf")
+
+    def test_time_to_impact_hovering(self) -> None:
+        state = VesselState(altitude_surface=100.0, vertical_speed=0.0)
+        assert state.time_to_impact == float("inf")
+
+    def test_time_to_impact_on_ground(self) -> None:
+        state = VesselState(altitude_surface=0.0, vertical_speed=-2.0)
+        assert state.time_to_impact == float("inf")
+
+    def test_in_atmosphere(self) -> None:
+        assert VesselState(static_pressure=101325.0).in_atmosphere is True
+        assert VesselState(static_pressure=0.0).in_atmosphere is False
+
+    def test_above_atmosphere_in_space(self) -> None:
+        state = VesselState(
+            altitude_sea=80000.0, body_has_atmosphere=True, body_atmosphere_depth=70000.0
+        )
+        assert state.above_atmosphere is True
+
+    def test_above_atmosphere_inside(self) -> None:
+        state = VesselState(
+            altitude_sea=50000.0, body_has_atmosphere=True, body_atmosphere_depth=70000.0
+        )
+        assert state.above_atmosphere is False
+
+    def test_above_atmosphere_no_atmosphere_body(self) -> None:
+        state = VesselState(altitude_sea=100.0, body_has_atmosphere=False)
+        assert state.above_atmosphere is True
+
+    def test_has_atmosphere_true(self) -> None:
+        state = VesselState(static_pressure=101325.0)
+        assert state.has_atmosphere is True
+
+    def test_has_atmosphere_false_in_vacuum(self) -> None:
+        state = VesselState(static_pressure=0.0)
+        assert state.has_atmosphere is False
+
+    def test_is_suborbital(self) -> None:
+        assert VesselState(situation=VesselSituation.SUB_ORBITAL).is_suborbital is True
+        assert VesselState(situation=VesselSituation.FLYING).is_suborbital is False
+        assert VesselState(situation=VesselSituation.ORBITING).is_suborbital is False
+
+    def test_is_landed(self) -> None:
+        assert VesselState(situation=VesselSituation.LANDED).is_landed is True
+        assert VesselState(situation=VesselSituation.SPLASHED).is_landed is True
+        assert VesselState(situation=VesselSituation.FLYING).is_landed is False
+        assert VesselState(situation=VesselSituation.ORBITING).is_landed is False
+
+    def test_is_flying(self) -> None:
+        assert VesselState(situation=VesselSituation.FLYING).is_flying is True
+        assert VesselState(situation=VesselSituation.SUB_ORBITAL).is_flying is True
+        assert VesselState(situation=VesselSituation.ORBITING).is_flying is False
+        assert VesselState(situation=VesselSituation.LANDED).is_flying is False
+
+    def test_is_orbiting(self) -> None:
+        assert VesselState(situation=VesselSituation.ORBITING).is_orbiting is True
+        assert VesselState(situation=VesselSituation.ESCAPING).is_orbiting is True
+        assert VesselState(situation=VesselSituation.FLYING).is_orbiting is False
+        assert VesselState(situation=VesselSituation.LANDED).is_orbiting is False
+
+    def test_is_ascending(self) -> None:
+        assert VesselState(vertical_speed=5.0).is_ascending is True
+        assert VesselState(vertical_speed=-5.0).is_ascending is False
+        assert VesselState(vertical_speed=0.0).is_ascending is False
+
+    def test_is_descending(self) -> None:
+        assert VesselState(vertical_speed=-5.0).is_descending is True
+        assert VesselState(vertical_speed=5.0).is_descending is False
+        assert VesselState(vertical_speed=0.0).is_descending is False
 
 
 class TestVesselCommands:

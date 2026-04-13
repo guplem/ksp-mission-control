@@ -7,10 +7,13 @@ kRPC directly. See ADR 0006 for rationale.
 
 from __future__ import annotations
 
+import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, ClassVar
+
+_STANDARD_GRAVITY = 9.80665  # m/s^2, used in Tsiolkovsky rocket equation
 
 
 class LogLevel(Enum):
@@ -290,6 +293,18 @@ class VesselState:
     orbital_speed: float = 0.0
     """Speed relative to the orbited body's center of mass, in m/s."""
 
+    # --- Atmosphere ---
+    dynamic_pressure: float = 0.0
+    """Dynamic pressure (0.5 * air_density * velocity^2), in Pascals. 0 in vacuum."""
+    static_pressure: float = 0.0
+    """Atmospheric static pressure, in Pascals. 0 in vacuum."""
+    drag: float = 0.0
+    """Magnitude of aerodynamic drag force, in Newtons. 0 in vacuum."""
+    lift: float = 0.0
+    """Magnitude of aerodynamic lift force, in Newtons. 0 in vacuum."""
+    g_force: float = 0.0
+    """Current g-force experienced by the vessel. 1.0 on Kerbin's surface at rest."""
+
     # --- Orbit ---
     apoapsis: float = 0.0
     """Highest point of the orbit above sea level, in meters."""
@@ -301,6 +316,10 @@ class VesselState:
     """Orbital eccentricity. 0 = circular, 0-1 = elliptical, 1 = parabolic."""
     period: float = 0.0
     """Time for one complete orbit, in seconds."""
+    time_to_apoapsis: float = 0.0
+    """Time until apoapsis, in seconds."""
+    time_to_periapsis: float = 0.0
+    """Time until periapsis, in seconds."""
 
     # --- Vessel ---
     met: float = 0.0
@@ -309,12 +328,28 @@ class VesselState:
     """Name of the active vessel."""
     situation: VesselSituation = VesselSituation.PRE_LAUNCH
     """Current flight situation (e.g. PRE_LAUNCH, FLYING, ORBITING, LANDED)."""
+    mass: float = 0.0
+    """Total vessel mass including fuel, in kilograms."""
+    dry_mass: float = 0.0
+    """Vessel mass without fuel, in kilograms."""
+    available_thrust: float = 0.0
+    """Currently available thrust (accounts for throttle limiters, fuel), in Newtons."""
+    max_thrust: float = 0.0
+    """Maximum possible thrust at full throttle in current conditions, in Newtons."""
+    specific_impulse: float = 0.0
+    """Current overall specific impulse, in seconds. 0 if no active engines."""
 
     # --- Position ---
     body: str = ""
     """Name of the celestial body being orbited (e.g. 'Kerbin', 'Mun')."""
     body_radius: float = 600000.0
     """Equatorial radius of the orbited body, in meters. Defaults to Kerbin."""
+    surface_gravity: float = 9.81
+    """Surface gravitational acceleration of the orbited body, in m/s^2. Defaults to Kerbin."""
+    body_has_atmosphere: bool = True
+    """Whether the orbited body has an atmosphere at all (e.g. Kerbin=True, Mun=False)."""
+    body_atmosphere_depth: float = 70000.0
+    """Maximum altitude of the body's atmosphere, in meters. 0 if no atmosphere. Kerbin=70km."""
     latitude: float = 0.0
     """Geographic latitude on the body surface, in degrees. -90 to 90."""
     longitude: float = 0.0
@@ -387,6 +422,113 @@ class VesselState:
     """Available oxidizer, in units."""
     mono_propellant: float = 0.0
     """Available monopropellant (RCS fuel), in units."""
+
+    # --- Derived properties (computed from raw telemetry) ---
+
+    @property
+    def twr(self) -> float:
+        """Thrust-to-weight ratio using available thrust and local gravity.
+
+        Returns 0.0 if mass or surface gravity is zero.
+        """
+        weight = self.mass * self.surface_gravity
+        if weight <= 0.0:
+            return 0.0
+        return self.available_thrust / weight
+
+    @property
+    def max_twr(self) -> float:
+        """Maximum thrust-to-weight ratio at full throttle in current conditions.
+
+        Returns 0.0 if mass or surface gravity is zero.
+        """
+        weight = self.mass * self.surface_gravity
+        if weight <= 0.0:
+            return 0.0
+        return self.max_thrust / weight
+
+    @property
+    def delta_v(self) -> float:
+        """Remaining delta-v via Tsiolkovsky rocket equation: Isp * g0 * ln(m0/m1).
+
+        Uses current specific_impulse and standard gravity (9.80665 m/s^2).
+        Returns 0.0 if no engines, no fuel, or dry_mass is zero.
+        """
+        if self.specific_impulse <= 0.0 or self.dry_mass <= 0.0 or self.mass <= self.dry_mass:
+            return 0.0
+        return self.specific_impulse * _STANDARD_GRAVITY * math.log(self.mass / self.dry_mass)
+
+    @property
+    def fuel_fraction(self) -> float:
+        """Fraction of vessel mass that is fuel (0.0 to 1.0).
+
+        Returns 0.0 if total mass is zero.
+        """
+        if self.mass <= 0.0:
+            return 0.0
+        return (self.mass - self.dry_mass) / self.mass
+
+    @property
+    def time_to_impact(self) -> float:
+        """Estimated seconds until surface contact, assuming constant descent rate.
+
+        Returns ``float('inf')`` if the vessel is not descending or is on the ground.
+        Uses altitude_surface / abs(vertical_speed) as a linear estimate.
+        """
+        if self.vertical_speed >= 0.0 or self.altitude_surface <= 0.0:
+            return float("inf")
+        return self.altitude_surface / abs(self.vertical_speed)
+
+    @property
+    def in_atmosphere(self) -> bool:
+        """Whether the vessel is currently experiencing atmospheric pressure."""
+        return self.static_pressure > 0.0
+
+    @property
+    def above_atmosphere(self) -> bool:
+        """Whether the vessel is above the body's atmosphere (or the body has none).
+
+        True if the body has no atmosphere, or the vessel's sea-level altitude
+        exceeds the atmosphere depth.
+        """
+        if not self.body_has_atmosphere:
+            return True
+        return self.altitude_sea > self.body_atmosphere_depth
+
+    @property
+    def has_atmosphere(self) -> bool:
+        """Whether the vessel is currently in an atmosphere (static pressure > 0)."""
+        return self.static_pressure > 0.0
+
+    @property
+    def is_landed(self) -> bool:
+        """Whether the vessel is on the ground (LANDED or SPLASHED)."""
+        return self.situation in (VesselSituation.LANDED, VesselSituation.SPLASHED)
+
+    @property
+    def is_flying(self) -> bool:
+        """Whether the vessel is in atmospheric flight (FLYING or SUB_ORBITAL)."""
+        return self.situation in (VesselSituation.FLYING, VesselSituation.SUB_ORBITAL)
+
+    @property
+    def is_suborbital(self) -> bool:
+        """Whether the vessel is on a suborbital trajectory."""
+        return self.situation == VesselSituation.SUB_ORBITAL
+
+    @property
+    def is_orbiting(self) -> bool:
+        """Whether the vessel is in a stable orbit or escaping (ORBITING or ESCAPING)."""
+        return self.situation in (VesselSituation.ORBITING, VesselSituation.ESCAPING)
+
+    @property
+    def is_ascending(self) -> bool:
+        """Whether the vessel is moving upward (positive vertical speed)."""
+        return self.vertical_speed > 0.0
+
+    @property
+    def is_descending(self) -> bool:
+        """Whether the vessel is moving downward (negative vertical speed)."""
+        return self.vertical_speed < 0.0
 
 
 @dataclass
