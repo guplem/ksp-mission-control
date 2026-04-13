@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from ksp_mission_control.control.actions.base import Action, VesselState
+from ksp_mission_control.control.actions.base import Action, ActionStatus, VesselState
 from ksp_mission_control.control.actions.flight_plan import FlightPlan
 from ksp_mission_control.control.actions.registry import get_available_actions
 from ksp_mission_control.control.actions.runner import (
@@ -109,9 +109,7 @@ class PlanExecutor:
 
         # Detect action completion: was running, now cleared
         if had_action and not has_action:
-            succeeded = self._detect_succeeded(result)
-
-            if succeeded:
+            if result.finished_status == ActionStatus.SUCCEEDED:
                 self._step_statuses[self._step_index] = StepStatus.SUCCEEDED
 
                 # Advance to next step if available
@@ -123,9 +121,6 @@ class PlanExecutor:
                         vessel_state,
                         self._plan.steps[self._step_index].param_values,
                     )
-                    # Flush "Started: ..." log so it appears in this tick's result,
-                    # not delayed until the next step() call.
-                    result.logs.extend(self._runner.flush_pending_logs())
                 else:
                     # Plan complete - keep snapshot visible until next action/plan
                     pass
@@ -164,8 +159,6 @@ class PlanExecutor:
             vessel_state,
             self._plan.steps[self._step_index].param_values,
         )
-        # Flush so the "Started" log appears on the next step() result immediately
-        self._runner.flush_pending_logs()
 
     def abort_plan(self) -> StepResult:
         """Abort a paused plan (user chose not to continue after failure)."""
@@ -199,13 +192,6 @@ class PlanExecutor:
         self._step_index = 0
         self._step_statuses = []
         self._paused_on_failure = False
-
-    def _detect_succeeded(self, result: StepResult) -> bool:
-        """Check step result logs to determine if the action succeeded."""
-        for entry in result.logs:
-            if "Finished:" in entry.message and "succeeded" in entry.message:
-                return True
-        return False
 
     def _resolve_action(self, action_id: str) -> Action:
         """Get a fresh action instance by ID from the registry."""

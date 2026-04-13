@@ -163,7 +163,7 @@ class TestFormatTickHistory:
             state=_DEFAULT_STATE,
             action_label="Land",
             action_status=ActionStatus.SUCCEEDED,
-            logs=[LogEntry(level=LogLevel.INFO, message="Finished: Land (succeeded)")],
+            logs=[LogEntry(level=LogLevel.INFO, message="\u25c0 Finished: Land (succeeded)")],
             commands=VesselCommands(),
             applied_fields=frozenset(),
         )

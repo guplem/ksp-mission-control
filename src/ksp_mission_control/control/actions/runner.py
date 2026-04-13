@@ -14,7 +14,6 @@ from ksp_mission_control.control.actions.base import (
     ActionLogger,
     ActionStatus,
     LogEntry,
-    LogLevel,
     VesselCommands,
     VesselState,
 )
@@ -26,6 +25,7 @@ class StepResult:
 
     commands: VesselCommands
     logs: list[LogEntry]
+    finished_status: ActionStatus | None = None
 
 
 @dataclass(frozen=True)
@@ -48,7 +48,7 @@ class ActionRunner:
         self._action: Action | None = None
         self._status: ActionStatus | None = None
         self._message: str = ""
-        self._pending_logs: list[LogEntry] = []
+        self._emit_started: bool = False
         self._last_state: VesselState = VesselState()
 
     def start_action(
@@ -68,7 +68,7 @@ class ActionRunner:
         self._message = ""
         self._last_state = state
         action.start(state, resolved)
-        self._pending_logs.append(LogEntry(level=LogLevel.INFO, message=f"Started: {action.label}"))
+        self._emit_started = True
 
     def abort(self) -> StepResult:
         """Stop the current action immediately.
@@ -84,8 +84,8 @@ class ActionRunner:
             self._action = None
             self._status = None
             self._message = ""
-        self._pending_logs.extend(log.entries)
-        return StepResult(commands=commands, logs=[])
+            self._emit_started = False
+        return StepResult(commands=commands, logs=log.entries)
 
     def step(self, vessel_state: VesselState, dt: float) -> StepResult:
         """Execute one tick of the current action.
@@ -97,25 +97,29 @@ class ActionRunner:
         """
         commands = VesselCommands()
         log = ActionLogger()
-        log.entries.extend(self._pending_logs)
-        self._pending_logs.clear()
         self._last_state = vessel_state
         if self._action is None:
             return StepResult(commands=commands, logs=log.entries)
+
+        if self._emit_started:
+            log.info(f"Started: {self._action.label}")
+            self._emit_started = False
 
         result = self._action.tick(vessel_state, commands, dt, log)
         self._status = result.status
         self._message = result.message
 
+        finished_status: ActionStatus | None = None
         if result.status in (ActionStatus.SUCCEEDED, ActionStatus.FAILED):
+            finished_status = result.status
             label = self._action.label
-            log.info(f"Finished: {label} ({result.status.value})")
+            log.info(f"\u25c0 Finished: {label} ({result.status.value})")
             self._action.stop(vessel_state, commands, log)
             self._action = None
             self._status = None
             self._message = ""
 
-        return StepResult(commands=commands, logs=log.entries)
+        return StepResult(commands=commands, logs=log.entries, finished_status=finished_status)
 
     def snapshot(self) -> RunnerSnapshot:
         """Return an immutable snapshot of the current runner state."""
@@ -127,16 +131,6 @@ class ActionRunner:
             status=self._status,
             message=self._message,
         )
-
-    def flush_pending_logs(self) -> list[LogEntry]:
-        """Return and clear any pending log entries (e.g. from start_action).
-
-        Used by PlanExecutor to include 'Started' logs in the same step
-        result where the previous action finished.
-        """
-        logs = list(self._pending_logs)
-        self._pending_logs.clear()
-        return logs
 
     def _resolve_params(
         self,
