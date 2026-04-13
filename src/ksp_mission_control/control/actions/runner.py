@@ -128,6 +128,16 @@ class ActionRunner:
             message=self._message,
         )
 
+    def flush_pending_logs(self) -> list[LogEntry]:
+        """Return and clear any pending log entries (e.g. from start_action).
+
+        Used by PlanExecutor to include 'Started' logs in the same step
+        result where the previous action finished.
+        """
+        logs = list(self._pending_logs)
+        self._pending_logs.clear()
+        return logs
+
     def _resolve_params(
         self,
         action: Action,

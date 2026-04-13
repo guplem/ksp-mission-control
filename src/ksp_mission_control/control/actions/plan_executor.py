@@ -123,6 +123,9 @@ class PlanExecutor:
                         vessel_state,
                         self._plan.steps[self._step_index].param_values,
                     )
+                    # Flush "Started: ..." log so it appears in this tick's result,
+                    # not delayed until the next step() call.
+                    result.logs.extend(self._runner.flush_pending_logs())
                 else:
                     # Plan complete - keep snapshot visible until next action/plan
                     pass
@@ -161,6 +164,8 @@ class PlanExecutor:
             vessel_state,
             self._plan.steps[self._step_index].param_values,
         )
+        # Flush so the "Started" log appears on the next step() result immediately
+        self._runner.flush_pending_logs()
 
     def abort_plan(self) -> StepResult:
         """Abort a paused plan (user chose not to continue after failure)."""
