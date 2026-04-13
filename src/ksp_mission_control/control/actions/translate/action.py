@@ -1,10 +1,13 @@
-"""TranslateAction - hovering translation to move N/S/E/W while holding altitude.
+"""TranslateAction - orient-then-translate horizontal movement.
 
-Uses the same cascaded velocity controller as HoverAction for altitude hold.
-Horizontal movement is driven by RCS translation, decomposed from world-space
-(north/east) into vessel-relative (forward/right) based on current heading.
-Position is tracked via latitude/longitude coordinates converted to meters
-using the body's equatorial radius.
+Strategy:
+  1. Orient: engage the kRPC autopilot targeting pitch=90 (upright) and
+     heading toward the destination. Wait until heading aligns.
+  2. Translate: use translate_forward (RCS) to move toward the target.
+     A velocity P controller ramps up to max_speed and brakes on approach.
+
+Altitude is held throughout using the same cascaded velocity controller as
+HoverAction. Position is tracked via lat/lon coordinates.
 """
 
 from __future__ import annotations
@@ -19,7 +22,6 @@ from ksp_mission_control.control.actions.base import (
     ActionResult,
     ActionStatus,
     ParamType,
-    SASMode,
     VesselCommands,
     VesselState,
 )
@@ -29,11 +31,14 @@ _SPEED_GAIN = 0.5  # m/s desired vertical speed per meter of altitude error
 _MAX_APPROACH_SPEED = 50.0  # cap on vertical climb/descent rate (m/s)
 _KP_SPEED = 0.2  # throttle adjustment per m/s of vertical speed error
 
+# --- Heading control ---
+_HEADING_ALIGNED_THRESHOLD = 10.0  # degrees: heading close enough to start translating
+
 # --- Horizontal translation ---
-_HORIZONTAL_GAIN = 0.1  # RCS input per meter of remaining distance
+_HORIZONTAL_GAIN = 0.1  # desired speed per meter of remaining distance (scales with max_speed)
+_FORWARD_GAIN = 0.2  # translate_forward per m/s of forward velocity error
 _ARRIVAL_DISTANCE = 2.0  # meters: consider target reached below this
 _ARRIVAL_SPEED = 1.0  # m/s: must be slower than this to complete
-_BRAKING_GAIN = 0.2  # RCS braking input per m/s of excess surface speed
 
 
 def _lat_lon_to_meters(
@@ -52,8 +57,28 @@ def _lat_lon_to_meters(
     return north, east
 
 
+def _target_heading(remaining_north: float, remaining_east: float) -> float:
+    """Compute the heading (0-360) from the vessel toward the target.
+
+    0 = north, 90 = east, 180 = south, 270 = west.
+    """
+    rad = math.atan2(remaining_east, remaining_north)
+    deg = math.degrees(rad)
+    return deg % 360.0
+
+
+def _heading_error(target: float, current: float) -> float:
+    """Signed heading error in degrees, normalized to [-180, 180].
+
+    Positive = target is clockwise from current (yaw right).
+    """
+    error = target - current
+    error = (error + 180.0) % 360.0 - 180.0
+    return error
+
+
 class TranslateAction(Action):
-    """Move horizontally while holding altitude using RCS translation."""
+    """Move horizontally while holding altitude using orient-then-translate."""
 
     action_id: ClassVar[str] = "translate"
     label: ClassVar[str] = "Translate"
@@ -93,10 +118,12 @@ class TranslateAction(Action):
         self._distance_east: float = float(param_values["distance_east"])
         self._max_speed: float = float(param_values["max_speed"])
         self._target_altitude: float = state.altitude_surface
-        # Capture starting coordinates for displacement calculation
         self._start_latitude: float = state.latitude
         self._start_longitude: float = state.longitude
         self._body_radius: float = state.body_radius
+        # Previous position for velocity estimation (position derivative)
+        self._prev_traveled_north: float = 0.0
+        self._prev_traveled_east: float = 0.0
 
     def tick(
         self, state: VesselState, commands: VesselCommands, dt: float, log: ActionLogger
@@ -115,8 +142,16 @@ class TranslateAction(Action):
         remaining_east = self._distance_east - traveled_east
         remaining_distance = math.sqrt(remaining_north**2 + remaining_east**2)
 
+        # --- Actual velocity from position derivative ---
+        safe_dt = max(dt, 0.01)
+        actual_north_velocity = (traveled_north - self._prev_traveled_north) / safe_dt
+        actual_east_velocity = (traveled_east - self._prev_traveled_east) / safe_dt
+        self._prev_traveled_north = traveled_north
+        self._prev_traveled_east = traveled_east
+        actual_speed = math.sqrt(actual_north_velocity**2 + actual_east_velocity**2)
+
         # --- Completion check ---
-        if remaining_distance < _ARRIVAL_DISTANCE and state.surface_speed < _ARRIVAL_SPEED:
+        if remaining_distance < _ARRIVAL_DISTANCE and actual_speed < _ARRIVAL_SPEED:
             log.info(f"Target reached: traveled N={traveled_north:.1f}m E={traveled_east:.1f}m")
             return ActionResult(status=ActionStatus.SUCCEEDED)
 
@@ -129,47 +164,43 @@ class TranslateAction(Action):
         raw_throttle = 0.5 + _KP_SPEED * speed_error
         commands.throttle = max(0.0, min(1.0, raw_throttle))
 
-        # --- Orientation: point up, RCS for translation ---
-        commands.sas = True
-        commands.sas_mode = SASMode.RADIAL
+        # --- Autopilot: hold current pitch, rotate heading toward target ---
+        # Use the vessel's current pitch so the autopilot only controls heading
+        # and doesn't fight the throttle-based altitude hold.
+        commands.autopilot = True
+        commands.autopilot_pitch = state.pitch
         commands.rcs = True
+        # Disable SAS (autopilot handles orientation)
+        commands.sas = False
 
-        # --- Horizontal RCS control ---
-        # Desired velocity: proportional to remaining distance, capped at max_speed
-        if remaining_distance > 0:
-            scale = min(self._max_speed, _HORIZONTAL_GAIN * remaining_distance * self._max_speed)
-            desired_north_speed = (remaining_north / remaining_distance) * scale
-            desired_east_speed = (remaining_east / remaining_distance) * scale
+        # --- Heading control ---
+        target_hdg = _target_heading(remaining_north, remaining_east)
+        commands.autopilot_heading = target_hdg
+        hdg_error = _heading_error(target_hdg, state.heading)
+        aligned = abs(hdg_error) < _HEADING_ALIGNED_THRESHOLD
+
+        # --- Forward translation: only when heading is aligned ---
+        if aligned:
+            desired_forward_speed = min(
+                self._max_speed,
+                _HORIZONTAL_GAIN * remaining_distance * self._max_speed,
+            )
+            if remaining_distance > 0:
+                actual_forward_speed = (
+                    actual_north_velocity * remaining_north + actual_east_velocity * remaining_east
+                ) / remaining_distance
+            else:
+                actual_forward_speed = 0.0
+            forward_error = desired_forward_speed - actual_forward_speed
+            commands.translate_forward = max(-1.0, min(1.0, _FORWARD_GAIN * forward_error))
         else:
-            desired_north_speed = 0.0
-            desired_east_speed = 0.0
+            commands.translate_forward = 0.0
 
-        # Estimate current velocity components from heading + surface speed
-        heading_rad = math.radians(state.heading)
-        north_speed = state.surface_speed * math.cos(heading_rad)
-        east_speed = state.surface_speed * math.sin(heading_rad)
-
-        # Braking: compare desired vs actual velocity
-        north_speed_error = desired_north_speed - north_speed
-        east_speed_error = desired_east_speed - east_speed
-
-        # Convert world-space velocity error to vessel-relative axes
-        # Forward = cos(heading) * north + sin(heading) * east
-        # Right   = -sin(heading) * north + cos(heading) * east
-        raw_forward = _BRAKING_GAIN * (
-            math.cos(heading_rad) * north_speed_error + math.sin(heading_rad) * east_speed_error
-        )
-        raw_right = _BRAKING_GAIN * (
-            -math.sin(heading_rad) * north_speed_error + math.cos(heading_rad) * east_speed_error
-        )
-
-        commands.translate_forward = max(-1.0, min(1.0, raw_forward))
-        commands.translate_right = max(-1.0, min(1.0, raw_right))
-
+        phase = "translating" if aligned else "orienting"
         log.debug(
-            f"translate: remaining N={remaining_north:+.1f}m E={remaining_east:+.1f}m "
-            f"dist={remaining_distance:.1f}m  "
-            f"fwd={commands.translate_forward:+.2f} right={commands.translate_right:+.2f}  "
+            f"translate [{phase}]: remaining N={remaining_north:+.1f}m E={remaining_east:+.1f}m "
+            f"dist={remaining_distance:.1f}m  hdg_err={hdg_error:+.1f}deg  "
+            f"fwd={commands.translate_forward:+.2f}  speed={actual_speed:.1f}m/s  "
             f"alt_err={altitude_error:+.1f}m throttle={commands.throttle:.3f}"
         )
 
@@ -177,3 +208,7 @@ class TranslateAction(Action):
 
     def stop(self, state: VesselState, commands: VesselCommands, log: ActionLogger) -> None:
         super().stop(state, commands, log)
+        commands.throttle = 0.0
+        commands.autopilot = False
+        commands.rcs = False
+        commands.translate_forward = 0.0

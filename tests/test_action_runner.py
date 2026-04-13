@@ -81,7 +81,7 @@ class TestActionRunnerNoAction:
         result = runner.step(VesselState(), dt=0.5)
         assert result.commands.throttle is None
         assert result.commands.sas is None
-        assert result.commands.pitch is None
+        assert result.commands.autopilot_pitch is None
 
     def test_snapshot_shows_no_action(self) -> None:
         runner = ActionRunner()

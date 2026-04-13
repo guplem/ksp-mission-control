@@ -285,11 +285,13 @@ class VesselCommands:
     translate_up: float | None = None
     """RCS down/up. -1.0 = down, 1.0 = up."""
 
-    # --- Autopilot target angles ---
-    pitch: float | None = None
-    """Target pitch angle in degrees. 0 = horizontal, 90 = straight up."""
-    heading: float | None = None
-    """Target heading in degrees. 0 = north, 90 = east, 180 = south, 270 = west."""
+    # --- Autopilot (kRPC auto_pilot, separate from SAS) ---
+    autopilot: bool | None = None
+    """kRPC autopilot. True = engage, False = disengage. Overrides SAS when active."""
+    autopilot_pitch: float | None = None
+    """Autopilot target pitch in degrees. 0 = horizontal, 90 = straight up."""
+    autopilot_heading: float | None = None
+    """Autopilot target heading in degrees. 0 = north, 90 = east, 180 = south, 270 = west."""
 
     # --- Systems ---
     sas: bool | None = None

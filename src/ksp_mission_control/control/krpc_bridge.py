@@ -19,7 +19,7 @@ from ksp_mission_control.control.actions.base import (
 
 # Command fields that have a matching field in VesselState for comparison.
 # Excluded from comparison (always applied when non-None):
-#   pitch/heading: command = target angle, state = current orientation
+#   autopilot_pitch/autopilot_heading: command = target angle, state = current orientation
 #   stage: one-shot trigger
 #   input_*/translate_*: transient axis inputs, no persistent state
 #   wheels: kRPC write-only, no readable state
@@ -195,8 +195,24 @@ def apply_controls(conn: object, controls: VesselCommands) -> None:
     if controls.translate_up is not None:
         vc.up = controls.translate_up
 
+    # Autopilot (kRPC auto_pilot, separate from SAS)
+    # Autopilot and SAS are mutually exclusive: engaging one disables the other.
+    ap = vessel.auto_pilot
+    if controls.autopilot is not None:
+        if controls.autopilot:
+            vc.sas = False
+            ap.engage()
+        else:
+            ap.disengage()
+    if controls.autopilot_pitch is not None:
+        ap.target_pitch = controls.autopilot_pitch
+    if controls.autopilot_heading is not None:
+        ap.target_heading = controls.autopilot_heading
+
     # Systems
     if controls.sas is not None:
+        if controls.sas:
+            ap.disengage()
         vc.sas = controls.sas
     if controls.sas_mode is not None:
         krpc_sas = getattr(conn.space_center.SASMode, controls.sas_mode.value, None)  # type: ignore[attr-defined]

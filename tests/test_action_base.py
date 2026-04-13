@@ -141,8 +141,8 @@ class TestVesselCommands:
     def test_defaults_to_none(self) -> None:
         controls = VesselCommands()
         assert controls.throttle is None
-        assert controls.pitch is None
-        assert controls.heading is None
+        assert controls.autopilot_pitch is None
+        assert controls.autopilot_heading is None
         assert controls.sas is None
         assert controls.rcs is None
         assert controls.stage is None
@@ -153,4 +153,4 @@ class TestVesselCommands:
         controls.sas = True
         assert controls.throttle == 0.8
         assert controls.sas is True
-        assert controls.pitch is None  # untouched
+        assert controls.autopilot_pitch is None  # untouched
