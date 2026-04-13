@@ -14,7 +14,6 @@ A terminal-based mission control console for **Kerbal Space Program**. Connect t
 - **Command history** -- paginated record of every command sent to the vessel, showing which fields were actually applied vs redundant
 - **Auto kRPC setup** -- detects your KSP installation and installs the kRPC mod for you
 - **Connection resilience** -- auto-reconnect on connection loss, kRPC call timeouts, graceful handling of missing vessels
-- **Demo mode** -- explore the full UI with mock data, no KSP required
 
 ## Prerequisites
 
@@ -43,12 +42,6 @@ On first run, the app will check for the kRPC mod in your KSP installation and g
 2. **Run ksp-mc**: `uv run ksp-mc`
 3. **Connect** to the kRPC server (default: `localhost:50000`)
 4. **Monitor and control** your mission from the terminal
-
-To try the UI without KSP running:
-
-```bash
-uv run ksp-mc --demo
-```
 
 ## Flight Plans
 

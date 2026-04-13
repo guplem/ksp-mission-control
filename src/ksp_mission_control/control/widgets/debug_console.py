@@ -67,8 +67,8 @@ class DebugConsoleWidget(Static):
     }
     """
 
-    def __init__(self, **kwargs: object) -> None:
-        super().__init__(**kwargs)
+    def __init__(self, *, id: str | None = None) -> None:  # noqa: A002
+        super().__init__(id=id)
         self._level_colors: dict[LogLevel, str] | None = None
         self._all_logs: list[_TimestampedLog] = []
         self._enabled_levels: set[LogLevel] = set(LogLevel)

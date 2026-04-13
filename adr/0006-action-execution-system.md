@@ -2,7 +2,7 @@
 
 ## Context
 
-The control screen needs to support automated vessel actions (hover, ascend to orbit, wait-until conditions, etc.). Each action follows a loop: read vessel state, decide what controls to set, repeat. Actions must be testable without a running KSP instance and work identically in demo mode.
+The control screen needs to support automated vessel actions (hover, ascend to orbit, wait-until conditions, etc.). Each action follows a loop: read vessel state, decide what controls to set, repeat. Actions must be testable without a running KSP instance.
 
 The system is designed to grow in phases:
 1. Single action execution with hardcoded parameters (current)
@@ -31,12 +31,9 @@ Data flow:
 kRPC --read--> VesselState --> runner.step() --> VesselCommands --write--> kRPC
 ```
 
-In demo mode, `VesselState` comes from the demo provider and returned controls are discarded.
-
 ## Consequences
 
 - **Positive**: Actions are pure and fully testable. Construct a `VesselState`, call `tick()`, assert on `VesselCommands`.
-- **Positive**: Demo mode works identically to live mode (same runner, same actions).
 - **Positive**: Adding new actions requires only a new `Action` subclass and a registry entry.
 - **Positive**: Future flight plans can sequence actions by driving the runner without changing the action or runner code.
 - **Positive**: The `ActionParam` descriptor pattern enables future UI-driven parameter dialogs.

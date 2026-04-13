@@ -13,11 +13,8 @@ The protocol exposes:
 - Command methods (set_throttle, toggle_sas, activate_stage, etc.)
 - Connection state (`is_connected`)
 
-The app selects the client at startup: `--demo` flag or failed connection uses `MockClient`.
-
 ## Consequences
 
 - **Positive**: Full TUI development and testing without KSP running
 - **Positive**: Widget tests use MockClient, no network mocking needed
-- **Positive**: Demo mode lets users explore the UI before installing kRPC
 - **Negative**: Must keep Protocol, KRPCClient, and MockClient in sync manually

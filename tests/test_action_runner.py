@@ -152,7 +152,8 @@ class TestActionRunnerAbort:
         runner.step(VesselState(), dt=0.5)
         result = runner.abort()
         assert action.stopped
-        assert result.commands.throttle == 0.0  # from Action.stop() default
+        # Base Action.stop() only logs; no command resets
+        assert result.commands.throttle is None
 
     def test_abort_clears_state(self) -> None:
         runner = ActionRunner()
@@ -189,8 +190,8 @@ class TestActionRunnerAutoStop:
         runner.start_action(action, VesselState())
         result = runner.step(VesselState(), dt=0.5)
         assert action.stopped
-        # Commands from stop() override tick's commands
-        assert result.commands.throttle == 0.0
+        # tick() set throttle=0.7; stop() doesn't reset it
+        assert result.commands.throttle == 0.7
 
     def test_failed_action_auto_stops(self) -> None:
         runner = ActionRunner()

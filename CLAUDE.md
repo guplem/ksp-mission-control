@@ -32,7 +32,6 @@ KSP Mission Control is a Python TUI application that connects to Kerbal Space Pr
 | Install deps | `uv sync --dev` | uv is the only package manager (ADR 0003) |
 | Install hooks | `git config core.hooksPath hooks` | Auto-runs ruff fix + format on commit |
 | Run app | `uv run ksp-mc` | Or `uv run python -m ksp_mission_control` |
-| Run demo mode | `uv run ksp-mc --demo` | Mock data, no KSP needed |
 | Run tests | `uv run pytest` | TDD: write failing test first |
 | Run single test | `uv run pytest tests/test_foo.py -k test_name` | |
 | Lint | `uv run ruff check src/ tests/` | |
@@ -66,15 +65,15 @@ src/ksp_mission_control/
 │   │   ├── registry.py   # get_available_actions() factory
 │   │   ├── hover/        # Hover altitude-hold action
 │   │   │   └── action.py # HoverAction (PD controller, hover duration)
-│   │   └── land/         # Landing action
-│   │       └── action.py # LandAction (controlled descent PD controller)
+│   │   ├── land/         # Landing action
+│   │   │   └── action.py # LandAction (controlled descent PD controller)
+│   │   └── translate/    # Translation action
+│   │       └── action.py # TranslateAction (RCS translation control)
 │   ├── widgets/          # Control-screen widgets
 │   │   ├── telemetry_display.py # TelemetryDisplayWidget (3-column: flight, orbit, resources)
 │   │   ├── action_list.py       # ActionListWidget (launch buttons, running status, plan steps)
 │   │   ├── debug_console.py     # DebugConsoleWidget (scrolling color-coded action logs)
 │   │   └── command_history.py   # CommandHistoryWidget (paginated command history with navigation)
-│   └── demo/             # Demo mode data (ADR 0004)
-│       └── demo_state.py # generate_demo_vessel_state()
 ├── setup/                # Setup/checklist feature
 │   ├── screen.py         # SetupScreen (thin UI glue, delegates to CheckRunner) (ADR 0007)
 │   ├── check_runner.py   # CheckRunner (sequential check execution logic) (ADR 0007)
@@ -153,18 +152,18 @@ kRPC --read--> krpc_bridge --> VesselState --> PlanExecutor.step() --> VesselCom
                                   ControlScreen (UI glue: call_from_thread -> widgets)
 ```
 
-- **Read path**: `krpc_bridge.read_vessel_state()` reads kRPC telemetry into a pure `VesselState` dataclass. In demo mode, `generate_demo_vessel_state()` produces the same dataclass with fake data.
+- **Read path**: `krpc_bridge.read_vessel_state()` reads kRPC telemetry into a pure `VesselState` dataclass.
 - **Action loop**: `PlanExecutor.step()` delegates to `ActionRunner.step()`, which passes `VesselState` to the current action's `tick()`, mutating a `VesselCommands` buffer. When a plan is active, PlanExecutor detects action completion and auto-advances to the next step.
 - **Command filtering**: `filter_commands()` compares each command field against the vessel's current state. Only fields that differ are sent to kRPC. Returns `applied_fields` (which fields were actually sent) for the UI.
-- **Write path**: `krpc_bridge.apply_controls()` writes the filtered commands to kRPC. In demo mode, commands are discarded.
+- **Write path**: `krpc_bridge.apply_controls()` writes the filtered commands to kRPC.
 - **Session/screen split**: `ControlSession` owns the poll loop and calls `on_update`/`on_error` callbacks. `ControlScreen` wraps these callbacks with `call_from_thread()` to bridge to the UI thread.
-- **Models are pure (ADR 0004)**: `VesselState` and `VesselCommands` have no kRPC or Textual imports. Actions are testable with constructed states. Demo mode swaps the data source without changing any logic.
+- **Models are pure (ADR 0004)**: `VesselState` and `VesselCommands` have no kRPC or Textual imports. Actions are testable with constructed states.
 - **Flight plans**: Text files (`.plan`) parsed by `parse_flight_plan()`. Each line is `action_id key=value ...`. Plans are loaded via `FlightPlanPicker` modal. On step failure, `PlanFailureDialog` asks user to continue or abort.
 
 ### Key patterns
 
 - **Screen + session/runner pattern (ADR 0007)**: Screens are thin UI glue. Business logic (poll loops, check sequencing, connection lifecycle) lives in dedicated classes (`ControlSession`, `CheckRunner`) that communicate via typed callbacks. These logic classes have no Textual dependency and are independently testable. Screens wrap callbacks with `app.call_from_thread()` to bridge from worker threads to the UI thread.
-- **Two-loop poll architecture**: `ControlSession.run_poll_loop()` has an outer loop (reconnect on connection death) and inner loop (poll every 0.5s). Errors are either *transient* (keep polling: `NoActiveVesselError`, generic) or *connection dead* (break to reconnect: `FutureTimeout`, `ConnectionError`). Each kRPC call runs in a `ThreadPoolExecutor` with a 10s timeout to detect hung connections. Demo mode uses `set_interval(0.5)` calling `demo_tick()` on the main thread.
+- **Two-loop poll architecture**: `ControlSession.run_poll_loop()` has an outer loop (reconnect on connection death) and inner loop (poll every 0.5s). Errors are either *transient* (keep polling: `NoActiveVesselError`, generic) or *connection dead* (break to reconnect: `FutureTimeout`, `ConnectionError`). Each kRPC call runs in a `ThreadPoolExecutor` with a 10s timeout to detect hung connections.
 - **Thread bridge**: kRPC calls are synchronous. Use Textual's `@work(thread=True)` for blocking I/O, `app.call_from_thread()` to push updates to the UI thread.
 - **Action tick lifecycle**: Actions implement `start()` / `tick(state, commands, dt, log)` / `stop(commands, log)`. The `ActionRunner` calls `tick()` each poll iteration and auto-stops on SUCCEEDED or FAILED. Actions emit debug messages via `ActionLogger` (DEBUG, INFO, WARN, ERROR levels). Actions never touch kRPC directly.
 - **Command buffer + filtering**: `VesselCommands` fields default to `None` ("don't change"). Actions set only the fields they care about. `filter_commands()` compares against vessel state and only sends fields that differ. The UI shows all intended values but dims redundant ones.
@@ -216,7 +215,7 @@ Format: `adr/NNNN-short-title.md` with Context, Decision, Consequences sections.
 | [0001](adr/0001-python-textual-tui.md) | Python + Textual for the TUI framework | Adding/changing UI, screens, widgets, or CSS |
 | [0002](adr/0002-krpc-game-bridge.md) | kRPC as the KSP communication layer | Touching krpc_bridge, connection logic, or telemetry |
 | [0003](adr/0003-uv-package-manager.md) | uv as the package manager | Adding dependencies or changing build config |
-| [0004](adr/0004-protocol-based-client.md) | Protocol-based client abstraction for testability | Changing data sources, demo mode, or mock strategy |
+| [0004](adr/0004-protocol-based-client.md) | Protocol-based client abstraction for testability | Changing data sources or mock strategy |
 | [0005](adr/0005-tdd-workflow.md) | Test-driven development workflow | Writing or restructuring tests |
 | [0006](adr/0006-action-execution-system.md) | Tick-based action execution system | Adding actions, changing runner, or modifying the control loop |
 | [0007](adr/0007-screen-session-pattern.md) | Screen + session/runner separation of concerns | Adding new screens or refactoring screen logic |

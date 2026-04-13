@@ -18,7 +18,6 @@ from ksp_mission_control.control.actions.base import Action, LogEntry, VesselCom
 from ksp_mission_control.control.actions.flight_plan import FlightPlan
 from ksp_mission_control.control.actions.plan_executor import PlanExecutor, PlanSnapshot
 from ksp_mission_control.control.actions.runner import RunnerSnapshot, StepResult
-from ksp_mission_control.control.demo.demo_state import generate_demo_vessel_state
 from ksp_mission_control.control.krpc_bridge import (
     NoActiveVesselError,
     apply_controls,
@@ -43,7 +42,6 @@ class ControlSession:
     def __init__(
         self,
         *,
-        demo: bool,
         on_update: Callable[
             [
                 VesselState,
@@ -56,20 +54,18 @@ class ControlSession:
             None,
         ],
         on_error: Callable[[str], None],
-        config_manager: ConfigManager | None = None,
+        config_manager: ConfigManager,
     ) -> None:
-        self._demo = demo
         self._on_update = on_update
         self._on_error = on_error
         self._config_manager = config_manager
         self._conn: object | None = None
         self._executor = PlanExecutor()
         self._stop_event = threading.Event()
-        self._tick: int = 0
         self._last_state: VesselState = VesselState()
 
     def run_poll_loop(self) -> None:
-        """Blocking poll loop for live mode.
+        """Blocking poll loop.
 
         Two nested loops:
         - **Outer loop**: keeps getting fresh kRPC connections (reconnect on failure).
@@ -84,7 +80,6 @@ class ControlSession:
         """
         import krpc  # noqa: PLC0415
 
-        assert self._config_manager is not None, "config_manager required for live mode"
         settings = resolve_krpc_connection(self._config_manager)
 
         # Outer loop: each iteration = one connection attempt + poll until it dies
@@ -163,26 +158,6 @@ class ControlSession:
         apply_controls(conn, filtered)
         return vessel_state, step_result, applied_fields
 
-    def demo_tick(self) -> None:
-        """Execute one demo iteration.
-
-        Generates fake vessel state, steps the executor, and calls on_update.
-        Called by the screen's ``set_interval`` timer on the main thread.
-        """
-        self._tick += 1
-        vessel_state = generate_demo_vessel_state(self._tick)
-        self._last_state = vessel_state
-        result = self._executor.step(vessel_state, dt=0.5)
-        _filtered, applied_fields = filter_commands(result.commands, vessel_state)
-        self._on_update(
-            vessel_state,
-            self._executor.snapshot().runner,
-            result.commands,
-            applied_fields,
-            result.logs,
-            self._executor.snapshot(),
-        )
-
     def start_action(self, action: Action, params: dict[str, Any] | None = None) -> None:
         """Begin executing a single action. Raises ValueError on invalid params."""
         self._executor.start_action(action, self._last_state, params)
@@ -198,14 +173,14 @@ class ControlSession:
     def abort_plan(self) -> None:
         """Abort a paused plan after failure."""
         result = self._executor.abort_plan()
-        if not self._demo and self._conn is not None:
+        if self._conn is not None:
             with contextlib.suppress(Exception):
                 apply_controls(self._conn, result.commands)
 
     def abort(self) -> None:
         """Abort the current action and apply cleanup commands if connected."""
         result = self._executor.abort()
-        if not self._demo and self._conn is not None:
+        if self._conn is not None:
             with contextlib.suppress(Exception):
                 apply_controls(self._conn, result.commands)
 

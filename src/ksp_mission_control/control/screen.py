@@ -56,9 +56,8 @@ class ControlScreen(Screen[None]):
         ("c", "copy_logs", "Copy Logs"),
     ]
 
-    def __init__(self, demo: bool = False) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self._demo = demo
         self._session: ControlSession | None = None
         self._showing_failure_dialog: bool = False
         self._tick_history: list[TickRecord] = []
@@ -66,9 +65,8 @@ class ControlScreen(Screen[None]):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        mode = "DEMO" if self._demo else "LIVE"
         with Container(id="control-grid"):
-            yield TelemetryDisplayWidget(mode=mode, id="telemetry-display")
+            yield TelemetryDisplayWidget(id="telemetry-display")
             yield ActionListWidget(id="action-list")
             yield DebugConsoleWidget(id="debug-console")
             yield CommandHistoryWidget(id="command-history")
@@ -79,7 +77,6 @@ class ControlScreen(Screen[None]):
 
         config_manager = cast(MissionControlApp, self.app).config_manager
         self._session = ControlSession(
-            demo=self._demo,
             on_update=lambda state, snapshot, commands, applied_fields, logs, plan_snap: (
                 self.app.call_from_thread(
                     self._update_ui, state, snapshot, commands, applied_fields, logs, plan_snap
@@ -88,11 +85,7 @@ class ControlScreen(Screen[None]):
             on_error=lambda message: self.app.call_from_thread(self._show_error, message),
             config_manager=config_manager,
         )
-
-        if self._demo:
-            self.set_interval(0.5, self._session.demo_tick)
-        else:
-            self._start_live_polling()
+        self._start_live_polling()
 
     @work(thread=True)
     def _start_live_polling(self) -> None:

@@ -25,7 +25,6 @@ class SetupScreen(Screen[None]):
 
     BINDINGS = [
         ("escape", "app.quit", "Quit"),
-        ("d", "demo_mode", "Control Room (Demo)"),
         ("c", "control_room", "Control Room"),
         ("r", "rerun_checks", "Re-run Checks"),
     ]
@@ -118,7 +117,7 @@ class SetupScreen(Screen[None]):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses on the setup screen."""
         if event.button.id == "enter-control-room":
-            self.app.push_screen(ControlScreen(demo=False))
+            self.app.push_screen(ControlScreen())
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         """Navigate to the detail screen for the selected checklist item."""
@@ -136,11 +135,6 @@ class SetupScreen(Screen[None]):
         else:
             self.notify("No setup screen available for this check.", severity="information")
 
-    def action_demo_mode(self) -> None:
-        """Launch the control room in demo mode."""
-
-        self.app.push_screen(ControlScreen(demo=True))
-
     def check_action_control_room(self) -> bool:
         """Disable 'Control Room' binding until all checks pass."""
         return self.all_checks_passed
@@ -151,7 +145,7 @@ class SetupScreen(Screen[None]):
         if self.check_action_control_room():
             from ksp_mission_control.control.screen import ControlScreen
 
-            self.app.push_screen(ControlScreen(demo=False))
+            self.app.push_screen(ControlScreen())
         else:
             self.notify(
                 "Please fix the failed checks before entering the Control Room.", severity="warning"

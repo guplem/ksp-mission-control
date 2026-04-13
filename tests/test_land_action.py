@@ -156,7 +156,7 @@ class TestLandActionTick:
         action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert controls.lights is None
 
-    def test_brakes_on_landing(self) -> None:
+    def test_brakes_not_set_during_tick(self) -> None:
         action = self._make_started_action()
         state = VesselState(
             altitude_surface=0.5,
@@ -165,7 +165,8 @@ class TestLandActionTick:
         )
         controls = VesselCommands()
         action.tick(state, controls, dt=0.5, log=ActionLogger())
-        assert controls.brakes is True
+        # Brakes are set in stop(), not tick()
+        assert controls.brakes is None
 
     def test_succeeds_on_landed(self) -> None:
         action = self._make_started_action()
@@ -208,3 +209,11 @@ class TestLandActionStop:
         controls = VesselCommands()
         action.stop(state, controls, log=ActionLogger())
         assert controls.sas is False
+
+    def test_stop_engages_brakes(self) -> None:
+        action = LandAction()
+        state = VesselState()
+        action.start(state, {"target_speed": 2.0})
+        controls = VesselCommands()
+        action.stop(state, controls, log=ActionLogger())
+        assert controls.brakes is True

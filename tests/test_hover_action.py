@@ -210,7 +210,7 @@ class TestHoverActionDuration:
 class TestHoverActionStop:
     """Tests for HoverAction cleanup on stop."""
 
-    def test_stop_kills_throttle(self) -> None:
+    def test_stop_does_not_reset_commands(self) -> None:
         action = HoverAction()
         state = VesselState()
         action.start(
@@ -224,20 +224,6 @@ class TestHoverActionStop:
         )
         controls = VesselCommands()
         action.stop(state, controls, log=ActionLogger())
-        assert controls.throttle == 0.0
-
-    def test_stop_disables_sas(self) -> None:
-        action = HoverAction()
-        state = VesselState()
-        action.start(
-            state,
-            {
-                "target_altitude": 100.0,
-                "hover_duration": 0.0,
-                "horizontal_control": 0.0,
-                "land_at_end": False,
-            },
-        )
-        controls = VesselCommands()
-        action.stop(state, controls, log=ActionLogger())
-        assert controls.sas is False
+        # HoverAction.stop() only logs; no command resets
+        assert controls.throttle is None
+        assert controls.sas is None

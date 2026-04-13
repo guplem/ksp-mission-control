@@ -14,7 +14,6 @@ from ksp_mission_control.control.actions.base import (
     VesselCommands,
     VesselState,
 )
-from ksp_mission_control.control.actions.runner import RunnerSnapshot
 from ksp_mission_control.control.session import ControlSession
 
 # ---------------------------------------------------------------------------
@@ -59,62 +58,32 @@ class StubAction(Action):
 # ---------------------------------------------------------------------------
 
 
-class TestControlSessionDemo:
-    """Test ControlSession in demo mode (no kRPC, no threading)."""
+def _make_session(**overrides: object) -> ControlSession:
+    """Create a ControlSession with sensible defaults for testing."""
+    defaults: dict[str, object] = {
+        "on_update": lambda *_unused: None,
+        "on_error": lambda _: None,
+        "config_manager": MagicMock(),
+    }
+    defaults.update(overrides)
+    return ControlSession(**defaults)  # type: ignore[arg-type]
 
-    def test_demo_tick_calls_on_update(self) -> None:
-        updates: list[tuple[VesselState, RunnerSnapshot]] = []
-        session = ControlSession(
-            demo=True,
-            on_update=lambda state, snapshot, _cmds, _applied, _logs, _plan: updates.append(
-                (state, snapshot)
-            ),
-            on_error=lambda _: None,
-        )
 
-        session.demo_tick()
-
-        assert len(updates) == 1
-        state, snapshot = updates[0]
-        assert isinstance(state, VesselState)
-        assert isinstance(snapshot, RunnerSnapshot)
-
-    def test_demo_tick_increments_met(self) -> None:
-        states: list[VesselState] = []
-        session = ControlSession(
-            demo=True,
-            on_update=lambda state, _snapshot, _cmds, _applied, _logs, _plan: states.append(state),
-            on_error=lambda _: None,
-        )
-
-        session.demo_tick()
-        session.demo_tick()
-        session.demo_tick()
-
-        assert states[0].met < states[1].met < states[2].met
+class TestControlSession:
+    """Test ControlSession action orchestration (no kRPC, no threading)."""
 
     def test_start_action_delegates_to_runner(self) -> None:
-        session = ControlSession(
-            demo=True,
-            on_update=lambda *_unused: None,
-            on_error=lambda _: None,
-        )
+        session = _make_session()
         action = StubAction()
 
         session.start_action(action)
-        session.demo_tick()
 
         snapshot = session.snapshot()
         assert snapshot.action_id == "stub"
         assert snapshot.status == ActionStatus.RUNNING
-        assert action.tick_count == 1
 
     def test_abort_clears_running_action(self) -> None:
-        session = ControlSession(
-            demo=True,
-            on_update=lambda *_unused: None,
-            on_error=lambda _: None,
-        )
+        session = _make_session()
         action = StubAction()
         session.start_action(action)
 
@@ -123,33 +92,21 @@ class TestControlSessionDemo:
         assert session.snapshot().action_id is None
 
     def test_abort_no_action_is_safe(self) -> None:
-        session = ControlSession(
-            demo=True,
-            on_update=lambda *_unused: None,
-            on_error=lambda _: None,
-        )
+        session = _make_session()
 
         # Should not raise
         session.abort()
         assert session.snapshot().action_id is None
 
     def test_shutdown_sets_stop_event(self) -> None:
-        session = ControlSession(
-            demo=True,
-            on_update=lambda *_unused: None,
-            on_error=lambda _: None,
-        )
+        session = _make_session()
 
         session.shutdown()
 
         assert session._stop_event.is_set()  # noqa: SLF001
 
     def test_shutdown_aborts_running_action(self) -> None:
-        session = ControlSession(
-            demo=True,
-            on_update=lambda *_unused: None,
-            on_error=lambda _: None,
-        )
+        session = _make_session()
         session.start_action(StubAction())
 
         session.shutdown()
@@ -157,11 +114,7 @@ class TestControlSessionDemo:
         assert session.snapshot().action_id is None
 
     def test_snapshot_delegates_to_runner(self) -> None:
-        session = ControlSession(
-            demo=True,
-            on_update=lambda *_unused: None,
-            on_error=lambda _: None,
-        )
+        session = _make_session()
 
         # No action running
         snapshot = session.snapshot()
@@ -174,11 +127,8 @@ class TestControlSessionLive:
 
     def test_poll_loop_calls_on_error_on_connection_failure(self) -> None:
         errors: list[str] = []
-        session = ControlSession(
-            demo=False,
-            on_update=lambda *_unused: None,
+        session = _make_session(
             on_error=lambda msg: (errors.append(msg), session.shutdown()),
-            config_manager=MagicMock(),
         )
 
         # Mock krpc.connect to raise

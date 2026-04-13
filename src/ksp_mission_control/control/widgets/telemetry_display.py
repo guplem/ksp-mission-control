@@ -31,12 +31,11 @@ class TelemetryDisplayWidget(Static):
     }
     """
 
-    def __init__(self, *, mode: str, id: str | None = None) -> None:  # noqa: A002
+    def __init__(self, *, id: str | None = None) -> None:  # noqa: A002
         super().__init__(id=id)
-        self._mode = mode
 
     def compose(self) -> ComposeResult:
-        yield Static(f"[b]Control View[/b] ({self._mode})", id="telemetry-title")
+        yield Static("[b]Control View[/b]", id="telemetry-title")
         with Horizontal(id="telemetry-columns"):
             yield Static("Connecting...", id="telemetry-flight", classes="telemetry-column")
             yield Static("", id="telemetry-orbit", classes="telemetry-column")
@@ -46,7 +45,7 @@ class TelemetryDisplayWidget(Static):
         """Format and display the current vessel state across three columns."""
         title = self.query_one("#telemetry-title", Static)
         if title.has_class("error"):
-            title.update(f"[b]Control View[/b] ({self._mode})")
+            title.update("[b]Control View[/b]")
             title.remove_class("error")
         self.query_one("#telemetry-flight", Static).update(_format_flight(state))
         self.query_one("#telemetry-orbit", Static).update(_format_orbit(state))
