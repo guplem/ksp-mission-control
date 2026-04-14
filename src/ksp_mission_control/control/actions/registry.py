@@ -15,12 +15,14 @@ def get_available_actions() -> list[Action]:
     """
 
     # 1. Import
+    import ksp_mission_control.control.actions.hold_attitude.action as hold_attitude_module
     import ksp_mission_control.control.actions.hover.action as hover_module
     import ksp_mission_control.control.actions.land.action as land_module
     import ksp_mission_control.control.actions.launch.action as launch_module
     import ksp_mission_control.control.actions.translate.action as translate_module
 
     # 2. Reload to pick up code changes without restarting the app
+    importlib.reload(hold_attitude_module)
     importlib.reload(hover_module)
     importlib.reload(land_module)
     importlib.reload(launch_module)
@@ -28,6 +30,7 @@ def get_available_actions() -> list[Action]:
 
     # 3. Instantiate and return
     return [
+        hold_attitude_module.HoldAttitudeAction(),
         hover_module.HoverAction(),
         land_module.LandAction(),
         launch_module.LaunchAction(),
