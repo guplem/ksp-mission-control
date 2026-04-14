@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 from typing import cast
-from xml.etree.ElementTree import Element, SubElement, tostring
+from xml.etree.ElementTree import Element, SubElement, indent, tostring
 
 from textual import work
 from textual.app import ComposeResult
@@ -223,12 +223,11 @@ class ControlScreen(Screen[None]):
         self.query_one("#action-list", ActionListWidget).update_running(None)
 
     def action_copy_logs(self) -> None:
-        """Copy the full tick-by-tick log to the clipboard and save to file."""
+        """Save the full tick-by-tick log to file and copy the path to clipboard."""
         if not self._tick_history:
             self.notify("No ticks recorded yet", severity="warning")
             return
         text = _format_tick_history(self._tick_history)
-        self.app.copy_to_clipboard(text)
 
         log_dir = Path("flight_logs")
         log_dir.mkdir(exist_ok=True)
@@ -236,7 +235,8 @@ class ControlScreen(Screen[None]):
         log_path = log_dir / f"log_{timestamp}.xml"
         log_path.write_text(text, encoding="utf-8")
 
-        self.notify(f"Copied {len(self._tick_history)} ticks to clipboard and saved to {log_path}")
+        self.app.copy_to_clipboard(str(log_path))
+        self.notify(f"Saved {len(self._tick_history)} ticks to {log_path} (path copied)")
 
     def _shutdown(self) -> None:
         """Signal the session to stop and clean up."""
@@ -351,4 +351,5 @@ def _format_tick_history(ticks: list[TickRecord]) -> str:
         if not tick.logs and not has_sent and not has_redundant:
             SubElement(tick_el, "idle")
 
+    indent(root, space="  ")
     return tostring(root, encoding="unicode", xml_declaration=True) + "\n"
