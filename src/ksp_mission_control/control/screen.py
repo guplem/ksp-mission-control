@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import fields
+from datetime import UTC, datetime
 from enum import Enum
+from pathlib import Path
 from typing import cast
 from xml.etree.ElementTree import Element, SubElement, tostring
 
@@ -78,10 +80,8 @@ class ControlScreen(Screen[None]):
 
         config_manager = cast(MissionControlApp, self.app).config_manager
         self._session = ControlSession(
-            on_update=lambda state, snapshot, commands, applied_fields, logs, plan_snap: (
-                self.app.call_from_thread(
-                    self._update_ui, state, snapshot, commands, applied_fields, logs, plan_snap
-                )
+            on_update=lambda state, snapshot, commands, applied_fields, logs, plan_snap: self.app.call_from_thread(
+                self._update_ui, state, snapshot, commands, applied_fields, logs, plan_snap
             ),
             on_error=lambda message: self.app.call_from_thread(self._show_error, message),
             config_manager=config_manager,
@@ -134,11 +134,7 @@ class ControlScreen(Screen[None]):
         self.query_one("#debug-console", DebugConsoleWidget).append_logs(logs, met=state.met)
 
         # Show failure dialog if plan is paused on failure
-        if (
-            self._session is not None
-            and self._session.paused_on_failure
-            and not self._showing_failure_dialog
-        ):
+        if self._session is not None and self._session.paused_on_failure and not self._showing_failure_dialog:
             self._showing_failure_dialog = True
             self.app.push_screen(
                 PlanFailureDialog(plan_snap),
@@ -162,9 +158,7 @@ class ControlScreen(Screen[None]):
     def _show_error(self, message: str) -> None:
         self.query_one("#telemetry-display", TelemetryDisplayWidget).show_error(message)
 
-    def on_action_list_widget_run_action_requested(
-        self, event: ActionListWidget.RunActionRequested
-    ) -> None:
+    def on_action_list_widget_run_action_requested(self, event: ActionListWidget.RunActionRequested) -> None:
         """Open the action picker dialog."""
         self.app.push_screen(
             ActionPicker(),
@@ -178,25 +172,19 @@ class ControlScreen(Screen[None]):
         if action.params:
             self.app.push_screen(
                 ParamInputModal(action),
-                callback=lambda result: (
-                    self._handle_action_with_params(action, result) if result is not None else None
-                ),
+                callback=lambda result: self._handle_action_with_params(action, result) if result is not None else None,
             )
         else:
             self._handle_action_with_params(action, None)
 
-    def on_action_list_widget_load_plan_requested(
-        self, event: ActionListWidget.LoadPlanRequested
-    ) -> None:
+    def on_action_list_widget_load_plan_requested(self, event: ActionListWidget.LoadPlanRequested) -> None:
         """Open the flight plan picker."""
         self.app.push_screen(
             FlightPlanPicker(),
             callback=self._handle_plan_selected,
         )
 
-    def on_action_list_widget_manual_command_requested(
-        self, event: ActionListWidget.ManualCommandRequested
-    ) -> None:
+    def on_action_list_widget_manual_command_requested(self, event: ActionListWidget.ManualCommandRequested) -> None:
         """Open the manual command dialog."""
         self.app.push_screen(
             ManualCommandDialog(),
@@ -235,13 +223,20 @@ class ControlScreen(Screen[None]):
         self.query_one("#action-list", ActionListWidget).update_running(None)
 
     def action_copy_logs(self) -> None:
-        """Copy the full tick-by-tick log to the clipboard."""
+        """Copy the full tick-by-tick log to the clipboard and save to file."""
         if not self._tick_history:
             self.notify("No ticks recorded yet", severity="warning")
             return
         text = _format_tick_history(self._tick_history)
         self.app.copy_to_clipboard(text)
-        self.notify(f"Copied {len(self._tick_history)} ticks to clipboard")
+
+        log_dir = Path("flight_logs")
+        log_dir.mkdir(exist_ok=True)
+        timestamp = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
+        log_path = log_dir / f"log_{timestamp}.xml"
+        log_path.write_text(text, encoding="utf-8")
+
+        self.notify(f"Copied {len(self._tick_history)} ticks to clipboard and saved to {log_path}")
 
     def _shutdown(self) -> None:
         """Signal the session to stop and clean up."""
@@ -279,9 +274,7 @@ def _format_field_value_xml(value: object) -> str:
     return str(value)
 
 
-def _build_vessel_state_element(
-    parent: Element, state: VesselState, previous_state: VesselState | None
-) -> None:
+def _build_vessel_state_element(parent: Element, state: VesselState, previous_state: VesselState | None) -> None:
     """Add vessel state fields that changed since *previous_state* under *parent*.
 
     If *previous_state* is ``None`` (first tick), all fields are included.
