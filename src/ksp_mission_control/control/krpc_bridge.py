@@ -89,6 +89,10 @@ def read_vessel_state(conn: object) -> VesselState:
     if vessel is None:
         raise NoActiveVesselError("No active vessel found")
     flight = vessel.flight(vessel.orbit.body.reference_frame)
+    # Orientation (pitch/heading/roll) must use the surface reference frame
+    # to match the kRPC autopilot's target_pitch/target_heading/target_roll,
+    # which operate in surface_reference_frame by default.
+    surface_flight = vessel.flight(vessel.surface_reference_frame)
     orbit = vessel.orbit
     control = vessel.control
     ap = vessel.auto_pilot
@@ -141,9 +145,9 @@ def read_vessel_state(conn: object) -> VesselState:
         body_atmosphere_depth=orbit.body.atmosphere_depth if orbit.body.has_atmosphere else 0.0,
         latitude=flight.latitude,
         longitude=flight.longitude,
-        pitch=flight.pitch,
-        heading=flight.heading,
-        roll=flight.roll,
+        pitch=surface_flight.pitch,
+        heading=surface_flight.heading,
+        roll=surface_flight.roll,
         autopilot_error=ap_error,
         autopilot_pitch_error=ap_pitch_error,
         autopilot_heading_error=ap_heading_error,
