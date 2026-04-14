@@ -27,6 +27,7 @@ from ksp_mission_control.setup.kRPC_installer.locator import (
 class KrpcSetupScreen(Screen[None]):
     """Screen that guides the user through kRPC mod installation."""
 
+    AUTO_FOCUS = ""
     CSS_PATH = "style.tcss"
 
     BINDINGS = [
@@ -52,18 +53,14 @@ class KrpcSetupScreen(Screen[None]):
             )
 
             # Input for KSP path and detect/validate buttons
-            yield Center(
-                Static("1. Enter the path to your KSP installation:", classes="step-label")
-            )
+            yield Center(Static("1. Enter the path to your KSP installation:", classes="step-label"))
             yield Input(
                 placeholder="KSP installation path...",
                 id="ksp-path-input",
             )
             with Center(), HorizontalGroup(classes="button-row"):
                 yield Button("Detect KSP", id="detect-btn", variant="primary")
-                yield Button(
-                    "Validate Path", id="validate-path-btn", variant="success", disabled=True
-                )
+                yield Button("Validate Path", id="validate-path-btn", variant="success", disabled=True)
 
             # Manage kRPC installation
             yield Center(Static("2. Manage kRPC installation:", classes="step-label"))

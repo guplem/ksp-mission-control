@@ -51,6 +51,7 @@ class ControlScreen(Screen[None]):
     lifecycle, action orchestration) lives in :class:`ControlSession`.
     """
 
+    AUTO_FOCUS = ""
     CSS_PATH = "style.tcss"
 
     BINDINGS = [

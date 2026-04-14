@@ -22,6 +22,8 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
     Dismisses with the parsed FlightPlan or None on cancel.
     """
 
+    AUTO_FOCUS = ""
+
     DEFAULT_CSS = """
     FlightPlanPicker {
         align: center middle;

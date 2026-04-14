@@ -18,6 +18,7 @@ from ksp_mission_control.setup.checks import CheckResult
 class KrpcCommsScreen(Screen[None]):
     """Screen explaining how to start the kRPC server and testing connectivity."""
 
+    AUTO_FOCUS = ""
     CSS_PATH = "style.tcss"
 
     BINDINGS = [

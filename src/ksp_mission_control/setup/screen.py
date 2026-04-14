@@ -21,6 +21,7 @@ from ksp_mission_control.setup.widgets.welcome_widget import WelcomeWidget
 class SetupScreen(Screen[None]):
     """Initial screen showing system readiness checklist."""
 
+    AUTO_FOCUS = ""
     CSS_PATH = "style.tcss"
 
     BINDINGS = [
@@ -56,11 +57,7 @@ class SetupScreen(Screen[None]):
                         Static(f"Preparing {check.check_id}...", id=f"{check.check_id}-label"),
                         id=check.check_id,
                     )
-            yield Center(
-                Button(
-                    "Enter Control Room", id="enter-control-room", variant="primary", disabled=True
-                )
-            )
+            yield Center(Button("Enter Control Room", id="enter-control-room", variant="primary", disabled=True))
         yield Footer()
 
     def on_mount(self) -> None:
@@ -105,12 +102,7 @@ class SetupScreen(Screen[None]):
             mark = "[ ]"
             error_details = result.message
         self.query_one(f"#{check_id}-label", Static).update(
-            f"{mark} {label}"
-            + (
-                f" ({error_details})"
-                if (error_details is not None and len(error_details) > 0)
-                else ""
-            )
+            f"{mark} {label}" + (f" ({error_details})" if (error_details is not None and len(error_details) > 0) else "")
         )
         self.query_one("#enter-control-room", Button).disabled = not self.all_checks_passed
 
@@ -147,9 +139,7 @@ class SetupScreen(Screen[None]):
 
             self.app.push_screen(ControlScreen())
         else:
-            self.notify(
-                "Please fix the failed checks before entering the Control Room.", severity="warning"
-            )
+            self.notify("Please fix the failed checks before entering the Control Room.", severity="warning")
 
     def action_rerun_checks(self) -> None:
         """Manually re-run all system checks."""

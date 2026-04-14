@@ -109,6 +109,7 @@ class TestSetupScreenChecks:
         """When kRPC check fails, later checks should not run."""
         checks = _make_checks(krpc=False)
         async with SetupTestApp(checks=checks).run_test() as pilot:
+            await pilot.app.workers.wait_for_complete()
             await pilot.pause()
             screen = pilot.app.screen
             assert isinstance(screen, SetupScreen)
@@ -123,6 +124,7 @@ class TestSetupScreenChecks:
         """When comms check fails, vessel check should not run."""
         checks = _make_checks(krpc=True, comms=False)
         async with SetupTestApp(checks=checks).run_test() as pilot:
+            await pilot.app.workers.wait_for_complete()
             await pilot.pause()
             screen = pilot.app.screen
             assert isinstance(screen, SetupScreen)

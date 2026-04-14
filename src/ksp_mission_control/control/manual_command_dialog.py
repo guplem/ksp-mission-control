@@ -157,6 +157,8 @@ def _parse_tuple3(raw: str) -> tuple[float, float, float]:
 class ManualCommandDialog(ModalScreen[VesselCommands | None]):
     """Modal for composing and sending a one-shot manual VesselCommands."""
 
+    AUTO_FOCUS = ""
+
     DEFAULT_CSS = """
     ManualCommandDialog {
         align: center middle;

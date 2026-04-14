@@ -18,6 +18,7 @@ from ksp_mission_control.setup.checks import CheckResult
 class VesselScreen(Screen[None]):
     """Screen explaining vessel requirements and testing detection."""
 
+    AUTO_FOCUS = ""
     CSS_PATH = "style.tcss"
 
     BINDINGS = [

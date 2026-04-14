@@ -17,6 +17,8 @@ class PlanFailureDialog(ModalScreen[bool]):
     Dismisses with True (continue) or False (abort).
     """
 
+    AUTO_FOCUS = ""
+
     DEFAULT_CSS = """
     PlanFailureDialog {
         align: center middle;

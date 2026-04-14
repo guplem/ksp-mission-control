@@ -18,6 +18,8 @@ class ActionPicker(ModalScreen[Action | None]):
     Dismisses with the chosen Action or None on cancel.
     """
 
+    AUTO_FOCUS = ""
+
     DEFAULT_CSS = """
     ActionPicker {
         align: center middle;

@@ -17,6 +17,8 @@ class ParamInputModal(ModalScreen[dict[str, float | bool | str] | None]):
     submit, and dismisses with the final param dict (or None on cancel).
     """
 
+    AUTO_FOCUS = ""
+
     DEFAULT_CSS = """
     ParamInputModal {
         align: center middle;
