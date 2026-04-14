@@ -144,7 +144,15 @@ def _make_mock_conn(
     vessel_orbital_ref = SimpleNamespace()
     vessel_ref = SimpleNamespace()
 
-    parts = SimpleNamespace(all=[_make_mock_part(0), _make_mock_part(1), _make_mock_part(2)])
+    mock_engines = [
+        SimpleNamespace(active=True, has_fuel=True),
+        SimpleNamespace(active=True, has_fuel=False),
+        SimpleNamespace(active=False, has_fuel=True),
+    ]
+    parts = SimpleNamespace(
+        all=[_make_mock_part(0), _make_mock_part(1), _make_mock_part(2)],
+        engines=mock_engines,
+    )
 
     resources = SimpleNamespace(
         amount=lambda name: {
