@@ -6,8 +6,15 @@ import pytest
 from textual.app import App, ComposeResult
 from textual.widgets import Input, Select
 
-from ksp_mission_control.control.actions.base import SASMode, SpeedMode, VesselCommands
-from ksp_mission_control.control.manual_command_dialog import ManualCommandDialog
+from ksp_mission_control.control.actions.base import (
+    AutopilotConfig,
+    AutopilotDirection,
+    ReferenceFrame,
+    SASMode,
+    SpeedMode,
+    VesselCommands,
+)
+from ksp_mission_control.control.manual_command_dialog import ManualCommandDialog, _parse_tuple3
 
 # ---------------------------------------------------------------------------
 # Test app
@@ -318,3 +325,226 @@ class TestManualCommandDialogCancel:
             await pilot.press("escape")
             await pilot.pause()
             assert app.dismissed_value is None
+
+
+# ---------------------------------------------------------------------------
+# Tests: _parse_tuple3 helper
+# ---------------------------------------------------------------------------
+
+
+class TestParseTuple3:
+    def test_valid_three_values(self) -> None:
+        assert _parse_tuple3("1.0, 2.0, 3.0") == (1.0, 2.0, 3.0)
+
+    def test_no_spaces(self) -> None:
+        assert _parse_tuple3("1,2,3") == (1.0, 2.0, 3.0)
+
+    def test_extra_spaces(self) -> None:
+        assert _parse_tuple3("  1.5 , 2.5 , 3.5  ") == (1.5, 2.5, 3.5)
+
+    def test_two_values_raises(self) -> None:
+        with pytest.raises(ValueError, match="3 comma-separated"):
+            _parse_tuple3("1.0, 2.0")
+
+    def test_non_numeric_raises(self) -> None:
+        with pytest.raises(ValueError):
+            _parse_tuple3("a, b, c")
+
+
+# ---------------------------------------------------------------------------
+# Tests: Autopilot Direction (composite field)
+# ---------------------------------------------------------------------------
+
+
+class TestManualCommandDialogAutopilotDirection:
+    @pytest.mark.asyncio
+    async def test_has_direction_vector_inputs(self) -> None:
+        async with ManualCommandTestApp().run_test() as pilot:
+            await pilot.pause()
+            pilot.app.screen.query_one("#cmd-ap_dir_x", Input)
+            pilot.app.screen.query_one("#cmd-ap_dir_y", Input)
+            pilot.app.screen.query_one("#cmd-ap_dir_z", Input)
+
+    @pytest.mark.asyncio
+    async def test_has_reference_frame_select(self) -> None:
+        async with ManualCommandTestApp().run_test() as pilot:
+            await pilot.pause()
+            pilot.app.screen.query_one("#cmd-ap_dir_frame", Select)
+
+    @pytest.mark.asyncio
+    async def test_all_empty_skips_direction(self) -> None:
+        app = ManualCommandTestApp()
+        async with app.run_test(size=(80, 60)) as pilot:
+            await pilot.pause()
+            await pilot.click("#manual-cmd-send-btn")
+            await pilot.pause()
+            assert isinstance(app.dismissed_value, VesselCommands)
+            assert app.dismissed_value.autopilot_direction is None
+
+    @pytest.mark.asyncio
+    async def test_full_direction_set(self) -> None:
+        app = ManualCommandTestApp()
+        async with app.run_test(size=(80, 80)) as pilot:
+            await pilot.pause()
+            pilot.app.screen.query_one("#cmd-ap_dir_x", Input).value = "1.0"
+            pilot.app.screen.query_one("#cmd-ap_dir_y", Input).value = "0.0"
+            pilot.app.screen.query_one("#cmd-ap_dir_z", Input).value = "0.0"
+            pilot.app.screen.query_one("#cmd-ap_dir_frame", Select).value = ReferenceFrame.VESSEL_ORBITAL.value
+            await pilot.click("#manual-cmd-send-btn")
+            await pilot.pause()
+            assert isinstance(app.dismissed_value, VesselCommands)
+            expected = AutopilotDirection(
+                vector=(1.0, 0.0, 0.0),
+                reference_frame=ReferenceFrame.VESSEL_ORBITAL,
+            )
+            assert app.dismissed_value.autopilot_direction == expected
+
+    @pytest.mark.asyncio
+    async def test_partial_direction_rejects(self) -> None:
+        """Setting only some vector fields should show an error."""
+        app = ManualCommandTestApp()
+        async with app.run_test(size=(80, 80)) as pilot:
+            await pilot.pause()
+            pilot.app.screen.query_one("#cmd-ap_dir_x", Input).value = "1.0"
+            # y and z empty, frame empty
+            await pilot.click("#manual-cmd-send-btn")
+            await pilot.pause()
+            assert isinstance(pilot.app.screen, ManualCommandDialog)
+            assert app.dismissed_value == "NOT_SET"  # type: ignore[comparison-overlap]
+
+    @pytest.mark.asyncio
+    async def test_non_numeric_vector_rejects(self) -> None:
+        app = ManualCommandTestApp()
+        async with app.run_test(size=(80, 80)) as pilot:
+            await pilot.pause()
+            pilot.app.screen.query_one("#cmd-ap_dir_x", Input).value = "abc"
+            pilot.app.screen.query_one("#cmd-ap_dir_y", Input).value = "0.0"
+            pilot.app.screen.query_one("#cmd-ap_dir_z", Input).value = "0.0"
+            pilot.app.screen.query_one("#cmd-ap_dir_frame", Select).value = ReferenceFrame.VESSEL_SURFACE.value
+            await pilot.click("#manual-cmd-send-btn")
+            await pilot.pause()
+            assert isinstance(pilot.app.screen, ManualCommandDialog)
+            assert app.dismissed_value == "NOT_SET"  # type: ignore[comparison-overlap]
+
+
+# ---------------------------------------------------------------------------
+# Tests: Autopilot Config (composite field)
+# ---------------------------------------------------------------------------
+
+
+class TestManualCommandDialogAutopilotConfig:
+    @pytest.mark.asyncio
+    async def test_has_auto_tune_select(self) -> None:
+        async with ManualCommandTestApp().run_test() as pilot:
+            await pilot.pause()
+            pilot.app.screen.query_one("#cmd-ap_cfg_auto_tune", Select)
+
+    @pytest.mark.asyncio
+    async def test_has_tuple_inputs(self) -> None:
+        async with ManualCommandTestApp().run_test() as pilot:
+            await pilot.pause()
+            pilot.app.screen.query_one("#cmd-ap_cfg_time_to_peak", Input)
+            pilot.app.screen.query_one("#cmd-ap_cfg_overshoot", Input)
+            pilot.app.screen.query_one("#cmd-ap_cfg_stopping_time", Input)
+            pilot.app.screen.query_one("#cmd-ap_cfg_deceleration_time", Input)
+            pilot.app.screen.query_one("#cmd-ap_cfg_attenuation_angle", Input)
+
+    @pytest.mark.asyncio
+    async def test_has_roll_threshold_input(self) -> None:
+        async with ManualCommandTestApp().run_test() as pilot:
+            await pilot.pause()
+            pilot.app.screen.query_one("#cmd-ap_cfg_roll_threshold", Input)
+
+    @pytest.mark.asyncio
+    async def test_has_pid_inputs(self) -> None:
+        async with ManualCommandTestApp().run_test() as pilot:
+            await pilot.pause()
+            pilot.app.screen.query_one("#cmd-ap_cfg_pitch_pid_gains", Input)
+            pilot.app.screen.query_one("#cmd-ap_cfg_yaw_pid_gains", Input)
+            pilot.app.screen.query_one("#cmd-ap_cfg_roll_pid_gains", Input)
+
+    @pytest.mark.asyncio
+    async def test_all_empty_skips_config(self) -> None:
+        app = ManualCommandTestApp()
+        async with app.run_test(size=(80, 60)) as pilot:
+            await pilot.pause()
+            await pilot.click("#manual-cmd-send-btn")
+            await pilot.pause()
+            assert isinstance(app.dismissed_value, VesselCommands)
+            assert app.dismissed_value.autopilot_config is None
+
+    @pytest.mark.asyncio
+    async def test_auto_tune_only_builds_config(self) -> None:
+        app = ManualCommandTestApp()
+        async with app.run_test(size=(80, 80)) as pilot:
+            await pilot.pause()
+            pilot.app.screen.query_one("#cmd-ap_cfg_auto_tune", Select).value = "off"
+            await pilot.click("#manual-cmd-send-btn")
+            await pilot.pause()
+            assert isinstance(app.dismissed_value, VesselCommands)
+            cfg = app.dismissed_value.autopilot_config
+            assert isinstance(cfg, AutopilotConfig)
+            assert cfg.auto_tune is False
+
+    @pytest.mark.asyncio
+    async def test_config_with_tuple_field(self) -> None:
+        app = ManualCommandTestApp()
+        async with app.run_test(size=(80, 80)) as pilot:
+            await pilot.pause()
+            pilot.app.screen.query_one("#cmd-ap_cfg_time_to_peak", Input).value = "1.0, 1.0, 1.0"
+            await pilot.click("#manual-cmd-send-btn")
+            await pilot.pause()
+            assert isinstance(app.dismissed_value, VesselCommands)
+            cfg = app.dismissed_value.autopilot_config
+            assert isinstance(cfg, AutopilotConfig)
+            assert cfg.time_to_peak == (1.0, 1.0, 1.0)
+
+    @pytest.mark.asyncio
+    async def test_config_with_pid_gains(self) -> None:
+        app = ManualCommandTestApp()
+        async with app.run_test(size=(80, 80)) as pilot:
+            await pilot.pause()
+            pilot.app.screen.query_one("#cmd-ap_cfg_auto_tune", Select).value = "off"
+            pilot.app.screen.query_one("#cmd-ap_cfg_pitch_pid_gains", Input).value = "2.0, 0.0, 0.5"
+            await pilot.click("#manual-cmd-send-btn")
+            await pilot.pause()
+            assert isinstance(app.dismissed_value, VesselCommands)
+            cfg = app.dismissed_value.autopilot_config
+            assert isinstance(cfg, AutopilotConfig)
+            assert cfg.auto_tune is False
+            assert cfg.pitch_pid_gains == (2.0, 0.0, 0.5)
+
+    @pytest.mark.asyncio
+    async def test_config_with_roll_threshold(self) -> None:
+        app = ManualCommandTestApp()
+        async with app.run_test(size=(80, 80)) as pilot:
+            await pilot.pause()
+            pilot.app.screen.query_one("#cmd-ap_cfg_roll_threshold", Input).value = "10.0"
+            await pilot.click("#manual-cmd-send-btn")
+            await pilot.pause()
+            assert isinstance(app.dismissed_value, VesselCommands)
+            cfg = app.dismissed_value.autopilot_config
+            assert isinstance(cfg, AutopilotConfig)
+            assert cfg.roll_threshold == 10.0
+
+    @pytest.mark.asyncio
+    async def test_invalid_tuple_rejects(self) -> None:
+        app = ManualCommandTestApp()
+        async with app.run_test(size=(80, 80)) as pilot:
+            await pilot.pause()
+            pilot.app.screen.query_one("#cmd-ap_cfg_time_to_peak", Input).value = "1.0, 2.0"
+            await pilot.click("#manual-cmd-send-btn")
+            await pilot.pause()
+            assert isinstance(pilot.app.screen, ManualCommandDialog)
+            assert app.dismissed_value == "NOT_SET"  # type: ignore[comparison-overlap]
+
+    @pytest.mark.asyncio
+    async def test_invalid_roll_threshold_rejects(self) -> None:
+        app = ManualCommandTestApp()
+        async with app.run_test(size=(80, 80)) as pilot:
+            await pilot.pause()
+            pilot.app.screen.query_one("#cmd-ap_cfg_roll_threshold", Input).value = "abc"
+            await pilot.click("#manual-cmd-send-btn")
+            await pilot.pause()
+            assert isinstance(pilot.app.screen, ManualCommandDialog)
+            assert app.dismissed_value == "NOT_SET"  # type: ignore[comparison-overlap]
