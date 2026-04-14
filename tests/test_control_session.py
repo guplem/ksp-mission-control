@@ -5,8 +5,6 @@ from __future__ import annotations
 from typing import Any, ClassVar
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from ksp_mission_control.control.actions.base import (
     Action,
     ActionLogger,
@@ -125,47 +123,66 @@ class TestControlSession:
 
 
 class TestControlSessionManualCommand:
-    """Test send_manual_command."""
+    """Test send_manual_command queuing and merge."""
 
-    def test_send_manual_command_raises_when_not_connected(self) -> None:
+    def test_send_manual_command_queues_pending(self) -> None:
         session = _make_session()
         commands = VesselCommands(throttle=0.5)
 
-        with pytest.raises(ValueError, match="Not connected"):
-            session.send_manual_command(commands)
+        session.send_manual_command(commands)
 
-    def test_send_manual_command_calls_apply_controls(self) -> None:
+        assert session._pending_manual_command is commands  # noqa: SLF001
+
+    def test_send_manual_command_overwrites_previous_pending(self) -> None:
         session = _make_session()
-        mock_conn = MagicMock()
-        session._conn = mock_conn  # noqa: SLF001
-        commands = VesselCommands(throttle=0.75)
+        first = VesselCommands(throttle=0.1)
+        second = VesselCommands(throttle=0.9)
 
-        with patch(
-            "ksp_mission_control.control.session.apply_controls"
-        ) as mock_apply:
-            session.send_manual_command(commands)
-            mock_apply.assert_called_once()
-            # The first arg is the connection, second is the filtered commands
-            applied_commands = mock_apply.call_args[0][1]
-            assert applied_commands.throttle == 0.75
+        session.send_manual_command(first)
+        session.send_manual_command(second)
 
-    def test_send_manual_command_filters_redundant_fields(self) -> None:
-        session = _make_session()
-        mock_conn = MagicMock()
-        session._conn = mock_conn  # noqa: SLF001
-        # Set last_state to have sas=True already
-        session._last_state = VesselState(sas=True, throttle=0.0)  # noqa: SLF001
-        # Command sets sas=True (redundant) and throttle=0.5 (new)
-        commands = VesselCommands(sas=True, throttle=0.5)
+        assert session._pending_manual_command is second  # noqa: SLF001
 
-        with patch(
-            "ksp_mission_control.control.session.apply_controls"
-        ) as mock_apply:
-            session.send_manual_command(commands)
-            applied_commands = mock_apply.call_args[0][1]
-            # sas should be filtered out (already True), throttle should pass through
-            assert applied_commands.sas is None
-            assert applied_commands.throttle == 0.5
+
+class TestMergeManualCommand:
+    """Test _merge_manual_command helper."""
+
+    def test_merge_overrides_non_none_fields(self) -> None:
+        from ksp_mission_control.control.session import _merge_manual_command
+
+        commands = VesselCommands(throttle=0.5, sas=True)
+        manual = VesselCommands(throttle=0.9)
+
+        overridden = _merge_manual_command(commands, manual)
+
+        assert commands.throttle == 0.9  # overridden
+        assert commands.sas is True  # untouched
+        assert "throttle" in overridden
+        assert "sas" not in overridden
+
+    def test_merge_leaves_none_fields_alone(self) -> None:
+        from ksp_mission_control.control.session import _merge_manual_command
+
+        commands = VesselCommands(throttle=0.5)
+        manual = VesselCommands()  # all None
+
+        overridden = _merge_manual_command(commands, manual)
+
+        assert commands.throttle == 0.5
+        assert overridden == []
+
+    def test_merge_adds_fields_not_set_by_action(self) -> None:
+        from ksp_mission_control.control.session import _merge_manual_command
+
+        commands = VesselCommands(throttle=0.5)
+        manual = VesselCommands(gear=True, lights=True)
+
+        overridden = _merge_manual_command(commands, manual)
+
+        assert commands.throttle == 0.5
+        assert commands.gear is True
+        assert commands.lights is True
+        assert set(overridden) == {"gear", "lights"}
 
 
 class TestControlSessionLive:

@@ -213,13 +213,10 @@ class ControlScreen(Screen[None]):
             self.notify(str(exc), severity="error")
 
     def _handle_manual_command(self, commands: VesselCommands | None) -> None:
-        """Send the manual command to the vessel."""
+        """Queue the manual command for the next poll tick."""
         if commands is None or self._session is None:
             return
-        try:
-            self._session.send_manual_command(commands)
-        except ValueError as exc:
-            self.notify(str(exc), severity="error")
+        self._session.send_manual_command(commands)
 
     def _handle_action_with_params(self, action: Action, params: dict[str, float] | None) -> None:
         """Start the action with the given parameters."""

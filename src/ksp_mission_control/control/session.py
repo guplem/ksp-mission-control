@@ -11,10 +11,17 @@ import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
+from dataclasses import fields as dataclass_fields
 from typing import Any
 
 from ksp_mission_control.config import ConfigManager
-from ksp_mission_control.control.actions.base import Action, LogEntry, VesselCommands, VesselState
+from ksp_mission_control.control.actions.base import (
+    Action,
+    LogEntry,
+    LogLevel,
+    VesselCommands,
+    VesselState,
+)
 from ksp_mission_control.control.actions.flight_plan import FlightPlan
 from ksp_mission_control.control.actions.plan_executor import PlanExecutor, PlanSnapshot
 from ksp_mission_control.control.actions.runner import RunnerSnapshot, StepResult
@@ -31,6 +38,21 @@ _KRPC_CALL_TIMEOUT = 10.0
 
 _RECONNECT_INTERVAL = 3.0
 """Seconds to wait before retrying after a connection loss."""
+
+
+def _merge_manual_command(commands: VesselCommands, manual: VesselCommands) -> list[str]:
+    """Merge manual command fields into the commands buffer.
+
+    For each non-None field in *manual*, overrides the corresponding field
+    in *commands*. Returns the list of field names that were overridden.
+    """
+    overridden: list[str] = []
+    for field in dataclass_fields(manual):
+        value = getattr(manual, field.name)
+        if value is not None:
+            setattr(commands, field.name, value)
+            overridden.append(field.name)
+    return overridden
 
 
 class ControlSession:
@@ -63,6 +85,7 @@ class ControlSession:
         self._executor = PlanExecutor()
         self._stop_event = threading.Event()
         self._last_state: VesselState = VesselState()
+        self._pending_manual_command: VesselCommands | None = None
 
     def run_poll_loop(self) -> None:
         """Blocking poll loop.
@@ -150,10 +173,28 @@ class ControlSession:
         Runs in a thread pool so a hung kRPC call can be timed out.
         Returns the vessel state, step result, and which command fields were
         actually sent (differed from the vessel's current state).
+
+        If a manual command is pending, its fields are merged into the
+        action's commands (overriding them) so the manual command flows
+        through the same filter → apply → UI pipeline as action commands.
         """
         vessel_state = read_vessel_state(conn)
         self._last_state = vessel_state
         step_result = self._executor.step(vessel_state, dt=0.5)
+
+        # Merge pending manual command into the action's commands
+        pending = self._pending_manual_command
+        if pending is not None:
+            self._pending_manual_command = None
+            overridden = _merge_manual_command(step_result.commands, pending)
+            if overridden:
+                step_result.logs.append(
+                    LogEntry(
+                        level=LogLevel.INFO,
+                        message=f"Manual command: {', '.join(overridden)}",
+                    )
+                )
+
         filtered, applied_fields = filter_commands(step_result.commands, vessel_state)
         apply_controls(conn, filtered)
         return vessel_state, step_result, applied_fields
@@ -178,17 +219,14 @@ class ControlSession:
                 apply_controls(self._conn, result.commands)
 
     def send_manual_command(self, commands: VesselCommands) -> None:
-        """Apply a one-shot manual command to the vessel.
+        """Queue a one-shot manual command for the next poll tick.
 
-        Filters the commands against current state and sends only changed
-        fields, following the same pattern as abort().
-
-        Raises ValueError if not connected.
+        The command is merged into the action's commands during the next
+        ``_poll_tick``, so it flows through the same filter → apply → UI
+        pipeline as action commands (appears in command history, debug
+        console, etc.).
         """
-        if self._conn is None:
-            raise ValueError("Not connected to vessel")
-        filtered, _applied = filter_commands(commands, self._last_state)
-        apply_controls(self._conn, filtered)
+        self._pending_manual_command = commands
 
     def abort(self) -> None:
         """Abort the current action and apply cleanup commands if connected."""
