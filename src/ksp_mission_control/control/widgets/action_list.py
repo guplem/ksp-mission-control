@@ -51,6 +51,11 @@ class ActionListWidget(Static):
         margin-top: 1;
         width: 100%;
     }
+
+    #manual-cmd-btn {
+        margin-top: 1;
+        width: 100%;
+    }
     """
 
     class RunActionRequested(Message):
@@ -58,6 +63,9 @@ class ActionListWidget(Static):
 
     class LoadPlanRequested(Message):
         """Posted when the user clicks the Load Flight Plan button."""
+
+    class ManualCommandRequested(Message):
+        """Posted when the user clicks the Manual Command button."""
 
     def __init__(self, *, id: str | None = None) -> None:  # noqa: A002
         super().__init__(id=id)
@@ -74,6 +82,9 @@ class ActionListWidget(Static):
         yield Button(
             "Load Flight Plan", id="load-plan-btn", variant="default", classes="action-btn"
         )
+        yield Button(
+            "Manual Command", id="manual-cmd-btn", variant="warning"
+        )
 
     def on_mount(self) -> None:
         """Hide dynamic content areas initially."""
@@ -86,6 +97,8 @@ class ActionListWidget(Static):
             self.post_message(self.RunActionRequested())
         elif event.button.id == "load-plan-btn":
             self.post_message(self.LoadPlanRequested())
+        elif event.button.id == "manual-cmd-btn":
+            self.post_message(self.ManualCommandRequested())
 
     def update_running(self, action_id: str | None) -> None:
         """Update which action (if any) is currently running.

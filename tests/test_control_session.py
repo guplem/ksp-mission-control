@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Any, ClassVar
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from ksp_mission_control.control.actions.base import (
     Action,
     ActionLogger,
@@ -120,6 +122,50 @@ class TestControlSession:
         snapshot = session.snapshot()
         assert snapshot.action_id is None
         assert snapshot.status is None
+
+
+class TestControlSessionManualCommand:
+    """Test send_manual_command."""
+
+    def test_send_manual_command_raises_when_not_connected(self) -> None:
+        session = _make_session()
+        commands = VesselCommands(throttle=0.5)
+
+        with pytest.raises(ValueError, match="Not connected"):
+            session.send_manual_command(commands)
+
+    def test_send_manual_command_calls_apply_controls(self) -> None:
+        session = _make_session()
+        mock_conn = MagicMock()
+        session._conn = mock_conn  # noqa: SLF001
+        commands = VesselCommands(throttle=0.75)
+
+        with patch(
+            "ksp_mission_control.control.session.apply_controls"
+        ) as mock_apply:
+            session.send_manual_command(commands)
+            mock_apply.assert_called_once()
+            # The first arg is the connection, second is the filtered commands
+            applied_commands = mock_apply.call_args[0][1]
+            assert applied_commands.throttle == 0.75
+
+    def test_send_manual_command_filters_redundant_fields(self) -> None:
+        session = _make_session()
+        mock_conn = MagicMock()
+        session._conn = mock_conn  # noqa: SLF001
+        # Set last_state to have sas=True already
+        session._last_state = VesselState(sas=True, throttle=0.0)  # noqa: SLF001
+        # Command sets sas=True (redundant) and throttle=0.5 (new)
+        commands = VesselCommands(sas=True, throttle=0.5)
+
+        with patch(
+            "ksp_mission_control.control.session.apply_controls"
+        ) as mock_apply:
+            session.send_manual_command(commands)
+            applied_commands = mock_apply.call_args[0][1]
+            # sas should be filtered out (already True), throttle should pass through
+            assert applied_commands.sas is None
+            assert applied_commands.throttle == 0.5
 
 
 class TestControlSessionLive:

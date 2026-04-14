@@ -177,6 +177,19 @@ class ControlSession:
             with contextlib.suppress(Exception):
                 apply_controls(self._conn, result.commands)
 
+    def send_manual_command(self, commands: VesselCommands) -> None:
+        """Apply a one-shot manual command to the vessel.
+
+        Filters the commands against current state and sends only changed
+        fields, following the same pattern as abort().
+
+        Raises ValueError if not connected.
+        """
+        if self._conn is None:
+            raise ValueError("Not connected to vessel")
+        filtered, _applied = filter_commands(commands, self._last_state)
+        apply_controls(self._conn, filtered)
+
     def abort(self) -> None:
         """Abort the current action and apply cleanup commands if connected."""
         result = self._executor.abort()

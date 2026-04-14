@@ -25,6 +25,7 @@ from ksp_mission_control.control.actions.plan_executor import PlanSnapshot
 from ksp_mission_control.control.actions.runner import RunnerSnapshot
 from ksp_mission_control.control.flight_plan_picker import FlightPlanPicker
 from ksp_mission_control.control.formatting import format_met
+from ksp_mission_control.control.manual_command_dialog import ManualCommandDialog
 from ksp_mission_control.control.param_input_modal import ParamInputModal
 from ksp_mission_control.control.plan_failure_dialog import PlanFailureDialog
 from ksp_mission_control.control.session import ControlSession
@@ -193,12 +194,30 @@ class ControlScreen(Screen[None]):
             callback=self._handle_plan_selected,
         )
 
+    def on_action_list_widget_manual_command_requested(
+        self, event: ActionListWidget.ManualCommandRequested
+    ) -> None:
+        """Open the manual command dialog."""
+        self.app.push_screen(
+            ManualCommandDialog(),
+            callback=self._handle_manual_command,
+        )
+
     def _handle_plan_selected(self, plan: FlightPlan | None) -> None:
         """Start the selected flight plan."""
         if plan is None or self._session is None:
             return
         try:
             self._session.start_plan(plan)
+        except ValueError as exc:
+            self.notify(str(exc), severity="error")
+
+    def _handle_manual_command(self, commands: VesselCommands | None) -> None:
+        """Send the manual command to the vessel."""
+        if commands is None or self._session is None:
+            return
+        try:
+            self._session.send_manual_command(commands)
         except ValueError as exc:
             self.notify(str(exc), severity="error")
 
