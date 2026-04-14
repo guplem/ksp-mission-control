@@ -223,8 +223,8 @@ class LaunchAction(Action):
             commands.autopilot_roll = 0  # For the time being, just go east
             # commands.autopilot_roll = self._launch_heading  # keep the vessel pointed in the right compass direction for the desired inclination
 
-            # if (state.autopilot_roll_error < 5) or (state.autopilot_roll_error > -5):
-            # commands.autopilot_pitch = self._pitch_for_altitude(state.altitude_sea, self._turn_start_altitude, self._turn_end_altitude)
+            if state.autopilot_roll_error and ((state.autopilot_roll_error < 5) or (state.autopilot_roll_error > -5)):
+                commands.autopilot_pitch = self._pitch_for_altitude(state.altitude_sea, self._turn_start_altitude, self._turn_end_altitude)
 
         # Throttle control
         commands.throttle = 1.0  # full throttle until we reach apoapsis
