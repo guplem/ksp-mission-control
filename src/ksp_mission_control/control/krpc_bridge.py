@@ -20,13 +20,16 @@ from ksp_mission_control.control.actions.base import (
 
 # Command fields that have a matching field in VesselState for comparison.
 # Excluded from comparison (always applied when non-None):
-#   autopilot_pitch/autopilot_heading/autopilot_roll: command = target, state = actual
 #   autopilot_direction/autopilot_config: transient configuration, no state equivalent
 #   stage: one-shot trigger
 #   input_*/translate_*: transient axis inputs, no persistent state
 #   wheels: kRPC write-only, no readable state
 _COMPARABLE_FIELDS: dict[str, str] = {
     "throttle": "throttle",
+    "autopilot": "autopilot",
+    "autopilot_pitch": "autopilot_target_pitch",
+    "autopilot_heading": "autopilot_target_heading",
+    "autopilot_roll": "autopilot_target_roll",
     "sas": "sas",
     "sas_mode": "sas_mode",
     "speed_mode": "speed_mode",
@@ -96,17 +99,25 @@ def read_vessel_state(conn: object) -> VesselState:
     orbit = vessel.orbit
     control = vessel.control
     ap = vessel.auto_pilot
+    # Autopilot state: kRPC doesn't expose an 'engaged' property, so we
+    # infer it from the autopilot error (which raises when not engaged).
+    ap_target_pitch = ap.target_pitch
+    ap_target_heading = ap.target_heading
+    ap_target_roll = ap.target_roll
     # Autopilot error properties raise when the autopilot is not engaged.
+    # We use this to infer the engaged state since kRPC has no 'engaged' property.
     try:
-        ap_error = ap.error
-        ap_pitch_error = ap.pitch_error
-        ap_heading_error = ap.heading_error
-        ap_roll_error = ap.roll_error
+        ap_error: float | None = ap.error
+        ap_pitch_error: float | None = ap.pitch_error
+        ap_heading_error: float | None = ap.heading_error
+        ap_roll_error: float | None = ap.roll_error
+        ap_engaged = True
     except Exception:
-        ap_error = 0.0
-        ap_pitch_error = 0.0
-        ap_heading_error = 0.0
-        ap_roll_error = 0.0
+        ap_error = None
+        ap_pitch_error = None
+        ap_heading_error = None
+        ap_roll_error = None
+        ap_engaged = False
     # navball.speed_mode may not be available in all kRPC versions.
     try:
         speed_mode_raw = str(conn.space_center.navball.speed_mode)  # type: ignore[attr-defined]
@@ -148,13 +159,20 @@ def read_vessel_state(conn: object) -> VesselState:
         pitch=surface_flight.pitch,
         heading=surface_flight.heading,
         roll=surface_flight.roll,
+        input_pitch=control.pitch,
+        input_yaw=control.yaw,
+        input_roll=control.roll,
+        autopilot=ap_engaged,
+        autopilot_target_pitch=ap_target_pitch,
+        autopilot_target_heading=ap_target_heading,
+        autopilot_target_roll=ap_target_roll,
         autopilot_error=ap_error,
         autopilot_pitch_error=ap_pitch_error,
         autopilot_heading_error=ap_heading_error,
         autopilot_roll_error=ap_roll_error,
         throttle=control.throttle,
         sas=control.sas,
-        sas_mode=_parse_sas_mode(str(control.sas_mode)),
+        sas_mode=_parse_sas_mode(str(control.sas_mode)) if control.sas else None,
         speed_mode=_parse_speed_mode(speed_mode_raw),
         rcs=control.rcs,
         gear=control.gear,

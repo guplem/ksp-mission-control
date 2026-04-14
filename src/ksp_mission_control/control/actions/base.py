@@ -363,23 +363,39 @@ class VesselState:
     roll: float = 0.0
     """Vessel roll angle in degrees."""
 
-    # --- Autopilot feedback (read-only from kRPC auto_pilot) ---
-    autopilot_error: float = 0.0
-    """Angular error between current and target direction, in degrees."""
-    autopilot_pitch_error: float = 0.0
-    """Pitch error between current and target, in degrees."""
-    autopilot_heading_error: float = 0.0
-    """Heading error between current and target, in degrees."""
-    autopilot_roll_error: float = 0.0
-    """Roll error between current and target, in degrees."""
+    # --- Control inputs (raw stick/axis values, -1.0 to 1.0) ---
+    input_pitch: float = 0.0
+    """Current pitch control input. -1.0 = nose down, 1.0 = nose up."""
+    input_yaw: float = 0.0
+    """Current yaw control input. -1.0 = left, 1.0 = right."""
+    input_roll: float = 0.0
+    """Current roll control input. -1.0 = counter-clockwise, 1.0 = clockwise."""
+
+    # --- Autopilot state (read from kRPC auto_pilot) ---
+    autopilot: bool = False
+    """Whether the kRPC autopilot is currently engaged."""
+    autopilot_target_pitch: float = 0.0
+    """Autopilot's current target pitch, in degrees."""
+    autopilot_target_heading: float = 0.0
+    """Autopilot's current target heading, in degrees."""
+    autopilot_target_roll: float = 0.0
+    """Autopilot's current target roll, in degrees. NaN = roll targeting disabled."""
+    autopilot_error: float | None = None
+    """Angular error between current and target direction, in degrees. None when autopilot not engaged."""
+    autopilot_pitch_error: float | None = None
+    """Pitch error between current and target, in degrees. None when autopilot not engaged."""
+    autopilot_heading_error: float | None = None
+    """Heading error between current and target, in degrees. None when autopilot not engaged."""
+    autopilot_roll_error: float | None = None
+    """Roll error between current and target, in degrees. None when autopilot not engaged."""
 
     # --- Configuration ---
     throttle: float = 0.0
     """Current throttle setting. 0.0 = off, 1.0 = full thrust."""
     sas: bool = False
     """Whether the Stability Assist System is enabled."""
-    sas_mode: SASMode = SASMode.STABILITY_ASSIST
-    """Active SAS autopilot mode."""
+    sas_mode: SASMode | None = None
+    """Active SAS autopilot mode. None when SAS is off."""
     speed_mode: SpeedMode = SpeedMode.ORBIT
     """Navball speed display mode (orbit, surface, or target)."""
     rcs: bool = False

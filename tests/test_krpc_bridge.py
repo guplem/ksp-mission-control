@@ -133,10 +133,13 @@ def _make_mock_conn(
 
     def engage() -> None:
         auto_pilot._engaged = True
+        auto_pilot.engaged = True
 
     def disengage() -> None:
         auto_pilot._engaged = False
+        auto_pilot.engaged = False
 
+    auto_pilot.engaged = False
     auto_pilot.engage = engage
     auto_pilot.disengage = disengage
 
@@ -233,8 +236,8 @@ class TestReadVesselState:
         assert state.autopilot_heading_error == -1.5
         assert state.autopilot_roll_error == 0.3
 
-    def test_autopilot_errors_default_when_not_engaged(self) -> None:
-        """Autopilot error properties raise when not engaged; bridge returns 0."""
+    def test_autopilot_errors_none_when_not_engaged(self) -> None:
+        """Autopilot error properties raise when not engaged; bridge returns None."""
         conn = _make_mock_conn()
         ap = conn.space_center.active_vessel.auto_pilot
 
@@ -258,10 +261,11 @@ class TestReadVesselState:
         conn.space_center.active_vessel.auto_pilot = patched_ap
 
         state = read_vessel_state(conn)
-        assert state.autopilot_error == 0.0
-        assert state.autopilot_pitch_error == 0.0
-        assert state.autopilot_heading_error == 0.0
-        assert state.autopilot_roll_error == 0.0
+        assert state.autopilot is False
+        assert state.autopilot_error is None
+        assert state.autopilot_pitch_error is None
+        assert state.autopilot_heading_error is None
+        assert state.autopilot_roll_error is None
 
     def test_reads_orientation_fields(self) -> None:
         conn = _make_mock_conn()
@@ -269,6 +273,16 @@ class TestReadVesselState:
         assert state.pitch == 45.0
         assert state.heading == 90.0
         assert state.roll == 0.0
+
+    def test_reads_control_input_fields(self) -> None:
+        conn = _make_mock_conn()
+        conn.space_center.active_vessel.control.pitch = 0.75
+        conn.space_center.active_vessel.control.yaw = -0.5
+        conn.space_center.active_vessel.control.roll = 0.3
+        state = read_vessel_state(conn)
+        assert state.input_pitch == 0.75
+        assert state.input_yaw == -0.5
+        assert state.input_roll == 0.3
 
     def test_reads_atmospheric_data(self) -> None:
         conn = _make_mock_conn()

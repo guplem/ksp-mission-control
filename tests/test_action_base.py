@@ -132,10 +132,11 @@ class TestVesselState:
         assert state.surface_gravity == 9.81
         assert state.body_has_atmosphere is True
         assert state.body_atmosphere_depth == 70000.0
-        assert state.autopilot_error == 0.0
-        assert state.autopilot_pitch_error == 0.0
-        assert state.autopilot_heading_error == 0.0
-        assert state.autopilot_roll_error == 0.0
+        assert state.autopilot_error is None
+        assert state.autopilot_pitch_error is None
+        assert state.autopilot_heading_error is None
+        assert state.autopilot_roll_error is None
+        assert state.sas_mode is None
         assert state.throttle == 0.0
         assert state.sas is False
         assert state.speed_mode == SpeedMode.ORBIT
@@ -151,8 +152,8 @@ class TestVesselState:
         state = VesselState(autopilot_error=5.2, autopilot_heading_error=-3.1)
         assert state.autopilot_error == 5.2
         assert state.autopilot_heading_error == -3.1
-        assert state.autopilot_pitch_error == 0.0  # default
-        assert state.autopilot_roll_error == 0.0  # default
+        assert state.autopilot_pitch_error is None  # default
+        assert state.autopilot_roll_error is None  # default
 
     def test_partial_construction(self) -> None:
         state = VesselState(altitude_surface=50.0, vertical_speed=-2.5)

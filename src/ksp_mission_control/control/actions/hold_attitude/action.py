@@ -72,14 +72,14 @@ class HoldAttitudeAction(Action):
             f"Tick {self._tick_count}/{self._hold_ticks} | "
             f"target pitch={self._target_pitch:.1f} heading={self._target_heading:.1f} roll={self._target_roll:.1f} | "
             f"actual pitch={state.pitch:.1f} heading={state.heading:.1f} roll={state.roll:.1f} | "
-            f"error total={state.autopilot_error:.1f} "
-            f"pitch_err={state.autopilot_pitch_error:.1f} "
-            f"heading_err={state.autopilot_heading_error:.1f} "
-            f"roll_err={state.autopilot_roll_error:.1f}"
+            f"error total={state.autopilot_error or 0:.1f} "
+            f"pitch_err={state.autopilot_pitch_error or 0:.1f} "
+            f"heading_err={state.autopilot_heading_error or 0:.1f} "
+            f"roll_err={state.autopilot_roll_error or 0:.1f}"
         )
 
         if self._tick_count >= self._hold_ticks:
-            log.info(f"Hold complete after {self._tick_count} ticks. Final error: {state.autopilot_error:.1f} deg")
+            log.info(f"Hold complete after {self._tick_count} ticks. Final error: {state.autopilot_error or 0:.1f} deg")
             return ActionResult(status=ActionStatus.SUCCEEDED, message="Attitude hold complete")
 
         return ActionResult(status=ActionStatus.RUNNING)
