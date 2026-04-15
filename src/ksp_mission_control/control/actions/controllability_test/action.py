@@ -196,8 +196,16 @@ class ControllabilityTestAction(Action):
         # Stage once on the first tick.
         if not self._staged:
             commands.stage = True
+            commands.autopilot = True
             self._staged = True
-            log.info("Staged!")
+            log.info("Staged")
+
+        # Set a constant throttle to ensure we have some control authority for the test
+        if state.max_thrust > 0:  # Requires staged engines
+            target_twr = 1.5
+            weight = state.mass * state.surface_gravity
+            throttle = min((target_twr * weight) / state.max_thrust, 1.0)
+            commands.throttle = throttle
 
         # All steps complete.
         if self._step_index >= len(self._steps):
@@ -206,9 +214,6 @@ class ControllabilityTestAction(Action):
 
         step = self._steps[self._step_index]
 
-        # Always command autopilot with current step's targets.
-        commands.throttle = 1.0
-        commands.autopilot = True
         commands.autopilot_pitch = step.target_pitch
         commands.autopilot_heading = step.target_heading
         commands.autopilot_roll = step.target_roll
