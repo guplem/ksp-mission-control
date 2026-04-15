@@ -4,6 +4,11 @@ Stages, throttles up, then runs through a series of maneuvers testing each
 axis independently: roll to a target and back, pitch to a target and back,
 heading to a target and back. Each maneuver must hold within tolerance for
 a configurable duration before advancing. Logs detailed progress throughout.
+
+Note on gimbal lock: when pitch is near 90 deg (pointing straight up),
+heading and roll become coupled (rotating around the same axis). The test
+only checks the autopilot error reported by kRPC rather than individual
+Euler angles, which avoids false failures from gimbal lock artifacts.
 """
 
 from __future__ import annotations
@@ -37,7 +42,6 @@ class _TestStep:
     target_pitch: float
     target_heading: float
     target_roll: float
-    hold_duration: float
 
 
 def _normalize_heading(degrees: float) -> float:
@@ -117,7 +121,7 @@ class ControllabilityTestAction(Action):
         roll_offset = float(param_values.get("roll_offset", _DEFAULT_ROLL_OFFSET))
         pitch_offset = float(param_values.get("pitch_offset", _DEFAULT_PITCH_OFFSET))
         heading_offset = float(param_values.get("heading_offset", _DEFAULT_HEADING_OFFSET))
-        hold_duration = float(param_values.get("hold_duration", _DEFAULT_HOLD_DURATION))
+        self.hold_duration = float(param_values.get("hold_duration", _DEFAULT_HOLD_DURATION))
         self._tolerance: float = float(param_values.get("tolerance", _DEFAULT_TOLERANCE))
 
         # Capture initial orientation as baseline.
@@ -126,56 +130,56 @@ class ControllabilityTestAction(Action):
         initial_roll = state.roll
 
         target_roll = initial_roll + roll_offset
-        target_pitch = min(max(initial_pitch + pitch_offset, -90.0), 90.0)
+        target_pitch = min(max(initial_pitch - pitch_offset, -90.0), 90.0)
         target_heading = _normalize_heading(initial_heading + heading_offset)
 
-        # Build the test sequence. Each step holds all three axes; only
-        # the axis under test changes between steps.
+        # Pitch test runs FIRST to tilt away from vertical. At pitch~90 (on
+        # the launchpad), heading and roll share the same rotation axis (gimbal
+        # lock), which makes the autopilot's pitch/yaw PID oscillate wildly.
+        # Pitching down first (e.g. 89 -> 74 deg) decouples the axes so the
+        # subsequent heading and roll tests run cleanly.
+        #
+        # Note: pitch_offset is subtracted (tilting toward horizon) so the
+        # vessel moves away from the singularity at pitch=90.
         self._steps: list[_TestStep] = [
-            # Roll test
+            # Pitch test (first, to escape gimbal lock near vertical)
             _TestStep(
-                label=f"Roll to {target_roll:.1f} deg (offset {roll_offset:+.1f})",
-                target_pitch=initial_pitch,
-                target_heading=initial_heading,
-                target_roll=target_roll,
-                hold_duration=hold_duration,
-            ),
-            _TestStep(
-                label=f"Roll back to {initial_roll:.1f} deg",
-                target_pitch=initial_pitch,
-                target_heading=initial_heading,
-                target_roll=initial_roll,
-                hold_duration=hold_duration,
-            ),
-            # Pitch test
-            _TestStep(
-                label=f"Pitch to {target_pitch:.1f} deg (offset {pitch_offset:+.1f})",
+                label=f"Pitch to {target_pitch:.1f} deg (offset {pitch_offset:+.1f} from vertical)",
                 target_pitch=target_pitch,
                 target_heading=initial_heading,
                 target_roll=initial_roll,
-                hold_duration=hold_duration,
             ),
             _TestStep(
                 label=f"Pitch back to {initial_pitch:.1f} deg",
                 target_pitch=initial_pitch,
                 target_heading=initial_heading,
                 target_roll=initial_roll,
-                hold_duration=hold_duration,
             ),
-            # Heading test
+            # Heading test (at tilted attitude, decoupled from roll)
             _TestStep(
                 label=f"Heading to {target_heading:.1f} deg (offset {heading_offset:+.1f})",
                 target_pitch=initial_pitch,
                 target_heading=target_heading,
                 target_roll=initial_roll,
-                hold_duration=hold_duration,
             ),
             _TestStep(
                 label=f"Heading back to {initial_heading:.1f} deg",
                 target_pitch=initial_pitch,
                 target_heading=initial_heading,
                 target_roll=initial_roll,
-                hold_duration=hold_duration,
+            ),
+            # Roll test (at tilted attitude, decoupled from heading)
+            _TestStep(
+                label=f"Roll to {target_roll:.1f} deg (offset {roll_offset:+.1f})",
+                target_pitch=initial_pitch,
+                target_heading=initial_heading,
+                target_roll=target_roll,
+            ),
+            _TestStep(
+                label=f"Roll back to {initial_roll:.1f} deg",
+                target_pitch=initial_pitch,
+                target_heading=initial_heading,
+                target_roll=initial_roll,
             ),
         ]
 
@@ -183,6 +187,7 @@ class ControllabilityTestAction(Action):
         self._staged: bool = False
         self._hold_time: float = 0.0  # accumulated seconds within tolerance
         self._slewing: bool = True  # True = slewing to target, False = holding
+        self._settling: bool = True  # skip tolerance check for 1 tick after step change
         self._tick_count: int = 0
 
     def tick(self, state: VesselState, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
@@ -192,7 +197,7 @@ class ControllabilityTestAction(Action):
         if not self._staged:
             commands.stage = True
             self._staged = True
-            log.info("Staged and throttle set to 100%")
+            log.info("Staged!")
 
         # All steps complete.
         if self._step_index >= len(self._steps):
@@ -208,51 +213,70 @@ class ControllabilityTestAction(Action):
         commands.autopilot_heading = step.target_heading
         commands.autopilot_roll = step.target_roll
 
-        # Compute per-axis errors.
+        # Compute per-axis Euler errors (for logging).
         pitch_err = _angle_error(state.pitch, step.target_pitch)
         heading_err = _angle_error(state.heading, step.target_heading, wrap_360=True)
         roll_err = _angle_error(state.roll, step.target_roll)
-        within_tolerance = abs(pitch_err) < self._tolerance and abs(heading_err) < self._tolerance and abs(roll_err) < self._tolerance
+
+        # Use the kRPC autopilot error for tolerance checks. This is the true
+        # angular distance between current and target orientation, computed in
+        # quaternion space, so it handles gimbal lock correctly (near pitch=90,
+        # Euler heading and roll become coupled and individually unreliable).
+        autopilot_err = abs(state.autopilot_error) if state.autopilot_error is not None else None
+
+        # After a step transition, the autopilot error in the state still
+        # reflects the OLD target (state is read before commands are applied).
+        # Skip the tolerance check for one tick so kRPC updates to the new target.
+        if self._settling:
+            self._settling = False
+            within_tolerance = False
+        else:
+            within_tolerance = autopilot_err is not None and autopilot_err < self._tolerance
+
+        err_summary = f"autopilot_err={autopilot_err:.1f}" if autopilot_err is not None else "autopilot_err=N/A"
+        euler_summary = (
+            f"pitch={state.pitch:.1f} (err {pitch_err:+.1f}) "
+            f"heading={state.heading:.1f} (err {heading_err:+.1f}) "
+            f"roll={state.roll:.1f} (err {roll_err:+.1f})"
+        )
 
         if self._slewing:
             # Slewing to target -- waiting to get within tolerance.
-            log.debug(
-                f"[{self._step_index + 1}/{len(self._steps)}] SLEW: {step.label} | "
-                f"pitch={state.pitch:.1f} (err {pitch_err:+.1f}) "
-                f"heading={state.heading:.1f} (err {heading_err:+.1f}) "
-                f"roll={state.roll:.1f} (err {roll_err:+.1f}) | "
-                f"total_err={state.autopilot_error or 0:.1f}"
-            )
+            log.debug(f"[{self._step_index + 1}/{len(self._steps)}] SLEW: {step.label} | {err_summary} | {euler_summary}")
             if within_tolerance:
                 self._slewing = False
                 self._hold_time = 0.0
-                log.info(f"[{self._step_index + 1}/{len(self._steps)}] Reached target for '{step.label}' -- starting {step.hold_duration:.1f}s hold")
+                log.info(
+                    f"[{self._step_index + 1}/{len(self._steps)}] "
+                    f"Reached target for '{step.label}' ({err_summary}) "
+                    f"-- starting {self.hold_duration:.1f}s hold"
+                )
         else:
             # Holding at target -- accumulating time within tolerance.
             if within_tolerance:
                 self._hold_time += dt
                 log.debug(
                     f"[{self._step_index + 1}/{len(self._steps)}] HOLD: {step.label} | "
-                    f"hold {self._hold_time:.1f}/{step.hold_duration:.1f}s | "
-                    f"pitch={state.pitch:.1f} (err {pitch_err:+.1f}) "
-                    f"heading={state.heading:.1f} (err {heading_err:+.1f}) "
-                    f"roll={state.roll:.1f} (err {roll_err:+.1f})"
+                    f"hold {self._hold_time:.1f}/{self.hold_duration:.1f}s | "
+                    f"{err_summary} | {euler_summary}"
                 )
             else:
                 log.warn(
                     f"[{self._step_index + 1}/{len(self._steps)}] HOLD BROKEN: {step.label} | "
                     f"drifted outside tolerance ({self._tolerance:.1f} deg) -- resetting hold timer | "
-                    f"pitch err={pitch_err:+.1f} heading err={heading_err:+.1f} roll err={roll_err:+.1f}"
+                    f"{err_summary} | {euler_summary}"
                 )
                 self._hold_time = 0.0
 
-            if self._hold_time >= step.hold_duration:
+            if self._hold_time >= self.hold_duration:
                 log.info(
                     f"[{self._step_index + 1}/{len(self._steps)}] "
-                    f"PASSED: '{step.label}' held for {step.hold_duration:.1f}s within {self._tolerance:.1f} deg"
+                    f"PASSED: '{step.label}' held for {self.hold_duration:.1f}s "
+                    f"within {self._tolerance:.1f} deg"
                 )
                 self._step_index += 1
                 self._slewing = True
+                self._settling = True
                 self._hold_time = 0.0
                 # Log next step preview.
                 if self._step_index < len(self._steps):
