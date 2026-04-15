@@ -203,8 +203,7 @@ class ControllabilityTestAction(Action):
         # Set a constant throttle to ensure we have some control authority for the test
         if state.max_thrust > 0:  # Requires staged engines
             target_twr = 1.5
-            weight = state.mass * state.surface_gravity
-            throttle = min((target_twr * weight) / state.max_thrust, 1.0)
+            throttle = min((target_twr * state.weight) / state.max_thrust, 1.0)
             commands.throttle = throttle
 
         # All steps complete.
