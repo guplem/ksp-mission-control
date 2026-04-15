@@ -444,15 +444,22 @@ class VesselState:
     # --- Derived properties (computed from raw telemetry) ---
 
     @property
+    def weight(self) -> float:
+        """Gravitational force on the vessel (mass * local gravity), in Newtons.
+
+        Returns 0.0 if mass or surface gravity is zero.
+        """
+        return self.mass * self.surface_gravity
+
+    @property
     def twr(self) -> float:
         """Thrust-to-weight ratio using available thrust and local gravity.
 
         Returns 0.0 if mass or surface gravity is zero.
         """
-        weight = self.mass * self.surface_gravity
-        if weight <= 0.0:
+        if self.weight <= 0.0:
             return 0.0
-        return self.available_thrust / weight
+        return self.available_thrust / self.weight
 
     @property
     def max_twr(self) -> float:
@@ -460,10 +467,9 @@ class VesselState:
 
         Returns 0.0 if mass or surface gravity is zero.
         """
-        weight = self.mass * self.surface_gravity
-        if weight <= 0.0:
+        if self.weight <= 0.0:
             return 0.0
-        return self.max_thrust / weight
+        return self.max_thrust / self.weight
 
     @property
     def delta_v(self) -> float:
