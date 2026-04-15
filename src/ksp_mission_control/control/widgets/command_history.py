@@ -94,8 +94,16 @@ class CommandHistoryWidget(VerticalScroll, can_focus=True):
         met: float,
         status: ActionStatus | None = None,
     ) -> None:
-        """Record commands if any field was actually applied to the vessel."""
-        if not applied_fields:
+        """Record a command snapshot from the current tick.
+
+        Skips idle ticks where no command field was set (all None).
+        Records all ticks where an action set commands, even if every
+        field was redundant (filtered by the bridge), so the user can
+        see the full command stream.
+        """
+        # Skip idle ticks (no action running, no commands at all).
+        has_any_command = any(getattr(commands, f.name) is not None for f in fields(commands))
+        if not has_any_command:
             return
 
         label = action_label or "Manual"
@@ -106,9 +114,6 @@ class CommandHistoryWidget(VerticalScroll, can_focus=True):
             applied_fields=applied_fields,
             status=status,
         )
-
-        if self._history and self._history[-1].commands == commands:
-            return
 
         self._history.append(record)
         if len(self._history) > _MAX_HISTORY:
