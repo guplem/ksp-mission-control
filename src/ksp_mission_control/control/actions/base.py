@@ -332,10 +332,12 @@ class VesselState:
     """Total vessel mass including fuel, in kilograms."""
     dry_mass: float = 0.0
     """Vessel mass without fuel, in kilograms."""
+    thrust: float = 0.0
+    """Thrust being produced right now. Accounts for throttle, atmosphere, and fuel. 0 when engines are off."""
     available_thrust: float = 0.0
-    """Currently available thrust (accounts for throttle limiters, fuel), in Newtons."""
-    max_thrust: float = 0.0
-    """Maximum possible thrust at full throttle in current conditions, in Newtons."""
+    """Full-throttle thrust from engines that still have fuel. Excludes flamed-out engines. Does NOT account for throttle."""
+    peak_thrust: float = 0.0
+    """Full-throttle thrust from ALL active engines, including flamed-out ones. Does NOT account for throttle or fuel state."""
     specific_impulse: float = 0.0
     """Current overall specific impulse, in seconds. 0 if no active engines."""
 
@@ -453,13 +455,13 @@ class VesselState:
 
     @property
     def twr(self) -> float:
-        """Thrust-to-weight ratio using available thrust and local gravity.
+        """Current thrust-to-weight ratio (actual thrust at current throttle).
 
         Returns 0.0 if mass or surface gravity is zero.
         """
         if self.weight <= 0.0:
             return 0.0
-        return self.available_thrust / self.weight
+        return self.thrust / self.weight
 
     @property
     def max_twr(self) -> float:
@@ -469,7 +471,7 @@ class VesselState:
         """
         if self.weight <= 0.0:
             return 0.0
-        return self.max_thrust / self.weight
+        return self.peak_thrust / self.weight
 
     @property
     def delta_v(self) -> float:

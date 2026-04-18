@@ -127,7 +127,7 @@ class TestVesselState:
         assert state.mass == 0.0
         assert state.dry_mass == 0.0
         assert state.available_thrust == 0.0
-        assert state.max_thrust == 0.0
+        assert state.peak_thrust == 0.0
         assert state.specific_impulse == 0.0
         assert state.surface_gravity == 9.81
         assert state.body_has_atmosphere is True
@@ -171,20 +171,20 @@ class TestVesselStateDerived:
     """Tests for derived @property methods on VesselState."""
 
     def test_twr_normal(self) -> None:
-        state = VesselState(available_thrust=50000.0, mass=5000.0, surface_gravity=9.81)
-        expected = 50000.0 / (5000.0 * 9.81)
+        state = VesselState(thrust=30000.0, mass=5000.0, surface_gravity=9.81)
+        expected = 30000.0 / (5000.0 * 9.81)
         assert abs(state.twr - expected) < 0.001
 
     def test_twr_zero_mass(self) -> None:
-        state = VesselState(available_thrust=50000.0, mass=0.0, surface_gravity=9.81)
+        state = VesselState(thrust=30000.0, mass=0.0, surface_gravity=9.81)
         assert state.twr == 0.0
 
     def test_twr_zero_gravity(self) -> None:
-        state = VesselState(available_thrust=50000.0, mass=5000.0, surface_gravity=0.0)
+        state = VesselState(thrust=30000.0, mass=5000.0, surface_gravity=0.0)
         assert state.twr == 0.0
 
     def test_max_twr(self) -> None:
-        state = VesselState(max_thrust=60000.0, mass=5000.0, surface_gravity=9.81)
+        state = VesselState(peak_thrust=60000.0, mass=5000.0, surface_gravity=9.81)
         expected = 60000.0 / (5000.0 * 9.81)
         assert abs(state.max_twr - expected) < 0.001
 

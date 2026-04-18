@@ -156,7 +156,7 @@ def _format_orbit(state: VesselState) -> str:
             "[b]Propulsion[/b]",
             f"TWR:             {state.twr:.2f} / {state.max_twr:.2f}",
             f"Delta-v:         {state.delta_v:.0f} m/s",
-            f"Thrust:          {_format_force(state.available_thrust)} / {_format_force(state.max_thrust)}",
+            f"Thrust:          {_format_force(state.thrust)} / {_format_force(state.peak_thrust)}",
             f"Mass:            {_format_mass(state.mass)}",
             f"Isp:             {state.specific_impulse:.1f} s",
             f"Fuel fraction:   {state.fuel_fraction * 100:.1f}%",

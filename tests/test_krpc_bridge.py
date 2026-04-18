@@ -177,6 +177,7 @@ def _make_mock_conn(
             situation=situation,
             mass=5000.0,
             dry_mass=2000.0,
+            thrust=25000.0,
             available_thrust=50000.0,
             max_thrust=60000.0,
             specific_impulse=320.0,
@@ -304,8 +305,9 @@ class TestReadVesselState:
         state = read_vessel_state(conn)
         assert state.mass == 5000.0
         assert state.dry_mass == 2000.0
+        assert state.thrust == 25000.0
         assert state.available_thrust == 50000.0
-        assert state.max_thrust == 60000.0
+        assert state.peak_thrust == 60000.0
         assert state.specific_impulse == 320.0
 
     def test_reads_body_properties(self) -> None:

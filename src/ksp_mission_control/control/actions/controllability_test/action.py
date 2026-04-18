@@ -201,9 +201,9 @@ class ControllabilityTestAction(Action):
             log.info("Staged")
 
         # Set a constant throttle to ensure we have some control authority for the test
-        if state.max_thrust > 0:  # Requires staged engines
+        if state.peak_thrust > 0:  # Requires staged engines
             target_twr = 1.5
-            throttle = min((target_twr * state.weight) / state.max_thrust, 1.0)
+            throttle = min((target_twr * state.weight) / state.peak_thrust, 1.0)
             commands.throttle = throttle
 
         # All steps complete.
