@@ -68,7 +68,7 @@ class ControlScreen(Screen[None]):
     BINDINGS = [
         ("escape", "go_back", "Back to Setup"),
         ("a", "abort_action", "Abort Action"),
-        ("c", "copy_logs", "Copy Logs"),
+        ("s", "save_logs", "Save Logs"),
         ("v", "cycle_view", "Cycle View"),
     ]
 
@@ -238,7 +238,7 @@ class ControlScreen(Screen[None]):
         self._session.abort()
         self.query_one("#action-list", ActionListWidget).update_running(None)
 
-    def action_copy_logs(self) -> None:
+    def action_save_logs(self) -> None:
         """Save the full tick-by-tick log to file and copy the path to clipboard."""
         if not self._tick_history:
             self.notify("No ticks recorded yet", severity="warning")
