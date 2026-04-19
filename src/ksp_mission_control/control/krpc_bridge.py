@@ -23,28 +23,31 @@ from ksp_mission_control.control.actions.base import (
 #   autopilot_direction/autopilot_config: transient configuration, no state equivalent
 #   stage: one-shot trigger
 #   input_*/translate_*: transient axis inputs, no persistent state
-#   wheels: kRPC write-only, no readable state
 _COMPARABLE_FIELDS: dict[str, str] = {
-    "throttle": "throttle",
-    "autopilot": "autopilot",
-    "autopilot_pitch": "autopilot_target_pitch",
-    "autopilot_heading": "autopilot_target_heading",
-    "autopilot_roll": "autopilot_target_roll",
-    "sas": "sas",
-    "sas_mode": "sas_mode",
-    "speed_mode": "speed_mode",
-    "rcs": "rcs",
-    "gear": "gear",
-    "legs": "legs",
-    "lights": "lights",
-    "brakes": "brakes",
-    "abort": "abort",
-    "solar_panels": "solar_panels",
-    "antennas": "antennas",
-    "cargo_bays": "cargo_bays",
-    "intakes": "intakes",
-    "parachutes": "parachutes",
-    "radiators": "radiators",
+    "throttle": "control_throttle",
+    "autopilot": "control_autopilot",
+    "autopilot_pitch": "control_autopilot_target_pitch",
+    "autopilot_heading": "control_autopilot_target_heading",
+    "autopilot_roll": "control_autopilot_target_roll",
+    "sas": "control_sas",
+    "sas_mode": "control_sas_mode",
+    "ui_speed_mode": "control_ui_speed_mode",
+    "rcs": "control_rcs",
+    "gear": "control_gear",
+    "legs": "control_legs",
+    "lights": "control_lights",
+    "brakes": "control_brakes",
+    "wheels": "control_wheels",
+    "abort": "control_abort",
+    "translate_forward": "control_translate_forward",
+    "translate_right": "control_translate_right",
+    "translate_up": "control_translate_up",
+    "deployable_solar_panels": "control_deployable_solar_panels",
+    "deployable_antennas": "control_deployable_antennas",
+    "deployable_cargo_bays": "control_deployable_cargo_bays",
+    "deployable_intakes": "control_deployable_intakes",
+    "deployable_parachutes": "control_deployable_parachutes",
+    "deployable_radiators": "control_deployable_radiators",
 }
 
 
@@ -126,74 +129,78 @@ def read_vessel_state(conn: object) -> VesselState:
     return VesselState(
         altitude_sea=flight.mean_altitude,
         altitude_surface=flight.surface_altitude,
-        vertical_speed=flight.vertical_speed,
-        surface_speed=flight.speed,
-        orbital_speed=orbit.speed,
-        dynamic_pressure=flight.dynamic_pressure,
-        static_pressure=flight.static_pressure,
-        drag=flight.drag,
-        lift=flight.lift,
+        speed_vertical=flight.vertical_speed,
+        speed_surface=flight.speed,
+        speed_orbital=orbit.speed,
+        pressure_dynamic=flight.dynamic_pressure,
+        pressure_static=flight.static_pressure,
+        aero_drag=flight.drag,
+        aero_lift=flight.lift,
         g_force=flight.g_force,
-        apoapsis=orbit.apoapsis_altitude,
-        periapsis=orbit.periapsis_altitude,
-        inclination=orbit.inclination,
-        eccentricity=orbit.eccentricity,
-        period=orbit.period,
-        time_to_apoapsis=orbit.time_to_apoapsis,
-        time_to_periapsis=orbit.time_to_periapsis,
+        orbit_apoapsis=orbit.apoapsis_altitude,
+        orbit_periapsis=orbit.periapsis_altitude,
+        orbit_inclination=orbit.inclination,
+        orbit_eccentricity=orbit.eccentricity,
+        orbit_period=orbit.period,
+        orbit_apoapsis_time_to=orbit.time_to_apoapsis,
+        orbit_periapsis_time_to=orbit.time_to_periapsis,
         met=vessel.met,
-        vessel_name=vessel.name,
+        name=vessel.name,
         situation=_parse_vessel_situation(str(vessel.situation)),
         mass=vessel.mass,
-        dry_mass=vessel.dry_mass,
+        mass_dry=vessel.dry_mass,
         thrust=vessel.thrust,
-        available_thrust=vessel.available_thrust,
-        peak_thrust=vessel.max_thrust,
-        specific_impulse=vessel.specific_impulse,
-        body=orbit.body.name,
+        thrust_available=vessel.available_thrust,
+        thrust_peak=vessel.max_thrust,
+        engine_impulse_specific=vessel.specific_impulse,
+        body_name=orbit.body.name,
         body_radius=orbit.body.equatorial_radius,
-        surface_gravity=orbit.body.surface_gravity,
+        body_gravity=orbit.body.surface_gravity,
         body_has_atmosphere=orbit.body.has_atmosphere,
         body_atmosphere_depth=orbit.body.atmosphere_depth if orbit.body.has_atmosphere else 0.0,
-        latitude=flight.latitude,
-        longitude=flight.longitude,
-        pitch=surface_flight.pitch,
-        heading=surface_flight.heading,
-        roll=surface_flight.roll,
-        input_pitch=control.pitch,
-        input_yaw=control.yaw,
-        input_roll=control.roll,
-        autopilot=ap_engaged,
-        autopilot_target_pitch=ap_target_pitch,
-        autopilot_target_heading=ap_target_heading,
-        autopilot_target_roll=ap_target_roll,
-        autopilot_error=ap_error,
-        autopilot_pitch_error=ap_pitch_error,
-        autopilot_heading_error=ap_heading_error,
-        autopilot_roll_error=ap_roll_error,
-        throttle=control.throttle,
-        sas=control.sas,
-        sas_mode=_parse_sas_mode(str(control.sas_mode)) if control.sas else None,
-        speed_mode=_parse_speed_mode(speed_mode_raw),
-        rcs=control.rcs,
-        gear=control.gear,
-        legs=control.legs,
-        lights=control.lights,
-        brakes=control.brakes,
-        abort=control.abort,
-        current_stage=control.current_stage,
-        max_stages=max((p.stage for p in vessel.parts.all), default=0),
-        engines_flamed_out=sum(1 for e in vessel.parts.engines if e.active and not e.has_fuel),
-        solar_panels=control.solar_panels,
-        antennas=control.antennas,
-        cargo_bays=control.cargo_bays,
-        intakes=control.intakes,
-        parachutes=control.parachutes,
-        radiators=control.radiators,
-        electric_charge=vessel.resources.amount("ElectricCharge"),
-        liquid_fuel=vessel.resources.amount("LiquidFuel"),
-        oxidizer=vessel.resources.amount("Oxidizer"),
-        mono_propellant=vessel.resources.amount("MonoPropellant"),
+        position_latitude=flight.latitude,
+        position_longitude=flight.longitude,
+        orientation_pitch=surface_flight.pitch,
+        orientation_heading=surface_flight.heading,
+        orientation_roll=surface_flight.roll,
+        control_input_pitch=control.pitch,
+        control_input_yaw=control.yaw,
+        control_input_roll=control.roll,
+        control_autopilot=ap_engaged,
+        control_autopilot_target_pitch=ap_target_pitch,
+        control_autopilot_target_heading=ap_target_heading,
+        control_autopilot_target_roll=ap_target_roll,
+        control_autopilot_error=ap_error,
+        control_autopilot_error_pitch=ap_pitch_error,
+        control_autopilot_error_heading=ap_heading_error,
+        control_autopilot_error_roll=ap_roll_error,
+        control_throttle=control.throttle,
+        control_sas=control.sas,
+        control_sas_mode=_parse_sas_mode(str(control.sas_mode)) if control.sas else None,
+        control_ui_speed_mode=_parse_speed_mode(speed_mode_raw),
+        control_rcs=control.rcs,
+        control_gear=control.gear,
+        control_legs=control.legs,
+        control_lights=control.lights,
+        control_brakes=control.brakes,
+        control_wheels=control.wheels,
+        control_abort=control.abort,
+        control_translate_forward=control.forward,
+        control_translate_right=control.right,
+        control_translate_up=control.up,
+        stage_current=control.current_stage,
+        stage_max=max((p.stage for p in vessel.parts.all), default=0),
+        engine_flameout_count=sum(1 for e in vessel.parts.engines if e.active and not e.has_fuel),
+        control_deployable_solar_panels=control.solar_panels,
+        control_deployable_antennas=control.antennas,
+        control_deployable_cargo_bays=control.cargo_bays,
+        control_deployable_intakes=control.intakes,
+        control_deployable_parachutes=control.parachutes,
+        control_deployable_radiators=control.radiators,
+        resource_electric_charge=vessel.resources.amount("ElectricCharge"),
+        resource_liquid_fuel=vessel.resources.amount("LiquidFuel"),
+        resource_oxidizer=vessel.resources.amount("Oxidizer"),
+        resource_mono_propellant=vessel.resources.amount("MonoPropellant"),
     )
 
 
@@ -306,8 +313,8 @@ def apply_controls(conn: object, controls: VesselCommands) -> None:
         krpc_sas = getattr(conn.space_center.SASMode, controls.sas_mode.value, None)  # type: ignore[attr-defined]
         if krpc_sas is not None:
             vc.sas_mode = krpc_sas
-    if controls.speed_mode is not None:
-        krpc_speed = getattr(conn.space_center.SpeedMode, controls.speed_mode.value, None)  # type: ignore[attr-defined]
+    if controls.ui_speed_mode is not None:
+        krpc_speed = getattr(conn.space_center.SpeedMode, controls.ui_speed_mode.value, None)  # type: ignore[attr-defined]
         if krpc_speed is not None:
             conn.space_center.navball.speed_mode = krpc_speed  # type: ignore[attr-defined]
     if controls.rcs is not None:
@@ -326,15 +333,15 @@ def apply_controls(conn: object, controls: VesselCommands) -> None:
         vc.abort = controls.abort
 
     # Deployables
-    if controls.solar_panels is not None:
-        vc.solar_panels = controls.solar_panels
-    if controls.antennas is not None:
-        vc.antennas = controls.antennas
-    if controls.cargo_bays is not None:
-        vc.cargo_bays = controls.cargo_bays
-    if controls.intakes is not None:
-        vc.intakes = controls.intakes
-    if controls.parachutes is not None:
-        vc.parachutes = controls.parachutes
-    if controls.radiators is not None:
-        vc.radiators = controls.radiators
+    if controls.deployable_solar_panels is not None:
+        vc.solar_panels = controls.deployable_solar_panels
+    if controls.deployable_antennas is not None:
+        vc.antennas = controls.deployable_antennas
+    if controls.deployable_cargo_bays is not None:
+        vc.cargo_bays = controls.deployable_cargo_bays
+    if controls.deployable_intakes is not None:
+        vc.intakes = controls.deployable_intakes
+    if controls.deployable_parachutes is not None:
+        vc.parachutes = controls.deployable_parachutes
+    if controls.deployable_radiators is not None:
+        vc.radiators = controls.deployable_radiators

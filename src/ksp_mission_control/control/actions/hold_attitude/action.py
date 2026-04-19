@@ -48,9 +48,9 @@ class HoldAttitudeAction(Action):
         self._staged: bool = False
 
         # Capture current orientation as autopilot targets.
-        self._target_pitch: float = state.pitch
-        self._target_heading: float = state.heading
-        self._target_roll: float = state.roll
+        self._target_pitch: float = state.orientation_pitch
+        self._target_heading: float = state.orientation_heading
+        self._target_roll: float = state.orientation_roll
 
     def tick(self, state: VesselState, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         self._tick_count += 1
@@ -71,15 +71,15 @@ class HoldAttitudeAction(Action):
         log.debug(
             f"Tick {self._tick_count}/{self._hold_ticks} | "
             f"target pitch={self._target_pitch:.1f} heading={self._target_heading:.1f} roll={self._target_roll:.1f} | "
-            f"actual pitch={state.pitch:.1f} heading={state.heading:.1f} roll={state.roll:.1f} | "
-            f"error total={state.autopilot_error or 0:.1f} "
-            f"pitch_err={state.autopilot_pitch_error or 0:.1f} "
-            f"heading_err={state.autopilot_heading_error or 0:.1f} "
-            f"roll_err={state.autopilot_roll_error or 0:.1f}"
+            f"actual pitch={state.orientation_pitch:.1f} heading={state.orientation_heading:.1f} roll={state.orientation_roll:.1f} | "
+            f"error total={state.control_autopilot_error or 0:.1f} "
+            f"pitch_err={state.control_autopilot_error_pitch or 0:.1f} "
+            f"heading_err={state.control_autopilot_error_heading or 0:.1f} "
+            f"roll_err={state.control_autopilot_error_roll or 0:.1f}"
         )
 
         if self._tick_count >= self._hold_ticks:
-            log.info(f"Hold complete after {self._tick_count} ticks. Final error: {state.autopilot_error or 0:.1f} deg")
+            log.info(f"Hold complete after {self._tick_count} ticks. Final error: {state.control_autopilot_error or 0:.1f} deg")
             return ActionResult(status=ActionStatus.SUCCEEDED, message="Attitude hold complete")
 
         return ActionResult(status=ActionStatus.RUNNING)

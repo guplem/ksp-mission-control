@@ -125,9 +125,9 @@ class ControllabilityTestAction(Action):
         self._tolerance: float = float(param_values.get("tolerance", _DEFAULT_TOLERANCE))
 
         # Capture initial orientation as baseline.
-        initial_pitch = state.pitch
-        initial_heading = state.heading
-        initial_roll = state.roll
+        initial_pitch = state.orientation_pitch
+        initial_heading = state.orientation_heading
+        initial_roll = state.orientation_roll
 
         target_roll = initial_roll + roll_offset
         target_pitch = min(max(initial_pitch - pitch_offset, -90.0), 90.0)
@@ -201,9 +201,9 @@ class ControllabilityTestAction(Action):
             log.info("Staged")
 
         # Set a constant throttle to ensure we have some control authority for the test
-        if state.peak_thrust > 0:  # Requires staged engines
+        if state.thrust_peak > 0:  # Requires staged engines
             target_twr = 1.5
-            throttle = min((target_twr * state.weight) / state.peak_thrust, 1.0)
+            throttle = min((target_twr * state.weight) / state.thrust_peak, 1.0)
             commands.throttle = throttle
 
         # All steps complete.
@@ -218,15 +218,15 @@ class ControllabilityTestAction(Action):
         commands.autopilot_roll = step.target_roll
 
         # Compute per-axis Euler errors (for logging).
-        pitch_err = _angle_error(state.pitch, step.target_pitch)
-        heading_err = _angle_error(state.heading, step.target_heading, wrap_360=True)
-        roll_err = _angle_error(state.roll, step.target_roll)
+        pitch_err = _angle_error(state.orientation_pitch, step.target_pitch)
+        heading_err = _angle_error(state.orientation_heading, step.target_heading, wrap_360=True)
+        roll_err = _angle_error(state.orientation_roll, step.target_roll)
 
         # Use the kRPC autopilot error for tolerance checks. This is the true
         # angular distance between current and target orientation, computed in
         # quaternion space, so it handles gimbal lock correctly (near pitch=90,
         # Euler heading and roll become coupled and individually unreliable).
-        autopilot_err = abs(state.autopilot_error) if state.autopilot_error is not None else None
+        autopilot_err = abs(state.control_autopilot_error) if state.control_autopilot_error is not None else None
 
         # After a step transition, the autopilot error in the state still
         # reflects the OLD target (state is read before commands are applied).
@@ -239,9 +239,9 @@ class ControllabilityTestAction(Action):
 
         err_summary = f"autopilot_err={autopilot_err:.1f}" if autopilot_err is not None else "autopilot_err=N/A"
         euler_summary = (
-            f"pitch={state.pitch:.1f} (err {pitch_err:+.1f}) "
-            f"heading={state.heading:.1f} (err {heading_err:+.1f}) "
-            f"roll={state.roll:.1f} (err {roll_err:+.1f})"
+            f"pitch={state.orientation_pitch:.1f} (err {pitch_err:+.1f}) "
+            f"heading={state.orientation_heading:.1f} (err {heading_err:+.1f}) "
+            f"roll={state.orientation_roll:.1f} (err {roll_err:+.1f})"
         )
 
         if self._slewing:

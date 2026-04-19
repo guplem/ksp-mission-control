@@ -69,11 +69,9 @@ class LandAction(Action):
         self._gear_deployed: bool = False
         self._first_tick: bool = True
         # Store initial vertical speed for acceleration estimation on first tick
-        self._prev_vertical_speed: float = state.vertical_speed
+        self._prev_vertical_speed: float = state.speed_vertical
 
-    def tick(
-        self, state: VesselState, commands: VesselCommands, dt: float, log: ActionLogger
-    ) -> ActionResult:
+    def tick(self, state: VesselState, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         # --- Descent speed target ---
         # sqrt(altitude) gives a smooth curve: e.g. 400m -> 20 m/s, 100m -> 10 m/s,
         # 4m -> 2 m/s. Clamped to never go below target_speed (the touchdown speed).
@@ -81,14 +79,14 @@ class LandAction(Action):
         desired_vertical_speed = -max(self._target_speed, altitude_speed)
 
         # Positive error = descending too fast, need more throttle
-        speed_error = desired_vertical_speed - state.vertical_speed
+        speed_error = desired_vertical_speed - state.speed_vertical
 
         # --- Derivative term: estimate vertical acceleration ---
         # Used by the D term to detect and dampen rapid throttle swings.
         # safe_dt avoids division by zero on the first tick or very small timesteps.
         safe_dt = max(dt, 0.01)
-        acceleration = (state.vertical_speed - self._prev_vertical_speed) / safe_dt
-        self._prev_vertical_speed = state.vertical_speed
+        acceleration = (state.speed_vertical - self._prev_vertical_speed) / safe_dt
+        self._prev_vertical_speed = state.speed_vertical
 
         # --- PD throttle calculation ---
         # 0.5 baseline ~= hover thrust. P corrects speed error, D dampens oscillation.
@@ -97,7 +95,7 @@ class LandAction(Action):
 
         log.debug(
             f"PD: desired_vspd={desired_vertical_speed:+.1f}m/s  "
-            f"actual_vspd={state.vertical_speed:+.1f}m/s  "
+            f"actual_vspd={state.speed_vertical:+.1f}m/s  "
             f"error={speed_error:+.1f}  accel={acceleration:+.1f}  "
             f"throttle={commands.throttle:.3f}"
         )
@@ -106,7 +104,7 @@ class LandAction(Action):
         if self._first_tick:
             self._first_tick = False
             commands.lights = True
-            commands.speed_mode = SpeedMode.SURFACE
+            commands.ui_speed_mode = SpeedMode.SURFACE
             log.info("Lights on for descent, navball set to Surface")
 
         # Hold radial SAS to keep vessel pointing away from surface

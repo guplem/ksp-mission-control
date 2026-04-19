@@ -194,22 +194,20 @@ class TranslateAction(Action):
 
         # Snapshot the starting position so we can measure displacement later.
         self._target_altitude: float = state.altitude_surface
-        self._start_latitude: float = state.latitude
-        self._start_longitude: float = state.longitude
+        self._start_latitude: float = state.position_latitude
+        self._start_longitude: float = state.position_longitude
         self._body_radius: float = state.body_radius
 
         # Used by the position-derivative velocity estimator.
         self._prev_traveled_north: float = 0.0
         self._prev_traveled_east: float = 0.0
 
-    def tick(
-        self, state: VesselState, commands: VesselCommands, dt: float, log: ActionLogger
-    ) -> ActionResult:
+    def tick(self, state: VesselState, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
 
         # ── 1. Where are we? ────────────────────────────────────────────────
         traveled_north, traveled_east = _lat_lon_to_meters(
-            state.latitude,
-            state.longitude,
+            state.position_latitude,
+            state.position_longitude,
             self._start_latitude,
             self._start_longitude,
             self._body_radius,
@@ -238,7 +236,7 @@ class TranslateAction(Action):
             -_MAX_APPROACH_SPEED,
             min(_MAX_APPROACH_SPEED, _SPEED_GAIN * altitude_error),
         )
-        vspeed_error = desired_vspeed - state.vertical_speed
+        vspeed_error = desired_vspeed - state.speed_vertical
         commands.throttle = max(0.0, min(1.0, 0.5 + _KP_SPEED * vspeed_error))
 
         # ── 5. Keep vessel upright with SAS radial ──────────────────────────
@@ -272,9 +270,9 @@ class TranslateAction(Action):
         body_fwd, body_right, body_up = _world_to_vessel(
             error_north,
             error_east,
-            state.heading,
-            state.pitch,
-            state.roll,
+            state.orientation_heading,
+            state.orientation_pitch,
+            state.orientation_roll,
         )
 
         commands.translate_forward = max(-1.0, min(1.0, _RCS_GAIN * body_fwd))

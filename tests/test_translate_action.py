@@ -187,8 +187,8 @@ class TestTranslateActionTick:
         action = TranslateAction()
         state = VesselState(
             altitude_surface=initial_altitude,
-            latitude=self._START_LAT,
-            longitude=self._START_LON,
+            position_latitude=self._START_LAT,
+            position_longitude=self._START_LON,
             body_radius=_KERBIN_RADIUS,
         )
         action.start(
@@ -212,11 +212,11 @@ class TestTranslateActionTick:
     ) -> VesselState:
         return VesselState(
             altitude_surface=altitude,
-            heading=heading,
-            pitch=pitch,
-            roll=roll,
-            latitude=self._START_LAT + _meters_to_lat(north_meters),
-            longitude=self._START_LON + _meters_to_lon(east_meters, self._START_LAT),
+            orientation_heading=heading,
+            orientation_pitch=pitch,
+            orientation_roll=roll,
+            position_latitude=self._START_LAT + _meters_to_lat(north_meters),
+            position_longitude=self._START_LON + _meters_to_lon(east_meters, self._START_LAT),
             body_radius=_KERBIN_RADIUS,
         )
 

@@ -43,9 +43,9 @@ class TestFormatTickHistory:
     def test_tick_includes_vessel_state(self) -> None:
         state = VesselState(
             altitude_surface=150.3,
-            vertical_speed=-2.5,
-            throttle=0.65,
-            sas=True,
+            speed_vertical=-2.5,
+            control_throttle=0.65,
+            control_sas=True,
         )
         tick = TickRecord(
             tick_number=1,
@@ -62,9 +62,9 @@ class TestFormatTickHistory:
         state_el = root.find("tick/state")
         assert state_el is not None
         assert state_el.findtext("altitude_surface") == "150.3000"
-        assert state_el.findtext("vertical_speed") == "-2.5000"
-        assert state_el.findtext("throttle") == "0.6500"
-        assert state_el.findtext("sas") == "True"
+        assert state_el.findtext("speed_vertical") == "-2.5000"
+        assert state_el.findtext("control_throttle") == "0.6500"
+        assert state_el.findtext("control_sas") == "True"
 
     def test_tick_with_logs_and_sent_commands(self) -> None:
         commands = VesselCommands(throttle=0.75, sas=True)
@@ -193,8 +193,8 @@ class TestFormatTickHistory:
         assert tag_names.index("state") < tag_names.index("logs")
 
     def test_state_delta_compression_omits_unchanged_fields(self) -> None:
-        state1 = VesselState(altitude_surface=100.0, vertical_speed=-1.0, throttle=0.5)
-        state2 = VesselState(altitude_surface=95.0, vertical_speed=-1.0, throttle=0.5)
+        state1 = VesselState(altitude_surface=100.0, speed_vertical=-1.0, control_throttle=0.5)
+        state2 = VesselState(altitude_surface=95.0, speed_vertical=-1.0, control_throttle=0.5)
         tick1 = TickRecord(
             tick_number=1,
             met=0.5,
@@ -223,15 +223,15 @@ class TestFormatTickHistory:
         state1_el = ticks[0].find("state")
         assert state1_el is not None
         assert state1_el.findtext("altitude_surface") == "100.0000"
-        assert state1_el.findtext("vertical_speed") == "-1.0000"
-        assert state1_el.findtext("throttle") == "0.5000"
+        assert state1_el.findtext("speed_vertical") == "-1.0000"
+        assert state1_el.findtext("control_throttle") == "0.5000"
 
         # Second tick only includes altitude_surface (the only changed field)
         state2_el = ticks[1].find("state")
         assert state2_el is not None
         assert state2_el.findtext("altitude_surface") == "95.0000"
-        assert state2_el.findtext("vertical_speed") is None
-        assert state2_el.findtext("throttle") is None
+        assert state2_el.findtext("speed_vertical") is None
+        assert state2_el.findtext("control_throttle") is None
 
     def test_state_omitted_entirely_when_nothing_changed(self) -> None:
         state = VesselState(altitude_surface=100.0)

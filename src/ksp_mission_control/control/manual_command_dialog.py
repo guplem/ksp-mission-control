@@ -85,7 +85,7 @@ _SECTIONS: list[tuple[str, list[_CommandField]]] = [
         [
             _CommandField("sas", "SAS", _FieldKind.BOOL),
             _CommandField("sas_mode", "SAS Mode", _FieldKind.SAS_MODE),
-            _CommandField("speed_mode", "Speed Mode", _FieldKind.SPEED_MODE),
+            _CommandField("ui_speed_mode", "Speed Mode", _FieldKind.SPEED_MODE),
             _CommandField("rcs", "RCS", _FieldKind.BOOL),
             _CommandField("gear", "Gear", _FieldKind.BOOL),
             _CommandField("legs", "Legs", _FieldKind.BOOL),
@@ -98,12 +98,12 @@ _SECTIONS: list[tuple[str, list[_CommandField]]] = [
     (
         "Deployables",
         [
-            _CommandField("solar_panels", "Solar Panels", _FieldKind.BOOL),
-            _CommandField("antennas", "Antennas", _FieldKind.BOOL),
-            _CommandField("cargo_bays", "Cargo Bays", _FieldKind.BOOL),
-            _CommandField("intakes", "Intakes", _FieldKind.BOOL),
-            _CommandField("parachutes", "Parachutes", _FieldKind.BOOL),
-            _CommandField("radiators", "Radiators", _FieldKind.BOOL),
+            _CommandField("deployable_solar_panels", "Solar Panels", _FieldKind.BOOL),
+            _CommandField("deployable_antennas", "Antennas", _FieldKind.BOOL),
+            _CommandField("deployable_cargo_bays", "Cargo Bays", _FieldKind.BOOL),
+            _CommandField("deployable_intakes", "Intakes", _FieldKind.BOOL),
+            _CommandField("deployable_parachutes", "Parachutes", _FieldKind.BOOL),
+            _CommandField("deployable_radiators", "Radiators", _FieldKind.BOOL),
         ],
     ),
 ]

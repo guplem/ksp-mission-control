@@ -188,7 +188,7 @@ class LaunchAction(Action):
         if raw_inclination is not None:
             self._target_inclination: float = float(raw_inclination)
         else:
-            self._target_inclination = state.inclination
+            self._target_inclination = state.orbit_inclination
 
         # Resolve turn_start_altitude: use provided value, or default to
         # 50m above the initial altitude (just enough to clear the pad).
@@ -206,16 +206,16 @@ class LaunchAction(Action):
             self._turn_end_altitude = self._target_altitude * _DEFAULT_TURN_END_FRACTION
 
         # Compute the launch heading from the target inclination.
-        self._launch_heading: float = _inclination_to_heading(self._target_inclination, state.latitude)
+        self._launch_heading: float = _inclination_to_heading(self._target_inclination, state.position_latitude)
 
     def tick(self, state: VesselState, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
 
         # Check if finished
-        if state.apoapsis >= self._target_altitude - self.tolerance_altitude:
+        if state.orbit_apoapsis >= self._target_altitude - self.tolerance_altitude:
             return ActionResult(status=ActionStatus.SUCCEEDED, message="Target apoapsis reached")
 
         # General Configuration
-        commands.speed_mode = SpeedMode.ORBIT  # show orbital speed on navball
+        commands.ui_speed_mode = SpeedMode.ORBIT  # show orbital speed on navball
         commands.autopilot = True
 
         # Rotation
@@ -223,21 +223,21 @@ class LaunchAction(Action):
             commands.autopilot_roll = 0  # For the time being, just go east
             # commands.autopilot_roll = self._launch_heading  # keep the vessel pointed in the right compass direction for the desired inclination
 
-            if state.autopilot_roll_error and ((state.autopilot_roll_error < 5) or (state.autopilot_roll_error > -5)):
+            if state.control_autopilot_error_roll and ((state.control_autopilot_error_roll < 5) or (state.control_autopilot_error_roll > -5)):
                 commands.autopilot_pitch = self._pitch_for_altitude(state.altitude_sea, self._turn_start_altitude, self._turn_end_altitude)
 
         # Throttle control
         commands.throttle = 1.0  # full throttle until we reach apoapsis
 
-        if state.available_thrust <= 1:
+        if state.thrust_available <= 1:
             commands.stage = True
-            log.info(f"Staging stage {state.current_stage} due to insufficient thrust({state.available_thrust}N)")
+            log.info(f"Staging stage {state.stage_current} due to insufficient thrust({state.thrust_available}N)")
 
-        if state.engines_flamed_out > 0:
+        if state.engine_flameout_count > 0:
             commands.stage = True
-            log.info(f"Staging. {state.engines_flamed_out} engine(s) have flamed out ")
+            log.info(f"Staging. {state.engine_flameout_count} engine(s) have flamed out ")
 
-        log.debug(f"Dynamic pressure: {(state.dynamic_pressure / 1000):.1f}kPa ")
+        log.debug(f"Dynamic pressure: {(state.pressure_dynamic / 1000):.1f}kPa ")
 
         return ActionResult(status=ActionStatus.RUNNING)
 

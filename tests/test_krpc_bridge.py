@@ -232,10 +232,10 @@ class TestReadVesselState:
     def test_reads_autopilot_error_fields(self) -> None:
         conn = _make_mock_conn()
         state = read_vessel_state(conn)
-        assert state.autopilot_error == 2.5
-        assert state.autopilot_pitch_error == 1.0
-        assert state.autopilot_heading_error == -1.5
-        assert state.autopilot_roll_error == 0.3
+        assert state.control_autopilot_error == 2.5
+        assert state.control_autopilot_error_pitch == 1.0
+        assert state.control_autopilot_error_heading == -1.5
+        assert state.control_autopilot_error_roll == 0.3
 
     def test_autopilot_errors_none_when_not_engaged(self) -> None:
         """Autopilot error properties raise when not engaged; bridge returns None."""
@@ -262,18 +262,18 @@ class TestReadVesselState:
         conn.space_center.active_vessel.auto_pilot = patched_ap
 
         state = read_vessel_state(conn)
-        assert state.autopilot is False
-        assert state.autopilot_error is None
-        assert state.autopilot_pitch_error is None
-        assert state.autopilot_heading_error is None
-        assert state.autopilot_roll_error is None
+        assert state.control_autopilot is False
+        assert state.control_autopilot_error is None
+        assert state.control_autopilot_error_pitch is None
+        assert state.control_autopilot_error_heading is None
+        assert state.control_autopilot_error_roll is None
 
     def test_reads_orientation_fields(self) -> None:
         conn = _make_mock_conn()
         state = read_vessel_state(conn)
-        assert state.pitch == 45.0
-        assert state.heading == 90.0
-        assert state.roll == 0.0
+        assert state.orientation_pitch == 45.0
+        assert state.orientation_heading == 90.0
+        assert state.orientation_roll == 0.0
 
     def test_reads_control_input_fields(self) -> None:
         conn = _make_mock_conn()
@@ -281,41 +281,41 @@ class TestReadVesselState:
         conn.space_center.active_vessel.control.yaw = -0.5
         conn.space_center.active_vessel.control.roll = 0.3
         state = read_vessel_state(conn)
-        assert state.input_pitch == 0.75
-        assert state.input_yaw == -0.5
-        assert state.input_roll == 0.3
+        assert state.control_input_pitch == 0.75
+        assert state.control_input_yaw == -0.5
+        assert state.control_input_roll == 0.3
 
     def test_reads_atmospheric_data(self) -> None:
         conn = _make_mock_conn()
         state = read_vessel_state(conn)
-        assert state.dynamic_pressure == 5000.0
-        assert state.static_pressure == 10000.0
-        assert state.drag == (100.0, 100.0, 100.0)
-        assert state.lift == (25.0, 25.0, 25.0)
+        assert state.pressure_dynamic == 5000.0
+        assert state.pressure_static == 10000.0
+        assert state.aero_drag == (100.0, 100.0, 100.0)
+        assert state.aero_lift == (25.0, 25.0, 25.0)
         assert state.g_force == 1.2
 
     def test_reads_orbital_timing(self) -> None:
         conn = _make_mock_conn()
         state = read_vessel_state(conn)
-        assert state.time_to_apoapsis == 300.0
-        assert state.time_to_periapsis == 900.0
+        assert state.orbit_apoapsis_time_to == 300.0
+        assert state.orbit_periapsis_time_to == 900.0
 
     def test_reads_vessel_mass_and_thrust(self) -> None:
         conn = _make_mock_conn()
         state = read_vessel_state(conn)
         assert state.mass == 5000.0
-        assert state.dry_mass == 2000.0
+        assert state.mass_dry == 2000.0
         assert state.thrust == 25000.0
-        assert state.available_thrust == 50000.0
-        assert state.peak_thrust == 60000.0
-        assert state.specific_impulse == 320.0
+        assert state.thrust_available == 50000.0
+        assert state.thrust_peak == 60000.0
+        assert state.engine_impulse_specific == 320.0
 
     def test_reads_body_properties(self) -> None:
         conn = _make_mock_conn()
         state = read_vessel_state(conn)
         assert state.body_radius == 600000.0
-        assert state.surface_gravity == 9.81
-        assert state.body == "Kerbin"
+        assert state.body_gravity == 9.81
+        assert state.body_name == "Kerbin"
         assert state.body_has_atmosphere is True
         assert state.body_atmosphere_depth == 70000.0
 
@@ -607,14 +607,14 @@ class TestFilterCommands:
     def test_filters_redundant_sas(self) -> None:
         """SAS already True in state should be filtered out."""
         commands = VesselCommands(sas=True)
-        state = VesselState(sas=True)
+        state = VesselState(control_sas=True)
         filtered, applied = filter_commands(commands, state)
         assert filtered.sas is None
         assert "sas" not in applied
 
     def test_passes_changed_throttle(self) -> None:
         commands = VesselCommands(throttle=0.8)
-        state = VesselState(throttle=0.0)
+        state = VesselState(control_throttle=0.0)
         filtered, applied = filter_commands(commands, state)
         assert filtered.throttle == 0.8
         assert "throttle" in applied
@@ -622,14 +622,14 @@ class TestFilterCommands:
     def test_autopilot_pitch_always_applied(self) -> None:
         """autopilot_pitch is not in _COMPARABLE_FIELDS, so always passes through."""
         commands = VesselCommands(autopilot_pitch=45.0)
-        state = VesselState(pitch=45.0)  # Same angle, but not comparable
+        state = VesselState(orientation_pitch=45.0)  # Same angle, but not comparable
         filtered, applied = filter_commands(commands, state)
         assert filtered.autopilot_pitch == 45.0
         assert "autopilot_pitch" in applied
 
     def test_autopilot_heading_always_applied(self) -> None:
         commands = VesselCommands(autopilot_heading=90.0)
-        state = VesselState(heading=90.0)
+        state = VesselState(orientation_heading=90.0)
         filtered, applied = filter_commands(commands, state)
         assert filtered.autopilot_heading == 90.0
         assert "autopilot_heading" in applied

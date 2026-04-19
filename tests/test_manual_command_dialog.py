@@ -91,7 +91,7 @@ class TestManualCommandDialogComposition:
     async def test_has_speed_mode_select(self) -> None:
         async with ManualCommandTestApp().run_test() as pilot:
             await pilot.pause()
-            sel = pilot.app.screen.query_one("#cmd-speed_mode", Select)
+            sel = pilot.app.screen.query_one("#cmd-ui_speed_mode", Select)
             assert sel is not None
 
     @pytest.mark.asyncio
@@ -114,10 +114,10 @@ class TestManualCommandDialogComposition:
     async def test_has_deployable_fields(self) -> None:
         async with ManualCommandTestApp().run_test() as pilot:
             await pilot.pause()
-            pilot.app.screen.query_one("#cmd-solar_panels", Select)
-            pilot.app.screen.query_one("#cmd-antennas", Select)
-            pilot.app.screen.query_one("#cmd-parachutes", Select)
-            pilot.app.screen.query_one("#cmd-radiators", Select)
+            pilot.app.screen.query_one("#cmd-deployable_solar_panels", Select)
+            pilot.app.screen.query_one("#cmd-deployable_antennas", Select)
+            pilot.app.screen.query_one("#cmd-deployable_parachutes", Select)
+            pilot.app.screen.query_one("#cmd-deployable_radiators", Select)
 
     @pytest.mark.asyncio
     async def test_float_inputs_start_empty(self) -> None:
@@ -204,12 +204,12 @@ class TestManualCommandDialogSend:
         app = ManualCommandTestApp()
         async with app.run_test(size=(80, 60)) as pilot:
             await pilot.pause()
-            sel = pilot.app.screen.query_one("#cmd-speed_mode", Select)
+            sel = pilot.app.screen.query_one("#cmd-ui_speed_mode", Select)
             sel.value = SpeedMode.SURFACE.value
             await pilot.click("#manual-cmd-send-btn")
             await pilot.pause()
             assert isinstance(app.dismissed_value, VesselCommands)
-            assert app.dismissed_value.speed_mode == SpeedMode.SURFACE
+            assert app.dismissed_value.ui_speed_mode == SpeedMode.SURFACE
 
     @pytest.mark.asyncio
     async def test_send_with_multiple_fields(self) -> None:
@@ -263,7 +263,7 @@ class TestManualCommandDialogSend:
             assert app.dismissed_value.stage is None
             assert app.dismissed_value.sas is None
             assert app.dismissed_value.input_pitch is None
-            assert app.dismissed_value.solar_panels is None
+            assert app.dismissed_value.deployable_solar_panels is None
 
     @pytest.mark.asyncio
     async def test_send_stage_true(self) -> None:
@@ -294,12 +294,12 @@ class TestManualCommandDialogSend:
         app = ManualCommandTestApp()
         async with app.run_test(size=(80, 60)) as pilot:
             await pilot.pause()
-            sel = pilot.app.screen.query_one("#cmd-solar_panels", Select)
+            sel = pilot.app.screen.query_one("#cmd-deployable_solar_panels", Select)
             sel.value = "on"
             await pilot.click("#manual-cmd-send-btn")
             await pilot.pause()
             assert isinstance(app.dismissed_value, VesselCommands)
-            assert app.dismissed_value.solar_panels is True
+            assert app.dismissed_value.deployable_solar_panels is True
 
 
 # ---------------------------------------------------------------------------

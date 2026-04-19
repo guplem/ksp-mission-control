@@ -191,12 +191,12 @@ _TOGGLE_FIELDS: frozenset[str] = frozenset(
         "lights",
         "brakes",
         "wheels",
-        "solar_panels",
-        "antennas",
-        "cargo_bays",
-        "intakes",
-        "parachutes",
-        "radiators",
+        "deployable_solar_panels",
+        "deployable_antennas",
+        "deployable_cargo_bays",
+        "deployable_intakes",
+        "deployable_parachutes",
+        "deployable_radiators",
     }
 )
 
@@ -250,7 +250,7 @@ def format_field_value(name: str, value: object) -> str:
         return "ENGAGE" if value else "DISENGAGE"
     if name == "sas_mode":
         return cast(SASMode, value).display_name
-    if name == "speed_mode":
+    if name == "ui_speed_mode":
         return cast(SpeedMode, value).display_name
     if name == "autopilot_direction":
         return _format_direction(cast(AutopilotDirection, value))

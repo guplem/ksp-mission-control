@@ -286,161 +286,165 @@ class VesselState:
     """Mean altitude above sea level, in meters."""
     altitude_surface: float = 0.0
     """Altitude above the terrain surface, in meters."""
-    vertical_speed: float = 0.0
+    speed_vertical: float = 0.0
     """Vertical velocity in m/s. Positive = ascending, negative = descending."""
-    surface_speed: float = 0.0
+    speed_surface: float = 0.0
     """Speed relative to the surface of the body, in m/s."""
-    orbital_speed: float = 0.0
+    speed_orbital: float = 0.0
     """Speed relative to the orbited body's center of mass, in m/s."""
 
     # --- Atmosphere ---
-    dynamic_pressure: float = 0.0
+    pressure_dynamic: float = 0.0
     """Dynamic pressure (0.5 * air_density * velocity^2), in Pascals. 0 in vacuum."""
-    static_pressure: float = 0.0
+    pressure_static: float = 0.0
     """Atmospheric static pressure, in Pascals. 0 in vacuum."""
-    drag: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    aero_drag: tuple[float, float, float] = (0.0, 0.0, 0.0)
     """Aerodynamic drag force vector, in Newtons. (0,0,0) in vacuum."""
-    lift: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    aero_lift: tuple[float, float, float] = (0.0, 0.0, 0.0)
     """Aerodynamic lift force vector, in Newtons. (0,0,0) in vacuum."""
     g_force: float = 0.0
     """Current g-force experienced by the vessel. 1.0 on Kerbin's surface at rest."""
 
     # --- Orbit ---
-    apoapsis: float = 0.0
+    orbit_apoapsis: float = 0.0
     """Highest point of the orbit above sea level, in meters."""
-    periapsis: float = 0.0
+    orbit_periapsis: float = 0.0
     """Lowest point of the orbit above sea level, in meters."""
-    inclination: float = 0.0
+    orbit_inclination: float = 0.0
     """Orbital inclination relative to the equator, in degrees."""
-    eccentricity: float = 0.0
+    orbit_eccentricity: float = 0.0
     """Orbital eccentricity. 0 = circular, 0-1 = elliptical, 1 = parabolic."""
-    period: float = 0.0
+    orbit_period: float = 0.0
     """Time for one complete orbit, in seconds."""
-    time_to_apoapsis: float = 0.0
+    orbit_apoapsis_time_to: float = 0.0
     """Time until apoapsis, in seconds."""
-    time_to_periapsis: float = 0.0
+    orbit_periapsis_time_to: float = 0.0
     """Time until periapsis, in seconds."""
 
     # --- Vessel ---
     met: float = 0.0
     """Mission Elapsed Time since launch, in seconds."""
-    vessel_name: str = ""
+    name: str = ""
     """Name of the active vessel."""
     situation: VesselSituation = VesselSituation.PRE_LAUNCH
     """Current flight situation (e.g. PRE_LAUNCH, FLYING, ORBITING, LANDED)."""
     mass: float = 0.0
     """Total vessel mass including fuel, in kilograms."""
-    dry_mass: float = 0.0
+    mass_dry: float = 0.0
     """Vessel mass without fuel, in kilograms."""
     thrust: float = 0.0
     """Thrust being produced right now. Accounts for throttle, atmosphere, and fuel. 0 when engines are off."""
-    available_thrust: float = 0.0
+    thrust_available: float = 0.0
     """Full-throttle thrust from engines that still have fuel. Excludes flamed-out engines. Does NOT account for throttle."""
-    peak_thrust: float = 0.0
+    thrust_peak: float = 0.0
     """Full-throttle thrust from ALL active engines, including flamed-out ones. Does NOT account for throttle or fuel state."""
-    specific_impulse: float = 0.0
+    engine_impulse_specific: float = 0.0
     """Current overall specific impulse, in seconds. 0 if no active engines."""
 
     # --- Position ---
-    body: str = ""
+    body_name: str = ""
     """Name of the celestial body being orbited (e.g. 'Kerbin', 'Mun')."""
     body_radius: float = 600000.0
     """Equatorial radius of the orbited body, in meters. Defaults to Kerbin."""
-    surface_gravity: float = 9.81
+    body_gravity: float = 9.81
     """Surface gravitational acceleration of the orbited body, in m/s^2. Defaults to Kerbin."""
     body_has_atmosphere: bool = True
     """Whether the orbited body has an atmosphere at all (e.g. Kerbin=True, Mun=False)."""
     body_atmosphere_depth: float = 70000.0
     """Maximum altitude of the body's atmosphere, in meters. 0 if no atmosphere. Kerbin=70km."""
-    latitude: float = 0.0
+    position_latitude: float = 0.0
     """Geographic latitude on the body surface, in degrees. -90 to 90."""
-    longitude: float = 0.0
+    position_longitude: float = 0.0
     """Geographic longitude on the body surface, in degrees. -180 to 180."""
 
     # --- Orientation ---
-    pitch: float = 0.0
+    orientation_pitch: float = 0.0
     """Vessel pitch angle in degrees. 0 = horizontal, 90 = straight up."""
-    heading: float = 0.0
+    orientation_heading: float = 0.0
     """Vessel heading in degrees. 0 = north, 90 = east, 180 = south, 270 = west."""
-    roll: float = 0.0
+    orientation_roll: float = 0.0
     """Vessel roll angle in degrees."""
 
-    # --- Control inputs (raw stick/axis values, -1.0 to 1.0) ---
-    input_pitch: float = 0.0
+    # --- Control ---
+    control_input_pitch: float = 0.0
     """Current pitch control input. -1.0 = nose down, 1.0 = nose up."""
-    input_yaw: float = 0.0
+    control_input_yaw: float = 0.0
     """Current yaw control input. -1.0 = left, 1.0 = right."""
-    input_roll: float = 0.0
+    control_input_roll: float = 0.0
     """Current roll control input. -1.0 = counter-clockwise, 1.0 = clockwise."""
-
-    # --- Autopilot state (read from kRPC auto_pilot) ---
-    autopilot: bool = False
+    control_autopilot: bool = False
     """Whether the kRPC autopilot is currently engaged."""
-    autopilot_target_pitch: float = 0.0
+    control_autopilot_target_pitch: float = 0.0
     """Autopilot's current target pitch, in degrees."""
-    autopilot_target_heading: float = 0.0
+    control_autopilot_target_heading: float = 0.0
     """Autopilot's current target heading, in degrees."""
-    autopilot_target_roll: float = 0.0
+    control_autopilot_target_roll: float = 0.0
     """Autopilot's current target roll, in degrees. NaN = roll targeting disabled."""
-    autopilot_error: float | None = None
+    control_autopilot_error: float | None = None
     """Angular error between current and target direction, in degrees. None when autopilot not engaged."""
-    autopilot_pitch_error: float | None = None
+    control_autopilot_error_pitch: float | None = None
     """Pitch error between current and target, in degrees. None when autopilot not engaged."""
-    autopilot_heading_error: float | None = None
+    control_autopilot_error_heading: float | None = None
     """Heading error between current and target, in degrees. None when autopilot not engaged."""
-    autopilot_roll_error: float | None = None
+    control_autopilot_error_roll: float | None = None
     """Roll error between current and target, in degrees. None when autopilot not engaged."""
-
-    # --- Configuration ---
-    throttle: float = 0.0
+    control_throttle: float = 0.0
     """Current throttle setting. 0.0 = off, 1.0 = full thrust."""
-    sas: bool = False
+    control_sas: bool = False
     """Whether the Stability Assist System is enabled."""
-    sas_mode: SASMode | None = None
+    control_sas_mode: SASMode | None = None
     """Active SAS autopilot mode. None when SAS is off."""
-    speed_mode: SpeedMode = SpeedMode.ORBIT
+    control_ui_speed_mode: SpeedMode = SpeedMode.ORBIT
     """Navball speed display mode (orbit, surface, or target)."""
-    rcs: bool = False
+    control_rcs: bool = False
     """Whether the Reaction Control System is enabled."""
-    gear: bool = False
+    control_gear: bool = False
     """Whether landing gear is deployed."""
-    legs: bool = False
+    control_legs: bool = False
     """Whether landing legs are deployed."""
-    lights: bool = False
+    control_lights: bool = False
     """Whether vessel lights are on."""
-    brakes: bool = False
+    control_brakes: bool = False
     """Whether brakes are engaged."""
-    abort: bool = False
+    control_wheels: bool = False
+    """Whether wheel motors are active."""
+    control_abort: bool = False
     """Whether the abort action group has been triggered."""
-    current_stage: int = 0
+    control_translate_forward: float = 0.0
+    """RCS translation forward/backward. -1.0 = backward, 1.0 = forward."""
+    control_translate_right: float = 0.0
+    """RCS translation left/right. -1.0 = left, 1.0 = right."""
+    control_translate_up: float = 0.0
+    """RCS translation down/up. -1.0 = down, 1.0 = up."""
+    stage_current: int = 0
     """Currently active stage number."""
-    max_stages: int = 0
+    stage_max: int = 0
     """Total number of stages on the vessel."""
-    engines_flamed_out: int = 0
+    engine_flameout_count: int = 0
     """Number of active engines that have run out of fuel (flameout)."""
 
     # --- Deployables ---
-    solar_panels: bool = False
+    control_deployable_solar_panels: bool = False
     """Whether solar panels are deployed."""
-    antennas: bool = False
+    control_deployable_antennas: bool = False
     """Whether antennas are deployed."""
-    cargo_bays: bool = False
+    control_deployable_cargo_bays: bool = False
     """Whether cargo bays are open."""
-    intakes: bool = False
+    control_deployable_intakes: bool = False
     """Whether air intakes are open."""
-    parachutes: bool = False
+    control_deployable_parachutes: bool = False
     """Whether parachutes are deployed."""
-    radiators: bool = False
+    control_deployable_radiators: bool = False
     """Whether radiators are deployed."""
 
     # --- Resources ---
-    electric_charge: float = 0.0
+    resource_electric_charge: float = 0.0
     """Available electric charge, in units."""
-    liquid_fuel: float = 0.0
+    resource_liquid_fuel: float = 0.0
     """Available liquid fuel, in units."""
-    oxidizer: float = 0.0
+    resource_oxidizer: float = 0.0
     """Available oxidizer, in units."""
-    mono_propellant: float = 0.0
+    resource_mono_propellant: float = 0.0
     """Available monopropellant (RCS fuel), in units."""
 
     # --- Derived properties (computed from raw telemetry) ---
@@ -449,15 +453,15 @@ class VesselState:
     def weight(self) -> float:
         """Gravitational force on the vessel (mass * local gravity), in Newtons.
 
-        Returns 0.0 if mass or surface gravity is zero.
+        Returns 0.0 if mass or body gravity is zero.
         """
-        return self.mass * self.surface_gravity
+        return self.mass * self.body_gravity
 
     @property
     def twr(self) -> float:
         """Current thrust-to-weight ratio (actual thrust at current throttle).
 
-        Returns 0.0 if mass or surface gravity is zero.
+        Returns 0.0 if mass or body gravity is zero.
         """
         if self.weight <= 0.0:
             return 0.0
@@ -467,22 +471,22 @@ class VesselState:
     def max_twr(self) -> float:
         """Maximum thrust-to-weight ratio at full throttle in current conditions.
 
-        Returns 0.0 if mass or surface gravity is zero.
+        Returns 0.0 if mass or body gravity is zero.
         """
         if self.weight <= 0.0:
             return 0.0
-        return self.peak_thrust / self.weight
+        return self.thrust_peak / self.weight
 
     @property
     def delta_v(self) -> float:
         """Remaining delta-v via Tsiolkovsky rocket equation: Isp * g0 * ln(m0/m1).
 
-        Uses current specific_impulse and standard gravity (9.80665 m/s^2).
-        Returns 0.0 if no engines, no fuel, or dry_mass is zero.
+        Uses current impulse_specific and standard gravity (9.80665 m/s^2).
+        Returns 0.0 if no engines, no fuel, or mass_dry is zero.
         """
-        if self.specific_impulse <= 0.0 or self.dry_mass <= 0.0 or self.mass <= self.dry_mass:
+        if self.engine_impulse_specific <= 0.0 or self.mass_dry <= 0.0 or self.mass <= self.mass_dry:
             return 0.0
-        return self.specific_impulse * _STANDARD_GRAVITY * math.log(self.mass / self.dry_mass)
+        return self.engine_impulse_specific * _STANDARD_GRAVITY * math.log(self.mass / self.mass_dry)
 
     @property
     def fuel_fraction(self) -> float:
@@ -492,23 +496,23 @@ class VesselState:
         """
         if self.mass <= 0.0:
             return 0.0
-        return (self.mass - self.dry_mass) / self.mass
+        return (self.mass - self.mass_dry) / self.mass
 
     @property
     def time_to_impact(self) -> float:
         """Estimated seconds until surface contact, assuming constant descent rate.
 
         Returns ``float('inf')`` if the vessel is not descending or is on the ground.
-        Uses altitude_surface / abs(vertical_speed) as a linear estimate.
+        Uses altitude_surface / abs(speed_vertical) as a linear estimate.
         """
-        if self.vertical_speed >= 0.0 or self.altitude_surface <= 0.0:
+        if self.speed_vertical >= 0.0 or self.altitude_surface <= 0.0:
             return float("inf")
-        return self.altitude_surface / abs(self.vertical_speed)
+        return self.altitude_surface / abs(self.speed_vertical)
 
     @property
     def in_atmosphere(self) -> bool:
         """Whether the vessel is currently experiencing atmospheric pressure."""
-        return self.static_pressure > 0.0
+        return self.pressure_static > 0.0
 
     @property
     def above_atmosphere(self) -> bool:
@@ -524,7 +528,7 @@ class VesselState:
     @property
     def has_atmosphere(self) -> bool:
         """Whether the vessel is currently in an atmosphere (static pressure > 0)."""
-        return self.static_pressure > 0.0
+        return self.pressure_static > 0.0
 
     @property
     def is_landed(self) -> bool:
@@ -549,12 +553,12 @@ class VesselState:
     @property
     def is_ascending(self) -> bool:
         """Whether the vessel is moving upward (positive vertical speed)."""
-        return self.vertical_speed > 0.0
+        return self.speed_vertical > 0.0
 
     @property
     def is_descending(self) -> bool:
         """Whether the vessel is moving downward (negative vertical speed)."""
-        return self.vertical_speed < 0.0
+        return self.speed_vertical < 0.0
 
 
 @dataclass
@@ -606,7 +610,7 @@ class VesselCommands:
     """Stability Assist System. True = enable, False = disable."""
     sas_mode: SASMode | None = None
     """SAS autopilot mode."""
-    speed_mode: SpeedMode | None = None
+    ui_speed_mode: SpeedMode | None = None
     """Navball speed display mode."""
     rcs: bool | None = None
     """Reaction Control System. True = enable, False = disable."""
@@ -624,17 +628,17 @@ class VesselCommands:
     """Abort action group. True = trigger."""
 
     # --- Deployables ---
-    solar_panels: bool | None = None
+    deployable_solar_panels: bool | None = None
     """Solar panels. True = deploy, False = retract."""
-    antennas: bool | None = None
+    deployable_antennas: bool | None = None
     """Antennas. True = deploy, False = retract."""
-    cargo_bays: bool | None = None
+    deployable_cargo_bays: bool | None = None
     """Cargo bays. True = open, False = close."""
-    intakes: bool | None = None
+    deployable_intakes: bool | None = None
     """Air intakes. True = open, False = close."""
-    parachutes: bool | None = None
+    deployable_parachutes: bool | None = None
     """Parachutes. True = deploy."""
-    radiators: bool | None = None
+    deployable_radiators: bool | None = None
     """Radiators. True = deploy, False = retract."""
 
 

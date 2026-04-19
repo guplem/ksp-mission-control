@@ -100,65 +100,65 @@ class TestVesselState:
         state = VesselState()
         assert state.altitude_sea == 0.0
         assert state.altitude_surface == 0.0
-        assert state.vertical_speed == 0.0
-        assert state.surface_speed == 0.0
-        assert state.orbital_speed == 0.0
-        assert state.apoapsis == 0.0
-        assert state.periapsis == 0.0
+        assert state.speed_vertical == 0.0
+        assert state.speed_surface == 0.0
+        assert state.speed_orbital == 0.0
+        assert state.orbit_apoapsis == 0.0
+        assert state.orbit_periapsis == 0.0
         assert state.met == 0.0
-        assert state.vessel_name == ""
+        assert state.name == ""
         assert state.situation == VesselSituation.PRE_LAUNCH
-        assert state.body == ""
-        assert state.latitude == 0.0
-        assert state.longitude == 0.0
-        assert state.inclination == 0.0
-        assert state.eccentricity == 0.0
-        assert state.period == 0.0
-        assert state.pitch == 0.0
-        assert state.heading == 0.0
-        assert state.roll == 0.0
-        assert state.dynamic_pressure == 0.0
-        assert state.static_pressure == 0.0
-        assert state.drag == (0.0, 0.0, 0.0)
-        assert state.lift == (0.0, 0.0, 0.0)
+        assert state.body_name == ""
+        assert state.position_latitude == 0.0
+        assert state.position_longitude == 0.0
+        assert state.orbit_inclination == 0.0
+        assert state.orbit_eccentricity == 0.0
+        assert state.orbit_period == 0.0
+        assert state.orientation_pitch == 0.0
+        assert state.orientation_heading == 0.0
+        assert state.orientation_roll == 0.0
+        assert state.pressure_dynamic == 0.0
+        assert state.pressure_static == 0.0
+        assert state.aero_drag == (0.0, 0.0, 0.0)
+        assert state.aero_lift == (0.0, 0.0, 0.0)
         assert state.g_force == 0.0
-        assert state.time_to_apoapsis == 0.0
-        assert state.time_to_periapsis == 0.0
+        assert state.orbit_apoapsis_time_to == 0.0
+        assert state.orbit_periapsis_time_to == 0.0
         assert state.mass == 0.0
-        assert state.dry_mass == 0.0
-        assert state.available_thrust == 0.0
-        assert state.peak_thrust == 0.0
-        assert state.specific_impulse == 0.0
-        assert state.surface_gravity == 9.81
+        assert state.mass_dry == 0.0
+        assert state.thrust_available == 0.0
+        assert state.thrust_peak == 0.0
+        assert state.engine_impulse_specific == 0.0
+        assert state.body_gravity == 9.81
         assert state.body_has_atmosphere is True
         assert state.body_atmosphere_depth == 70000.0
-        assert state.autopilot_error is None
-        assert state.autopilot_pitch_error is None
-        assert state.autopilot_heading_error is None
-        assert state.autopilot_roll_error is None
-        assert state.sas_mode is None
-        assert state.throttle == 0.0
-        assert state.sas is False
-        assert state.speed_mode == SpeedMode.ORBIT
-        assert state.rcs is False
-        assert state.current_stage == 0
-        assert state.max_stages == 0
-        assert state.electric_charge == 0.0
-        assert state.liquid_fuel == 0.0
-        assert state.oxidizer == 0.0
-        assert state.mono_propellant == 0.0
+        assert state.control_autopilot_error is None
+        assert state.control_autopilot_error_pitch is None
+        assert state.control_autopilot_error_heading is None
+        assert state.control_autopilot_error_roll is None
+        assert state.control_sas_mode is None
+        assert state.control_throttle == 0.0
+        assert state.control_sas is False
+        assert state.control_ui_speed_mode == SpeedMode.ORBIT
+        assert state.control_rcs is False
+        assert state.stage_current == 0
+        assert state.stage_max == 0
+        assert state.resource_electric_charge == 0.0
+        assert state.resource_liquid_fuel == 0.0
+        assert state.resource_oxidizer == 0.0
+        assert state.resource_mono_propellant == 0.0
 
     def test_autopilot_error_partial_construction(self) -> None:
-        state = VesselState(autopilot_error=5.2, autopilot_heading_error=-3.1)
-        assert state.autopilot_error == 5.2
-        assert state.autopilot_heading_error == -3.1
-        assert state.autopilot_pitch_error is None  # default
-        assert state.autopilot_roll_error is None  # default
+        state = VesselState(control_autopilot_error=5.2, control_autopilot_error_heading=-3.1)
+        assert state.control_autopilot_error == 5.2
+        assert state.control_autopilot_error_heading == -3.1
+        assert state.control_autopilot_error_pitch is None  # default
+        assert state.control_autopilot_error_roll is None  # default
 
     def test_partial_construction(self) -> None:
-        state = VesselState(altitude_surface=50.0, vertical_speed=-2.5)
+        state = VesselState(altitude_surface=50.0, speed_vertical=-2.5)
         assert state.altitude_surface == 50.0
-        assert state.vertical_speed == -2.5
+        assert state.speed_vertical == -2.5
         assert state.altitude_sea == 0.0  # default
 
     def test_is_frozen(self) -> None:
@@ -171,71 +171,71 @@ class TestVesselStateDerived:
     """Tests for derived @property methods on VesselState."""
 
     def test_twr_normal(self) -> None:
-        state = VesselState(thrust=30000.0, mass=5000.0, surface_gravity=9.81)
+        state = VesselState(thrust=30000.0, mass=5000.0, body_gravity=9.81)
         expected = 30000.0 / (5000.0 * 9.81)
         assert abs(state.twr - expected) < 0.001
 
     def test_twr_zero_mass(self) -> None:
-        state = VesselState(thrust=30000.0, mass=0.0, surface_gravity=9.81)
+        state = VesselState(thrust=30000.0, mass=0.0, body_gravity=9.81)
         assert state.twr == 0.0
 
     def test_twr_zero_gravity(self) -> None:
-        state = VesselState(thrust=30000.0, mass=5000.0, surface_gravity=0.0)
+        state = VesselState(thrust=30000.0, mass=5000.0, body_gravity=0.0)
         assert state.twr == 0.0
 
     def test_max_twr(self) -> None:
-        state = VesselState(peak_thrust=60000.0, mass=5000.0, surface_gravity=9.81)
+        state = VesselState(thrust_peak=60000.0, mass=5000.0, body_gravity=9.81)
         expected = 60000.0 / (5000.0 * 9.81)
         assert abs(state.max_twr - expected) < 0.001
 
     def test_delta_v_normal(self) -> None:
-        state = VesselState(specific_impulse=320.0, mass=5000.0, dry_mass=2000.0)
+        state = VesselState(engine_impulse_specific=320.0, mass=5000.0, mass_dry=2000.0)
         expected = 320.0 * 9.80665 * math.log(5000.0 / 2000.0)
         assert abs(state.delta_v - expected) < 0.01
 
     def test_delta_v_no_engines(self) -> None:
-        state = VesselState(specific_impulse=0.0, mass=5000.0, dry_mass=2000.0)
+        state = VesselState(engine_impulse_specific=0.0, mass=5000.0, mass_dry=2000.0)
         assert state.delta_v == 0.0
 
     def test_delta_v_no_fuel(self) -> None:
-        state = VesselState(specific_impulse=320.0, mass=2000.0, dry_mass=2000.0)
+        state = VesselState(engine_impulse_specific=320.0, mass=2000.0, mass_dry=2000.0)
         assert state.delta_v == 0.0
 
-    def test_delta_v_zero_dry_mass(self) -> None:
-        state = VesselState(specific_impulse=320.0, mass=5000.0, dry_mass=0.0)
+    def test_delta_v_zero_mass_dry(self) -> None:
+        state = VesselState(engine_impulse_specific=320.0, mass=5000.0, mass_dry=0.0)
         assert state.delta_v == 0.0
 
     def test_fuel_fraction_normal(self) -> None:
-        state = VesselState(mass=5000.0, dry_mass=2000.0)
+        state = VesselState(mass=5000.0, mass_dry=2000.0)
         assert abs(state.fuel_fraction - 0.6) < 0.001
 
     def test_fuel_fraction_no_fuel(self) -> None:
-        state = VesselState(mass=2000.0, dry_mass=2000.0)
+        state = VesselState(mass=2000.0, mass_dry=2000.0)
         assert state.fuel_fraction == 0.0
 
     def test_fuel_fraction_zero_mass(self) -> None:
-        state = VesselState(mass=0.0, dry_mass=0.0)
+        state = VesselState(mass=0.0, mass_dry=0.0)
         assert state.fuel_fraction == 0.0
 
     def test_time_to_impact_descending(self) -> None:
-        state = VesselState(altitude_surface=100.0, vertical_speed=-10.0)
+        state = VesselState(altitude_surface=100.0, speed_vertical=-10.0)
         assert abs(state.time_to_impact - 10.0) < 0.001
 
     def test_time_to_impact_ascending(self) -> None:
-        state = VesselState(altitude_surface=100.0, vertical_speed=5.0)
+        state = VesselState(altitude_surface=100.0, speed_vertical=5.0)
         assert state.time_to_impact == float("inf")
 
     def test_time_to_impact_hovering(self) -> None:
-        state = VesselState(altitude_surface=100.0, vertical_speed=0.0)
+        state = VesselState(altitude_surface=100.0, speed_vertical=0.0)
         assert state.time_to_impact == float("inf")
 
     def test_time_to_impact_on_ground(self) -> None:
-        state = VesselState(altitude_surface=0.0, vertical_speed=-2.0)
+        state = VesselState(altitude_surface=0.0, speed_vertical=-2.0)
         assert state.time_to_impact == float("inf")
 
     def test_in_atmosphere(self) -> None:
-        assert VesselState(static_pressure=101325.0).in_atmosphere is True
-        assert VesselState(static_pressure=0.0).in_atmosphere is False
+        assert VesselState(pressure_static=101325.0).in_atmosphere is True
+        assert VesselState(pressure_static=0.0).in_atmosphere is False
 
     def test_above_atmosphere_in_space(self) -> None:
         state = VesselState(altitude_sea=80000.0, body_has_atmosphere=True, body_atmosphere_depth=70000.0)
@@ -250,11 +250,11 @@ class TestVesselStateDerived:
         assert state.above_atmosphere is True
 
     def test_has_atmosphere_true(self) -> None:
-        state = VesselState(static_pressure=101325.0)
+        state = VesselState(pressure_static=101325.0)
         assert state.has_atmosphere is True
 
     def test_has_atmosphere_false_in_vacuum(self) -> None:
-        state = VesselState(static_pressure=0.0)
+        state = VesselState(pressure_static=0.0)
         assert state.has_atmosphere is False
 
     def test_is_suborbital(self) -> None:
@@ -281,14 +281,14 @@ class TestVesselStateDerived:
         assert VesselState(situation=VesselSituation.LANDED).is_orbiting is False
 
     def test_is_ascending(self) -> None:
-        assert VesselState(vertical_speed=5.0).is_ascending is True
-        assert VesselState(vertical_speed=-5.0).is_ascending is False
-        assert VesselState(vertical_speed=0.0).is_ascending is False
+        assert VesselState(speed_vertical=5.0).is_ascending is True
+        assert VesselState(speed_vertical=-5.0).is_ascending is False
+        assert VesselState(speed_vertical=0.0).is_ascending is False
 
     def test_is_descending(self) -> None:
-        assert VesselState(vertical_speed=-5.0).is_descending is True
-        assert VesselState(vertical_speed=5.0).is_descending is False
-        assert VesselState(vertical_speed=0.0).is_descending is False
+        assert VesselState(speed_vertical=-5.0).is_descending is True
+        assert VesselState(speed_vertical=5.0).is_descending is False
+        assert VesselState(speed_vertical=0.0).is_descending is False
 
 
 class TestVesselCommands:
