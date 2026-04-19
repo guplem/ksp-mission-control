@@ -50,10 +50,12 @@ class CommandHistoryWidget(VerticalScroll, can_focus=True):
     class TickChanged(Message):
         """Posted when the viewed command record changes."""
 
-        def __init__(self, tick_id: int) -> None:
+        def __init__(self, tick_id: int, *, following: bool) -> None:
             super().__init__()
             self.tick_id = tick_id
             """The tick ID of the currently viewed record."""
+            self.following = following
+            """Whether the history is following (auto-advancing to latest)."""
 
     DEFAULT_CSS = """
     #command-history-title {
@@ -134,7 +136,7 @@ class CommandHistoryWidget(VerticalScroll, can_focus=True):
 
         if self._following:
             self._index = len(self._history) - 1
-            self.post_message(self.TickChanged(tick_id))
+            self.post_message(self.TickChanged(tick_id, following=True))
         self._render_current()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -158,7 +160,7 @@ class CommandHistoryWidget(VerticalScroll, can_focus=True):
         self._index = index
         self._following = self._index == len(self._history) - 1
         self._render_current()
-        self.post_message(self.TickChanged(self._history[self._index].tick_id))
+        self.post_message(self.TickChanged(self._history[self._index].tick_id, following=self._following))
 
     def _resolve_colors(self) -> dict[ActionStatus, str]:
         """Resolve theme CSS variables to hex colors, cached after first call."""

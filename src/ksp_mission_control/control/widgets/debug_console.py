@@ -74,6 +74,7 @@ class DebugConsoleWidget(Static):
         self._all_logs: list[_TimestampedLog] = []
         self._enabled_levels: set[LogLevel] = set(LogLevel)
         self._highlighted_tick: int | None = None
+        self._following: bool = True
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="debug-console-header"):
@@ -105,6 +106,14 @@ class DebugConsoleWidget(Static):
             self._level_colors = resolve_theme_colors(self.app, _LEVEL_VARIABLE)
         return self._level_colors
 
+    def set_following(self, following: bool) -> None:
+        """Control whether the log auto-scrolls to new entries."""
+        self._following = following
+        rich_log = self.query_one("#debug-console-log", RichLog)
+        rich_log.auto_scroll = following
+        if following:
+            rich_log.scroll_end(animate=False)
+
     def append_logs(self, logs: list[LogEntry], *, met: float, tick_id: int) -> None:
         """Append new log entries to the console, color-coded by level."""
         if not logs:
@@ -125,6 +134,8 @@ class DebugConsoleWidget(Static):
             return
         self._highlighted_tick = tick_id
         self._rerender_log()
+        if not self._following:
+            self._scroll_to_highlighted_tick()
 
     def _rerender_log(self) -> None:
         """Clear and rewrite the entire log with current filter and highlight settings."""
@@ -138,6 +149,19 @@ class DebugConsoleWidget(Static):
                 if stamped.tick_id != highlight:
                     line = f"[dim]{line}[/dim]"
                 rich_log.write(line)
+
+    def _scroll_to_highlighted_tick(self) -> None:
+        """Scroll the log to the first line belonging to the highlighted tick."""
+        if self._highlighted_tick is None:
+            return
+        line_index = 0
+        for stamped in self._all_logs:
+            if stamped.entry.level in self._enabled_levels:
+                if stamped.tick_id == self._highlighted_tick:
+                    rich_log = self.query_one("#debug-console-log", RichLog)
+                    rich_log.scroll_to(y=line_index, animate=False)
+                    return
+                line_index += 1
 
     @staticmethod
     def _format_entry(entry: LogEntry, met: float, colors: dict[LogLevel, str]) -> str:

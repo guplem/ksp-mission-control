@@ -177,7 +177,9 @@ class ControlScreen(Screen[None]):
 
     def on_command_history_widget_tick_changed(self, event: CommandHistoryWidget.TickChanged) -> None:
         """Highlight logs matching the previewed command, or clear highlighting."""
-        self.query_one("#debug-console", DebugConsoleWidget).highlight_tick(event.tick_id)
+        console = self.query_one("#debug-console", DebugConsoleWidget)
+        console.set_following(event.following)
+        console.highlight_tick(event.tick_id)
 
     def on_action_list_widget_run_action_requested(self, event: ActionListWidget.RunActionRequested) -> None:
         """Open the action picker dialog."""
