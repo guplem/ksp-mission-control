@@ -11,7 +11,7 @@ from xml.etree.ElementTree import Element, SubElement, indent, tostring
 
 from textual import work
 from textual.app import ComposeResult
-from textual.containers import Container
+from textual.containers import Container, Vertical
 from textual.screen import Screen
 from textual.widgets import Footer, Header
 
@@ -40,6 +40,17 @@ from ksp_mission_control.control.widgets.command_history import (
 from ksp_mission_control.control.widgets.debug_console import DebugConsoleWidget
 from ksp_mission_control.control.widgets.telemetry_display import TelemetryDisplayWidget
 
+
+class ViewMode(Enum):
+    """Layout modes for the control screen."""
+
+    SPLIT = "split"
+    LOGS = "logs"
+    TELEMETRY = "telemetry"
+
+
+_VIEW_MODE_CYCLE = [ViewMode.SPLIT, ViewMode.LOGS, ViewMode.TELEMETRY]
+
 _MAX_TICK_HISTORY = 10_000
 """Maximum number of tick records to keep for clipboard export."""
 
@@ -58,11 +69,13 @@ class ControlScreen(Screen[None]):
         ("escape", "go_back", "Back to Setup"),
         ("a", "abort_action", "Abort Action"),
         ("c", "copy_logs", "Copy Logs"),
+        ("v", "cycle_view", "Cycle View"),
     ]
 
     def __init__(self) -> None:
         super().__init__()
         self._session: ControlSession | None = None
+        self._view_mode: ViewMode = ViewMode.SPLIT
         self._showing_failure_dialog: bool = False
         self._tick_history: list[TickRecord] = []
         self._tick_counter: int = 0
@@ -70,10 +83,12 @@ class ControlScreen(Screen[None]):
     def compose(self) -> ComposeResult:
         yield Header()
         with Container(id="control-grid"):
-            yield TelemetryDisplayWidget(id="telemetry-display")
-            yield ActionListWidget(id="action-list")
-            yield DebugConsoleWidget(id="debug-console")
-            yield CommandHistoryWidget(id="command-history")
+            with Container(id="content-area"):
+                yield TelemetryDisplayWidget(id="telemetry-display")
+                yield DebugConsoleWidget(id="debug-console")
+            with Vertical(id="sidebar"):
+                yield ActionListWidget(id="action-list")
+                yield CommandHistoryWidget(id="command-history")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -238,6 +253,24 @@ class ControlScreen(Screen[None]):
 
         self.app.copy_to_clipboard(str(log_path))
         self.notify(f"Saved {len(self._tick_history)} ticks to {log_path} (path copied)")
+
+    def action_cycle_view(self) -> None:
+        """Cycle through Split / Logs / Telemetry view modes."""
+        current_index = _VIEW_MODE_CYCLE.index(self._view_mode)
+        self._view_mode = _VIEW_MODE_CYCLE[(current_index + 1) % len(_VIEW_MODE_CYCLE)]
+        self._apply_view_mode()
+
+    def _apply_view_mode(self) -> None:
+        """Apply the current view mode by toggling content area grid rows."""
+        content = self.query_one("#content-area", Container)
+        content.remove_class("logs-only", "telemetry-only")
+
+        if self._view_mode == ViewMode.LOGS:
+            content.add_class("logs-only")
+        elif self._view_mode == ViewMode.TELEMETRY:
+            content.add_class("telemetry-only")
+
+        self.notify(f"View: {self._view_mode.value.title()}", timeout=1.5)
 
     def _shutdown(self) -> None:
         """Signal the session to stop and clean up."""

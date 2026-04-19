@@ -1,32 +1,51 @@
 #control-grid {
     height: 1fr;
     layout: grid;
-    grid-size: 4 2;
+    grid-size: 2 1;
+    grid-columns: 3fr 1fr;
+}
+
+#content-area {
+    layout: grid;
+    grid-size: 1 2;
     grid-rows: 1fr 1fr;
-    grid-columns: 1fr 1fr 1fr 1fr;
 }
 
 #telemetry-display {
-    column-span: 3;
     padding: 1 2;
-    overflow-y: auto;
-}
-
-#action-list {
-    padding: 1 2;
-    border-left: solid $accent;
     overflow-y: auto;
 }
 
 #debug-console {
-    column-span: 3;
     padding: 1 2;
     border-top: solid $accent;
 }
 
+#sidebar {
+    border-left: solid $accent;
+}
+
+#action-list {
+    height: 1fr;
+    padding: 1 2;
+    overflow-y: auto;
+}
+
 #command-history {
+    height: 1fr;
     padding: 1 2;
     border-top: solid $accent;
-    border-left: solid $accent;
     overflow-y: auto;
+}
+
+#content-area.logs-only {
+    grid-rows: 0 1fr;
+}
+
+#content-area.logs-only #debug-console {
+    border-top: none;
+}
+
+#content-area.telemetry-only {
+    grid-rows: 1fr 0;
 }
