@@ -20,6 +20,7 @@ from ksp_mission_control.control.actions.base import (
     Action,
     LogEntry,
     VesselCommands,
+    VesselSituation,
     VesselState,
 )
 from ksp_mission_control.control.actions.flight_plan import FlightPlan
@@ -67,7 +68,8 @@ class ControlScreen(Screen[None]):
 
     BINDINGS = [
         ("escape", "go_back", "Back to Setup"),
-        ("a", "abort_action", "Abort Action"),
+        ("c", "cancel", "Cancel"),
+        ("a", "abort", "Abort!"),
         ("s", "save_logs", "Save Logs"),
         ("v", "cycle_view", "Cycle View"),
     ]
@@ -238,12 +240,27 @@ class ControlScreen(Screen[None]):
         except ValueError as exc:
             self.notify(str(exc), severity="error")
 
-    def action_abort_action(self) -> None:
-        """Abort the currently running action."""
+    def action_cancel(self) -> None:
+        """Cancel the currently running action or flight plan."""
         if self._session is None:
+            return
+        if self._session.snapshot().action_id is None:
+            self.notify("Nothing to cancel", severity="warning", timeout=1.5)
             return
         self._session.abort()
         self.query_one("#action-list", ActionListWidget).update_running(None)
+        self.notify("Cancelled", timeout=1.5)
+
+    def action_abort(self) -> None:
+        """Trigger the in-game abort action group."""
+        if self._session is None:
+            return
+        last_state = self._tick_history[-1].state if self._tick_history else None
+        if last_state is not None and last_state.situation == VesselSituation.PRE_LAUNCH:
+            self.notify("Cannot abort before launch", severity="warning", timeout=1.5)
+            return
+        self._session.send_manual_command(VesselCommands(abort=True))
+        self.notify("ABORT!", severity="error", timeout=3)
 
     def action_save_logs(self) -> None:
         """Save the full tick-by-tick log to file and copy the path to clipboard."""
