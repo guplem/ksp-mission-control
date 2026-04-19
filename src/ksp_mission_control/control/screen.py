@@ -145,9 +145,10 @@ class ControlScreen(Screen[None]):
             applied_fields=applied_fields,
             action_label=runner_state.action_label,
             met=state.met,
+            tick_id=self._tick_counter,
             status=runner_state.status,
         )
-        self.query_one("#debug-console", DebugConsoleWidget).append_logs(logs, met=state.met)
+        self.query_one("#debug-console", DebugConsoleWidget).append_logs(logs, met=state.met, tick_id=self._tick_counter)
 
         # Show failure dialog if plan is paused on failure
         if self._session is not None and self._session.paused_on_failure and not self._showing_failure_dialog:
@@ -173,6 +174,10 @@ class ControlScreen(Screen[None]):
 
     def _show_error(self, message: str) -> None:
         self.query_one("#telemetry-display", TelemetryDisplayWidget).show_error(message)
+
+    def on_command_history_widget_tick_changed(self, event: CommandHistoryWidget.TickChanged) -> None:
+        """Highlight logs matching the previewed command, or clear highlighting."""
+        self.query_one("#debug-console", DebugConsoleWidget).highlight_tick(event.tick_id)
 
     def on_action_list_widget_run_action_requested(self, event: ActionListWidget.RunActionRequested) -> None:
         """Open the action picker dialog."""

@@ -53,6 +53,7 @@ class TestAppendLogsRespectFilter:
             widget.append_logs(
                 _make_logs(LogLevel.DEBUG, LogLevel.INFO, LogLevel.WARN, LogLevel.ERROR),
                 met=10.0,
+                tick_id=1,
             )
             await pilot.pause()
             lines = _log_lines(pilot.app)
@@ -70,6 +71,7 @@ class TestAppendLogsRespectFilter:
             widget.append_logs(
                 _make_logs(LogLevel.DEBUG, LogLevel.INFO),
                 met=10.0,
+                tick_id=1,
             )
             await pilot.pause()
             lines = _log_lines(pilot.app)
@@ -88,6 +90,7 @@ class TestToggleRerendersHistory:
             widget.append_logs(
                 _make_logs(LogLevel.DEBUG, LogLevel.INFO),
                 met=5.0,
+                tick_id=1,
             )
             await pilot.pause()
             assert len(_log_lines(pilot.app)) == 2
@@ -114,6 +117,7 @@ class TestToggleRerendersHistory:
             widget.append_logs(
                 _make_logs(LogLevel.WARN, LogLevel.ERROR),
                 met=20.0,
+                tick_id=2,
             )
             await pilot.pause()
             assert len(_log_lines(pilot.app)) == 1  # only ERROR
@@ -132,6 +136,6 @@ class TestEmptyLogsIgnored:
     async def test_empty_list(self) -> None:
         async with DebugConsoleApp().run_test(size=(120, 40)) as pilot:
             widget = pilot.app.query_one("#debug-console", DebugConsoleWidget)
-            widget.append_logs([], met=0.0)
+            widget.append_logs([], met=0.0, tick_id=1)
             await pilot.pause()
             assert len(_log_lines(pilot.app)) == 0

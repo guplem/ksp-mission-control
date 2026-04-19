@@ -27,10 +27,11 @@ def _switch_id(level: LogLevel) -> str:
 
 @dataclass(frozen=True)
 class _TimestampedLog:
-    """Log entry paired with the MET at which it was recorded."""
+    """Log entry paired with the MET and tick ID at which it was recorded."""
 
     entry: LogEntry
     met: float
+    tick_id: int
 
 
 class DebugConsoleWidget(Static):
@@ -72,6 +73,7 @@ class DebugConsoleWidget(Static):
         self._level_colors: dict[LogLevel, str] | None = None
         self._all_logs: list[_TimestampedLog] = []
         self._enabled_levels: set[LogLevel] = set(LogLevel)
+        self._highlighted_tick: int | None = None
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="debug-console-header"):
@@ -103,26 +105,39 @@ class DebugConsoleWidget(Static):
             self._level_colors = resolve_theme_colors(self.app, _LEVEL_VARIABLE)
         return self._level_colors
 
-    def append_logs(self, logs: list[LogEntry], *, met: float) -> None:
+    def append_logs(self, logs: list[LogEntry], *, met: float, tick_id: int) -> None:
         """Append new log entries to the console, color-coded by level."""
         if not logs:
             return
         for entry in logs:
-            self._all_logs.append(_TimestampedLog(entry=entry, met=met))
+            self._all_logs.append(_TimestampedLog(entry=entry, met=met, tick_id=tick_id))
         colors = self._resolve_colors()
         rich_log = self.query_one("#debug-console-log", RichLog)
+        dimmed = tick_id != self._highlighted_tick
         for entry in logs:
             if entry.level in self._enabled_levels:
-                rich_log.write(self._format_entry(entry, met, colors))
+                line = self._format_entry(entry, met, colors)
+                rich_log.write(f"[dim]{line}[/dim]" if dimmed else line)
+
+    def highlight_tick(self, tick_id: int) -> None:
+        """Highlight logs from the given tick, dimming all others."""
+        if tick_id == self._highlighted_tick:
+            return
+        self._highlighted_tick = tick_id
+        self._rerender_log()
 
     def _rerender_log(self) -> None:
-        """Clear and rewrite the entire log with current filter settings."""
+        """Clear and rewrite the entire log with current filter and highlight settings."""
         colors = self._resolve_colors()
         rich_log = self.query_one("#debug-console-log", RichLog)
         rich_log.clear()
+        highlight = self._highlighted_tick
         for stamped in self._all_logs:
             if stamped.entry.level in self._enabled_levels:
-                rich_log.write(self._format_entry(stamped.entry, stamped.met, colors))
+                line = self._format_entry(stamped.entry, stamped.met, colors)
+                if stamped.tick_id != highlight:
+                    line = f"[dim]{line}[/dim]"
+                rich_log.write(line)
 
     @staticmethod
     def _format_entry(entry: LogEntry, met: float, colors: dict[LogLevel, str]) -> str:
