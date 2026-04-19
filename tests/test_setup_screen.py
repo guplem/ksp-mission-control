@@ -9,6 +9,7 @@ from textual.app import App, ComposeResult
 from textual.screen import Screen
 from textual.widgets import ListItem, Static
 
+from ksp_mission_control.config import ConfigManager
 from ksp_mission_control.setup.checks import CheckResult, SetupCheck
 from ksp_mission_control.setup.screen import SetupScreen
 
@@ -56,6 +57,7 @@ class SetupTestApp(App[None]):
     def __init__(self, checks: list[SetupCheck] | None = None) -> None:
         super().__init__()
         self._checks = checks
+        self.config_manager = ConfigManager()
 
     def compose(self) -> ComposeResult:
         yield from ()
@@ -135,26 +137,22 @@ class TestSetupScreenChecks:
 
     @pytest.mark.asyncio
     async def test_all_checks_pass(self) -> None:
-        """When all checks pass, all_checks_passed should be True."""
+        """When all checks pass, all checks should have run."""
         checks = _make_checks(krpc=True, comms=True, vessel=True)
         async with SetupTestApp(checks=checks).run_test() as pilot:
             await pilot.app.workers.wait_for_complete()
             await pilot.pause()
-            screen = pilot.app.screen
-            assert isinstance(screen, SetupScreen)
-            assert screen.all_checks_passed is True
             assert all(c.run_count >= 1 for c in checks)
 
     @pytest.mark.asyncio
     async def test_display_shows_checkmark_on_pass(self) -> None:
-        """Passed checks should display [x]."""
-        checks = _make_checks(krpc=True, comms=True, vessel=True)
+        """Passed checks should display [✓]. Uses partial pass to stay on SetupScreen."""
+        checks = _make_checks(krpc=True, comms=False)
         async with SetupTestApp(checks=checks).run_test() as pilot:
             await pilot.app.workers.wait_for_complete()
             await pilot.pause()
-            for check in checks:
-                label = pilot.app.screen.query_one(f"#{check.check_id}-label", Static)
-                assert "[✓]" in str(label._Static__content)
+            label = pilot.app.screen.query_one("#check-krpc-label", Static)
+            assert "[✓]" in str(label._Static__content)
 
     @pytest.mark.asyncio
     async def test_display_shows_fail_mark_on_failure(self) -> None:
@@ -175,14 +173,24 @@ class TestSetupScreenChecks:
             assert screen.check_action_control_room() is False
 
     @pytest.mark.asyncio
-    async def test_control_room_enabled_when_all_pass(self) -> None:
+    async def test_auto_navigates_to_control_room_when_all_pass(self) -> None:
+        """When all checks pass, the screen should automatically push ControlScreen."""
         checks = _make_checks(krpc=True, comms=True, vessel=True)
         async with SetupTestApp(checks=checks).run_test() as pilot:
             await pilot.app.workers.wait_for_complete()
             await pilot.pause()
-            screen = pilot.app.screen
-            assert isinstance(screen, SetupScreen)
-            assert screen.check_action_control_room() is True
+            from ksp_mission_control.control.screen import ControlScreen
+
+            assert isinstance(pilot.app.screen, ControlScreen)
+
+    @pytest.mark.asyncio
+    async def test_no_auto_navigate_when_checks_fail(self) -> None:
+        """When checks fail, the screen should stay on SetupScreen."""
+        checks = _make_checks(krpc=False)
+        async with SetupTestApp(checks=checks).run_test() as pilot:
+            await pilot.app.workers.wait_for_complete()
+            await pilot.pause()
+            assert isinstance(pilot.app.screen, SetupScreen)
 
 
 # ---------------------------------------------------------------------------

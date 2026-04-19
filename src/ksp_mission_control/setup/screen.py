@@ -104,7 +104,10 @@ class SetupScreen(Screen[None]):
         self.query_one(f"#{check_id}-label", Static).update(
             f"{mark} {label}" + (f" ({error_details})" if (error_details is not None and len(error_details) > 0) else "")
         )
-        self.query_one("#enter-control-room", Button).disabled = not self.all_checks_passed
+        all_passed = self.all_checks_passed
+        self.query_one("#enter-control-room", Button).disabled = not all_passed
+        if all_passed:
+            self.app.push_screen(ControlScreen())
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses on the setup screen."""
