@@ -116,6 +116,23 @@ This project uses **feature-based modules**, not layer-based. Every feature is a
 - **Sub-features nest as subfolders**. If a feature has distinct sub-concerns (e.g. `setup/` has `kRPC_installer/`, `kRPC_comms/`, `vessel/`), each gets its own folder with its own files.
 - **Shared code stays at the parent level**. Base classes and shared types (e.g. `SetupCheck`, `CheckResult`) live in the parent module (e.g. `setup/checks.py`), not duplicated in sub-features.
 
+### VesselState / VesselCommands naming convention (ADR 0008)
+
+When adding or renaming fields, follow these rules (full rationale in ADR 0008):
+
+- **Implied vessel**: No `vessel_` prefix. `mass` not `vessel_mass`.
+- **Semantic group prefix**: Group by domain concept, not kRPC object. `altitude_sea` not `flight_mean_altitude`.
+- **Entity prefix for external objects**: `body_*`, `orbit_*` for non-vessel entities.
+- **Entity-first ordering**: Subject before qualifier. `orbit_apoapsis_time_to` not `orbit_time_to_apoapsis`.
+- **Variant suffixes**: Base concept first. `thrust`, `thrust_available`, `thrust_peak`.
+- **Full descriptive names**: No abbreviations. `gravitational_parameter` not `gm`.
+- **Ungrouped fundamentals**: `met`, `name`, `situation`, `g_force`.
+- **Commands = control_ stripped**: State `control_throttle` -> Command `throttle`.
+- **Resource pattern**: `resource_X` (amount), `resource_X_max` (capacity), `resource_X_fraction` (derived property).
+- **Derived properties**: `@property` methods, natural names without group prefix (`weight`, `twr`, `delta_v`).
+
+Groups: `altitude_`, `speed_`, `pressure_`, `aero_`, `orbit_`, `body_`, `position_`, `orientation_`, `mass_`, `thrust_`, `engine_`, `stage_`, `resource_`, `control_` (sub-groups: `input_`, `autopilot_`, `sas_`, `ui_`, `deployable_`, `translate_`), `comms_`.
+
 ### Code style rules
 
 - **`ClassVar` over abstract properties** for static per-class metadata. If a value never changes per instance, declare it as a `ClassVar` annotation on the ABC and set it as a plain class attribute in subclasses. Reserve `@abstractmethod` for methods with actual logic.
@@ -219,6 +236,7 @@ Format: `adr/NNNN-short-title.md` with Context, Decision, Consequences sections.
 | [0005](adr/0005-tdd-workflow.md) | Test-driven development workflow | Writing or restructuring tests |
 | [0006](adr/0006-action-execution-system.md) | Tick-based action execution system | Adding actions, changing runner, or modifying the control loop |
 | [0007](adr/0007-screen-session-pattern.md) | Screen + session/runner separation of concerns | Adding new screens or refactoring screen logic |
+| [0008](adr/0008-vessel-state-naming-convention.md) | VesselState/VesselCommands field naming convention | Adding or renaming fields on VesselState or VesselCommands |
 
 When to create a new ADR: any decision involving trade-offs between alternatives, especially around dependencies, architecture boundaries, or data flow.
 
