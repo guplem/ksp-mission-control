@@ -52,10 +52,6 @@ class ActionListWidget(Static):
         width: 100%;
     }
 
-    #manual-cmd-btn {
-        margin-top: 1;
-        width: 100%;
-    }
     """
 
     class RunActionRequested(Message):
@@ -78,13 +74,9 @@ class ActionListWidget(Static):
         yield Static("[b]Actions[/b]", id="action-list-title")
         yield Static("", id="action-status-content")
         yield Static("", id="plan-steps-content")
-        yield Button("Run Action", id="run-action-btn", variant="primary", classes="action-btn")
-        yield Button(
-            "Load Flight Plan", id="load-plan-btn", variant="default", classes="action-btn"
-        )
-        yield Button(
-            "Manual Command", id="manual-cmd-btn", variant="warning"
-        )
+        yield Button("Run Action", id="run-action-btn", classes="action-btn")
+        yield Button("Load Flight Plan", id="load-plan-btn", classes="action-btn")
+        yield Button("Manual Command", id="manual-cmd-btn", classes="action-btn")
 
     def on_mount(self) -> None:
         """Hide dynamic content areas initially."""
