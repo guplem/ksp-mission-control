@@ -16,7 +16,7 @@
     overflow-y: auto;
 }
 
-#debug-console {
+#log-registry {
     padding: 1 2;
     border-top: solid $accent;
 }
@@ -25,7 +25,7 @@
     border-left: solid $accent;
 }
 
-#action-list {
+#control-panel {
     height: 1fr;
     padding: 1 2;
     overflow-y: auto;
@@ -42,7 +42,7 @@
     grid-rows: 0 1fr;
 }
 
-#content-area.logs-only #debug-console {
+#content-area.logs-only #log-registry {
     border-top: none;
 }
 

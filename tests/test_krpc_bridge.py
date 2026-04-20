@@ -337,13 +337,13 @@ class TestReadVesselState:
         conn = _make_mock_conn()
         state = read_vessel_state(conn)
         # Default mock has NaN -> should become inf
-        assert state.orbit_soi_time_to == float("inf")
+        assert state.orbit_soi_time_to_change == float("inf")
 
     def test_reads_orbital_soi_time_when_available(self) -> None:
         conn = _make_mock_conn()
         conn.space_center.active_vessel.orbit.time_to_soi_change = 5000.0
         state = read_vessel_state(conn)
-        assert state.orbit_soi_time_to == 5000.0
+        assert state.orbit_soi_time_to_change == 5000.0
 
     def test_reads_universal_time(self) -> None:
         conn = _make_mock_conn()

@@ -217,21 +217,21 @@ class TestVesselStateDerived:
         state = VesselState(mass=0.0, mass_dry=0.0)
         assert state.fuel_fraction == 0.0
 
-    def test_time_to_impact_descending(self) -> None:
+    def test_altitude_time_to_impact_descending(self) -> None:
         state = VesselState(altitude_surface=100.0, speed_vertical=-10.0)
-        assert abs(state.time_to_impact - 10.0) < 0.001
+        assert abs(state.altitude_time_to_impact - 10.0) < 0.001
 
-    def test_time_to_impact_ascending(self) -> None:
+    def test_altitude_time_to_impact_ascending(self) -> None:
         state = VesselState(altitude_surface=100.0, speed_vertical=5.0)
-        assert state.time_to_impact == float("inf")
+        assert state.altitude_time_to_impact == float("inf")
 
-    def test_time_to_impact_hovering(self) -> None:
+    def test_altitude_time_to_impact_hovering(self) -> None:
         state = VesselState(altitude_surface=100.0, speed_vertical=0.0)
-        assert state.time_to_impact == float("inf")
+        assert state.altitude_time_to_impact == float("inf")
 
-    def test_time_to_impact_on_ground(self) -> None:
+    def test_altitude_time_to_impact_on_ground(self) -> None:
         state = VesselState(altitude_surface=0.0, speed_vertical=-2.0)
-        assert state.time_to_impact == float("inf")
+        assert state.altitude_time_to_impact == float("inf")
 
     def test_in_atmosphere(self) -> None:
         assert VesselState(pressure_static=101325.0).in_atmosphere is True

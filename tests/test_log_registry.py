@@ -1,4 +1,4 @@
-"""Tests for DebugConsoleWidget - log filtering by level."""
+"""Tests for LogRegistryWidget - log filtering by level."""
 
 from __future__ import annotations
 
@@ -7,19 +7,19 @@ from textual.app import App, ComposeResult
 from textual.widgets import RichLog, Switch
 
 from ksp_mission_control.control.actions.base import LogEntry, LogLevel
-from ksp_mission_control.control.widgets.debug_console import DebugConsoleWidget, _switch_id
+from ksp_mission_control.control.widgets.log_registry import LogRegistryWidget, _switch_id
 
 
-class DebugConsoleApp(App[None]):
-    """Minimal app for testing the debug console widget."""
+class LogRegistryApp(App[None]):
+    """Minimal app for testing the log registry widget."""
 
     def compose(self) -> ComposeResult:
-        yield DebugConsoleWidget(id="debug-console")
+        yield LogRegistryWidget(id="log-registry")
 
 
 def _log_lines(app: App[None]) -> list[str]:
     """Return the current lines displayed in the RichLog as plain strings."""
-    rich_log = app.query_one("#debug-console-log", RichLog)
+    rich_log = app.query_one("#log-registry-log", RichLog)
     return [str(line) for line in rich_log.lines]
 
 
@@ -37,7 +37,7 @@ class TestFilterSwitchesExist:
 
     @pytest.mark.asyncio
     async def test_one_switch_per_level(self) -> None:
-        async with DebugConsoleApp().run_test(size=(120, 40)) as pilot:
+        async with LogRegistryApp().run_test(size=(120, 40)) as pilot:
             for level in LogLevel:
                 switch = pilot.app.query_one(f"#{_switch_id(level)}", Switch)
                 assert switch.value is True
@@ -48,8 +48,8 @@ class TestAppendLogsRespectFilter:
 
     @pytest.mark.asyncio
     async def test_all_levels_shown_by_default(self) -> None:
-        async with DebugConsoleApp().run_test(size=(120, 40)) as pilot:
-            widget = pilot.app.query_one("#debug-console", DebugConsoleWidget)
+        async with LogRegistryApp().run_test(size=(120, 40)) as pilot:
+            widget = pilot.app.query_one("#log-registry", LogRegistryWidget)
             widget.append_logs(
                 _make_logs(LogLevel.DEBUG, LogLevel.INFO, LogLevel.WARN, LogLevel.ERROR),
                 met=10.0,
@@ -61,13 +61,13 @@ class TestAppendLogsRespectFilter:
 
     @pytest.mark.asyncio
     async def test_disabled_level_not_shown(self) -> None:
-        async with DebugConsoleApp().run_test(size=(120, 40)) as pilot:
+        async with LogRegistryApp().run_test(size=(120, 40)) as pilot:
             # Disable DEBUG
             switch = pilot.app.query_one(f"#{_switch_id(LogLevel.DEBUG)}", Switch)
             switch.value = False
             await pilot.pause()
 
-            widget = pilot.app.query_one("#debug-console", DebugConsoleWidget)
+            widget = pilot.app.query_one("#log-registry", LogRegistryWidget)
             widget.append_logs(
                 _make_logs(LogLevel.DEBUG, LogLevel.INFO),
                 met=10.0,
@@ -85,8 +85,8 @@ class TestToggleRerendersHistory:
 
     @pytest.mark.asyncio
     async def test_toggle_off_hides_existing_entries(self) -> None:
-        async with DebugConsoleApp().run_test(size=(120, 40)) as pilot:
-            widget = pilot.app.query_one("#debug-console", DebugConsoleWidget)
+        async with LogRegistryApp().run_test(size=(120, 40)) as pilot:
+            widget = pilot.app.query_one("#log-registry", LogRegistryWidget)
             widget.append_logs(
                 _make_logs(LogLevel.DEBUG, LogLevel.INFO),
                 met=5.0,
@@ -106,8 +106,8 @@ class TestToggleRerendersHistory:
 
     @pytest.mark.asyncio
     async def test_toggle_on_restores_entries(self) -> None:
-        async with DebugConsoleApp().run_test(size=(120, 40)) as pilot:
-            widget = pilot.app.query_one("#debug-console", DebugConsoleWidget)
+        async with LogRegistryApp().run_test(size=(120, 40)) as pilot:
+            widget = pilot.app.query_one("#log-registry", LogRegistryWidget)
 
             # Disable WARN, then add logs
             switch = pilot.app.query_one(f"#{_switch_id(LogLevel.WARN)}", Switch)
@@ -134,8 +134,8 @@ class TestEmptyLogsIgnored:
 
     @pytest.mark.asyncio
     async def test_empty_list(self) -> None:
-        async with DebugConsoleApp().run_test(size=(120, 40)) as pilot:
-            widget = pilot.app.query_one("#debug-console", DebugConsoleWidget)
+        async with LogRegistryApp().run_test(size=(120, 40)) as pilot:
+            widget = pilot.app.query_one("#log-registry", LogRegistryWidget)
             widget.append_logs([], met=0.0, tick_id=1)
             await pilot.pause()
             assert len(_log_lines(pilot.app)) == 0

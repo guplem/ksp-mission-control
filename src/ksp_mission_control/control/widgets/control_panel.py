@@ -1,6 +1,6 @@
-"""ActionListWidget - displays running action status and flight plan steps.
+"""ControlPanelWidget - displays running action status and flight plan steps.
 
-When idle, shows two buttons: "Run Action" and "Load Flight Plan".
+When idle, shows buttons: "Run Action", "Load Flight Plan", and "Manual Command".
 When a single action is running, shows its status.
 When a flight plan is active, shows each step with its status as Rich markup.
 """
@@ -31,11 +31,11 @@ _STATUS_LABELS: dict[StepStatus, str] = {
 }
 
 
-class ActionListWidget(Static):
+class ControlPanelWidget(Static):
     """Displays action/plan status and launch buttons when idle."""
 
     DEFAULT_CSS = """
-    #action-list-title {
+    #control-panel-title {
         padding: 0 0 1 0;
     }
 
@@ -71,7 +71,7 @@ class ActionListWidget(Static):
         self._status_colors: dict[StepStatus, str] | None = None
 
     def compose(self) -> ComposeResult:
-        yield Static("[b]Actions[/b]", id="action-list-title")
+        yield Static("[b]Control[/b]", id="control-panel-title")
         yield Static("", id="action-status-content")
         yield Static("", id="plan-steps-content")
         yield Button("Run Action", id="run-action-btn", classes="action-btn")
@@ -105,7 +105,7 @@ class ActionListWidget(Static):
 
         try:
             status_content = self.query_one("#action-status-content", Static)
-            title = self.query_one("#action-list-title", Static)
+            title = self.query_one("#control-panel-title", Static)
         except NoMatches:
             return
 
@@ -116,10 +116,10 @@ class ActionListWidget(Static):
             label = action.label if action else action_id
             status_content.display = True
             status_content.update(f"[b]RUNNING:[/b] {label}")
-            title.update("[b]Actions[/b]")
+            title.update("[b]Control[/b]")
         elif not self._plan_active:
             status_content.display = False
-            title.update("[b]Actions[/b]")
+            title.update("[b]Control[/b]")
 
     def update_plan(self, plan_snap: PlanSnapshot) -> None:
         """Update the plan step display based on the current plan snapshot.
@@ -153,7 +153,7 @@ class ActionListWidget(Static):
         try:
             plan_content = self.query_one("#plan-steps-content", Static)
             status_content = self.query_one("#action-status-content", Static)
-            title = self.query_one("#action-list-title", Static)
+            title = self.query_one("#control-panel-title", Static)
         except NoMatches:
             return
 
@@ -200,7 +200,7 @@ class ActionListWidget(Static):
         """Switch back to idle mode (no plan, no action)."""
         try:
             plan_content = self.query_one("#plan-steps-content", Static)
-            title = self.query_one("#action-list-title", Static)
+            title = self.query_one("#control-panel-title", Static)
         except NoMatches:
             return
 
@@ -208,4 +208,4 @@ class ActionListWidget(Static):
         self._plan_active = False
         self._last_plan_snapshot = None
         self._update_button_visibility()
-        title.update("[b]Actions[/b]")
+        title.update("[b]Control[/b]")

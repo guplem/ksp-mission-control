@@ -328,7 +328,7 @@ class VesselState:
     """Time until apoapsis, in seconds."""
     orbit_periapsis_time_to: float = 0.0
     """Time until periapsis, in seconds."""
-    orbit_soi_time_to: float = float("inf")
+    orbit_soi_time_to_change: float = float("inf")
     """Time until sphere of influence transition, in seconds. inf if no transition upcoming."""
 
     # --- Vessel ---
@@ -567,7 +567,7 @@ class VesselState:
         return self.resource_mono_propellant / self.resource_mono_propellant_max
 
     @property
-    def time_to_impact(self) -> float:
+    def altitude_time_to_impact(self) -> float:
         """Estimated seconds until surface contact, assuming constant descent rate.
 
         Returns ``float('inf')`` if the vessel is not descending or is on the ground.

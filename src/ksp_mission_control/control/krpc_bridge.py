@@ -142,9 +142,9 @@ def read_vessel_state(conn: object) -> VesselState:
         soi_time_raw = orbit.time_to_soi_change
         import math as _math
 
-        orbit_soi_time_to = float("inf") if _math.isnan(soi_time_raw) else soi_time_raw
+        orbit_soi_time_to_change = float("inf") if _math.isnan(soi_time_raw) else soi_time_raw
     except (AttributeError, Exception):
-        orbit_soi_time_to = float("inf")
+        orbit_soi_time_to_change = float("inf")
     return VesselState(
         altitude_sea=flight.mean_altitude,
         altitude_surface=flight.surface_altitude,
@@ -167,7 +167,7 @@ def read_vessel_state(conn: object) -> VesselState:
         orbit_period=orbit.period,
         orbit_apoapsis_time_to=orbit.time_to_apoapsis,
         orbit_periapsis_time_to=orbit.time_to_periapsis,
-        orbit_soi_time_to=orbit_soi_time_to,
+        orbit_soi_time_to_change=orbit_soi_time_to_change,
         universal_time=conn.space_center.ut,  # type: ignore[attr-defined]
         met=vessel.met,
         name=vessel.name,

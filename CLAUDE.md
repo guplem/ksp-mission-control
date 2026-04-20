@@ -50,7 +50,7 @@ src/ksp_mission_control/
 ├── control/              # Control room feature
 │   ├── screen.py         # ControlScreen (thin UI glue, delegates to session) (ADR 0007)
 │   ├── session.py        # ControlSession (poll loop, connection, PlanExecutor) (ADR 0007)
-│   ├── style.tcss        # Control-screen grid layout (4x2: telemetry, actions, console, history)
+│   ├── style.tcss        # Control-screen grid layout (4x2: telemetry, control, log registry, history)
 │   ├── formatting.py     # Shared formatting: format_met(), resolve_theme_colors()
 │   ├── krpc_bridge.py    # kRPC I/O: read/write + filter_commands() + NoActiveVesselError
 │   ├── param_input_modal.py    # ParamInputModal (parameter collection before action start)
@@ -71,8 +71,8 @@ src/ksp_mission_control/
 │   │       └── action.py # TranslateAction (RCS translation control)
 │   ├── widgets/          # Control-screen widgets
 │   │   ├── telemetry_display.py # TelemetryDisplayWidget (3-column: flight, orbit, resources)
-│   │   ├── action_list.py       # ActionListWidget (launch buttons, running status, plan steps)
-│   │   ├── debug_console.py     # DebugConsoleWidget (scrolling color-coded action logs)
+│   │   ├── control_panel.py     # ControlPanelWidget (launch buttons, running status, plan steps)
+│   │   ├── log_registry.py      # LogRegistryWidget (scrolling color-coded action logs)
 │   │   └── command_history.py   # CommandHistoryWidget (paginated command history with navigation)
 ├── setup/                # Setup/checklist feature
 │   ├── screen.py         # SetupScreen (thin UI glue, delegates to CheckRunner) (ADR 0007)

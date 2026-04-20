@@ -1,4 +1,4 @@
-"""DebugConsoleWidget - scrollable log of action debug messages."""
+"""LogRegistryWidget - scrollable log of action debug messages."""
 
 from __future__ import annotations
 
@@ -34,27 +34,27 @@ class _TimestampedLog:
     tick_id: int
 
 
-class DebugConsoleWidget(Static):
+class LogRegistryWidget(Static):
     """Displays a scrolling log of debug messages emitted by actions."""
 
     DEFAULT_CSS = """
-    #debug-console-header {
+    #log-registry-header {
         height: auto;
         padding: 0 0 1 0;
     }
 
-    #debug-console-title {
+    #log-registry-title {
         width: 1fr;
     }
 
-    #debug-console-header .filter-label {
+    #log-registry-header .filter-label {
         width: auto;
         padding: 0 1 0 0;
         content-align: center middle;
         margin: 0 0 0 5;
     }
 
-    #debug-console-header Switch {
+    #log-registry-header Switch {
         width: auto;
         height: auto;
         min-width: 0;
@@ -63,7 +63,7 @@ class DebugConsoleWidget(Static):
         border: none;
     }
 
-    #debug-console-log {
+    #log-registry-log {
         height: 1fr;
     }
     """
@@ -77,12 +77,12 @@ class DebugConsoleWidget(Static):
         self._following: bool = True
 
     def compose(self) -> ComposeResult:
-        with Horizontal(id="debug-console-header"):
-            yield Static("[b]Action Debug Console[/b]", id="debug-console-title")
+        with Horizontal(id="log-registry-header"):
+            yield Static("[b]Log Registry[/b]", id="log-registry-title")
             for level in LogLevel:
                 yield Static(level.value, classes="filter-label")
                 yield Switch(value=True, id=_switch_id(level))
-        yield RichLog(id="debug-console-log", markup=True)
+        yield RichLog(id="log-registry-log", markup=True)
 
     def on_switch_changed(self, event: Switch.Changed) -> None:
         """Re-render the log when a level filter is toggled."""
@@ -109,7 +109,7 @@ class DebugConsoleWidget(Static):
     def set_following(self, following: bool) -> None:
         """Control whether the log auto-scrolls to new entries."""
         self._following = following
-        rich_log = self.query_one("#debug-console-log", RichLog)
+        rich_log = self.query_one("#log-registry-log", RichLog)
         rich_log.auto_scroll = following
         if following:
             rich_log.scroll_end(animate=False)
@@ -121,7 +121,7 @@ class DebugConsoleWidget(Static):
         for entry in logs:
             self._all_logs.append(_TimestampedLog(entry=entry, met=met, tick_id=tick_id))
         colors = self._resolve_colors()
-        rich_log = self.query_one("#debug-console-log", RichLog)
+        rich_log = self.query_one("#log-registry-log", RichLog)
         dimmed = tick_id != self._highlighted_tick
         for entry in logs:
             if entry.level in self._enabled_levels:
@@ -140,7 +140,7 @@ class DebugConsoleWidget(Static):
     def _rerender_log(self) -> None:
         """Clear and rewrite the entire log with current filter and highlight settings."""
         colors = self._resolve_colors()
-        rich_log = self.query_one("#debug-console-log", RichLog)
+        rich_log = self.query_one("#log-registry-log", RichLog)
         rich_log.clear()
         highlight = self._highlighted_tick
         for stamped in self._all_logs:
@@ -158,7 +158,7 @@ class DebugConsoleWidget(Static):
         for stamped in self._all_logs:
             if stamped.entry.level in self._enabled_levels:
                 if stamped.tick_id == self._highlighted_tick:
-                    rich_log = self.query_one("#debug-console-log", RichLog)
+                    rich_log = self.query_one("#log-registry-log", RichLog)
                     rich_log.scroll_to(y=line_index, animate=False)
                     return
                 line_index += 1

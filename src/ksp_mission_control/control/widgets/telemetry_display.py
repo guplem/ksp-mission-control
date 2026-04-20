@@ -12,15 +12,24 @@ from ksp_mission_control.control.actions.base import VesselState
 
 
 class TelemetryDisplayWidget(Static):
-    """Displays formatted vessel telemetry in three columns: Flight, Orbit, Resources."""
+    """Displays formatted vessel telemetry in three columns: Flight & Environment, Orbit & Vessel, Controls & Resources."""
 
     DEFAULT_CSS = """
-    #telemetry-title {
+    #telemetry-header {
+        height: auto;
         padding: 0 0 1 0;
     }
 
-    #telemetry-title.error {
+    #telemetry-header.error #telemetry-title {
         color: $error;
+    }
+
+    #telemetry-title {
+        width: 1fr;
+    }
+
+    #telemetry-ut {
+        width: auto;
     }
 
     #telemetry-columns {
@@ -37,7 +46,9 @@ class TelemetryDisplayWidget(Static):
         super().__init__(id=id)
 
     def compose(self) -> ComposeResult:
-        yield Static("[b]Control View[/b]", id="telemetry-title")
+        with Horizontal(id="telemetry-header"):
+            yield Static("[b]Telemetry[/b]", id="telemetry-title")
+            yield Static("", id="telemetry-ut")
         with Horizontal(id="telemetry-columns"):
             yield Static("Connecting...", id="telemetry-flight", classes="telemetry-column")
             yield Static("", id="telemetry-orbit", classes="telemetry-column")
@@ -45,19 +56,20 @@ class TelemetryDisplayWidget(Static):
 
     def update_vessel_state(self, state: VesselState) -> None:
         """Format and display the current vessel state across three columns."""
-        title = self.query_one("#telemetry-title", Static)
-        if title.has_class("error"):
-            title.update("[b]Control View[/b]")
-            title.remove_class("error")
+        header = self.query_one("#telemetry-header", Horizontal)
+        if header.has_class("error"):
+            header.remove_class("error")
+            self.query_one("#telemetry-title", Static).update("[b]Telemetry[/b]")
+        self.query_one("#telemetry-ut", Static).update(f"UT: {_format_time(state.universal_time)}")
         self.query_one("#telemetry-flight", Static).update(_format_flight(state))
         self.query_one("#telemetry-orbit", Static).update(_format_orbit(state))
         self.query_one("#telemetry-resources", Static).update(_format_resources(state))
 
     def show_error(self, message: str) -> None:
         """Display an error message in the title bar, keeping stale telemetry visible."""
-        title = self.query_one("#telemetry-title", Static)
-        title.update(message)
-        title.add_class("error")
+        header = self.query_one("#telemetry-header", Horizontal)
+        self.query_one("#telemetry-title", Static).update(message)
+        header.add_class("error")
 
 
 def _format_altitude(meters: float) -> str:
@@ -101,6 +113,17 @@ def _format_mass(kg: float) -> str:
     return f"{kg:.1f} kg"
 
 
+def _format_stage(stage_current: int, stage_max: int) -> str:
+    """Format staging as 'fired/total fired'.
+
+    KSP's current_stage is the *next* stage to fire (counts down),
+    so stages_fired = stage_max - stage_current + 1 and total = stage_max + 1.
+    """
+    total = stage_max + 1
+    stages_fired = max(0, stage_max - stage_current + 1)
+    return f"{stages_fired}/{total} fired"
+
+
 def _format_flight(state: VesselState) -> str:
     return "\n".join(
         [
@@ -108,14 +131,18 @@ def _format_flight(state: VesselState) -> str:
             f"Vessel:          {state.name}",
             f"Situation:       {state.situation.display_name}",
             f"MET:             {_format_time(state.met)}",
-            "",
-            "[b]Flight[/b]",
-            f"Altitude (srf):  {_format_altitude(state.altitude_surface)}",
-            f"Altitude (sea):  {_format_altitude(state.altitude_sea)}",
-            f"Vertical speed:  {state.speed_vertical:+.1f} m/s",
-            f"Surface speed:   {state.speed_surface:.1f} m/s",
-            f"Orbital speed:   {state.speed_orbital:.1f} m/s",
             f"G-force:         {state.g_force:.2f} g",
+            "",
+            "[b]Altitude[/b]",
+            f"Surface:         {_format_altitude(state.altitude_surface)}",
+            f"Sea level:       {_format_altitude(state.altitude_sea)}",
+            f"Time to impact:  {_format_time(state.altitude_time_to_impact)}",
+            "",
+            "[b]Speed[/b]",
+            f"Vertical:        {state.speed_vertical:+.1f} m/s",
+            f"Horizontal:      {state.speed_horizontal:.1f} m/s",
+            f"Surface:         {state.speed_surface:.1f} m/s",
+            f"Orbital:         {state.speed_orbital:.1f} m/s",
             "",
             "[b]Position[/b]",
             f"Body:            {state.body_name}",
@@ -123,12 +150,20 @@ def _format_flight(state: VesselState) -> str:
             f"Longitude:       {state.position_longitude:.4f} deg",
             "",
             "[b]Atmosphere[/b]",
+            f"In atmosphere:   {'Yes' if state.in_atmosphere else 'No'}",
             f"Dynamic press.:  {state.pressure_dynamic / 1000:.2f} kPa",
             f"Static press.:   {state.pressure_static / 1000:.2f} kPa",
+            f"Mach:            {state.aero_mach:.2f}",
+            f"AoA:             {state.aero_angle_of_attack:.1f} deg",
+            f"Terminal vel.:   {state.aero_terminal_velocity:.1f} m/s",
             f"Drag:            {_format_force(_magnitude(state.aero_drag))}",
             f"Lift:            {_format_force(_magnitude(state.aero_lift))}",
         ]
     )
+
+
+def _on_off(value: bool) -> str:
+    return "ON" if value else "OFF"
 
 
 def _format_orbit(state: VesselState) -> str:
@@ -148,11 +183,6 @@ def _format_orbit(state: VesselState) -> str:
             f"Heading:         {state.orientation_heading:.1f} deg",
             f"Roll:            {state.orientation_roll:.1f} deg",
             "",
-            "[b]Control Inputs[/b]",
-            f"Pitch input:     {state.control_input_pitch:+.2f}",
-            f"Yaw input:       {state.control_input_yaw:+.2f}",
-            f"Roll input:      {state.control_input_roll:+.2f}",
-            "",
             "[b]Propulsion[/b]",
             f"TWR:             {state.twr:.2f} / {state.max_twr:.2f}",
             f"Delta-v:         {state.delta_v:.0f} m/s",
@@ -161,35 +191,46 @@ def _format_orbit(state: VesselState) -> str:
             f"Isp:             {state.engine_impulse_specific:.1f} s",
             f"Fuel fraction:   {state.fuel_fraction * 100:.1f}%",
             f"Flameouts:       {state.engine_flameout_count}",
+            "",
+            "[b]Comms[/b]",
+            f"Connected:       {_on_off(state.comms_connected)}",
+            f"Signal:          {state.comms_signal_strength * 100:.0f}%",
         ]
     )
 
 
-def _on_off(value: bool) -> str:
-    return "ON" if value else "OFF"
+def _format_resource(amount: float, fraction: float) -> str:
+    """Format a resource as 'amount units (percent%)'."""
+    return f"{amount:.1f} ({fraction * 100:.0f}%)"
 
 
 def _format_resources(state: VesselState) -> str:
     return "\n".join(
         [
             "[b]Resources[/b]",
-            f"Electric charge: {state.resource_electric_charge:.1f}",
-            f"Liquid fuel:     {state.resource_liquid_fuel:.1f}",
-            f"Oxidizer:        {state.resource_oxidizer:.1f}",
-            f"Mono propellant: {state.resource_mono_propellant:.1f}",
+            f"Electric charge: {_format_resource(state.resource_electric_charge, state.resource_electric_charge_fraction)}",
+            f"Liquid fuel:     {_format_resource(state.resource_liquid_fuel, state.resource_liquid_fuel_fraction)}",
+            f"Oxidizer:        {_format_resource(state.resource_oxidizer, state.resource_oxidizer_fraction)}",
+            f"Mono propellant: {_format_resource(state.resource_mono_propellant, state.resource_mono_propellant_fraction)}",
             "",
-            "[b]Configuration[/b]",
+            "[b]Controls[/b]",
             f"Throttle:        {state.control_throttle * 100:.0f}%",
-            f"Stage:           {state.stage_current} / {state.stage_max}",
+            f"Stage:           {_format_stage(state.stage_current, state.stage_max)}",
             f"SAS:             {_on_off(state.control_sas)}",
             f"SAS mode:        {state.control_sas_mode.display_name if state.control_sas_mode is not None else '-'}",
             f"RCS:             {_on_off(state.control_rcs)}",
-            f"Speed mode:      {state.control_ui_speed_mode.display_name}",
+            "",
+            "[b]Toggles[/b]",
             f"Gear:            {_on_off(state.control_gear)}",
             f"Legs:            {_on_off(state.control_legs)}",
             f"Brakes:          {_on_off(state.control_brakes)}",
             f"Lights:          {_on_off(state.control_lights)}",
             f"Abort:           {_on_off(state.control_abort)}",
+            "",
+            "[b]Inputs[/b]",
+            f"Pitch:           {state.control_input_pitch:+.2f}",
+            f"Yaw:             {state.control_input_yaw:+.2f}",
+            f"Roll:            {state.control_input_roll:+.2f}",
             "",
             "[b]Deployables[/b]",
             f"Parachutes:      {_on_off(state.control_deployable_parachutes)}",

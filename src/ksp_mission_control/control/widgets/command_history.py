@@ -88,7 +88,7 @@ class CommandHistoryWidget(VerticalScroll, can_focus=True):
         self._accent_color: str | None = None
 
     def compose(self) -> ComposeResult:
-        yield Static("[b]Commands[/b]", id="command-history-title")
+        yield Static("[b]Command History[/b]", id="command-history-title")
         yield Static("[dim]No commands yet[/dim]", id="command-history-content")
         with Horizontal(id="command-history-nav"):
             yield Button("\u25c0\u25c0", id="cmd-first", disabled=True)

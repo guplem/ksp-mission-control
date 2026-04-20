@@ -33,12 +33,12 @@ from ksp_mission_control.control.param_input_modal import ParamInputModal
 from ksp_mission_control.control.plan_failure_dialog import PlanFailureDialog
 from ksp_mission_control.control.session import ControlSession
 from ksp_mission_control.control.tick_record import TickRecord
-from ksp_mission_control.control.widgets.action_list import ActionListWidget
 from ksp_mission_control.control.widgets.command_history import (
     CommandHistoryWidget,
     format_field_value,
 )
-from ksp_mission_control.control.widgets.debug_console import DebugConsoleWidget
+from ksp_mission_control.control.widgets.control_panel import ControlPanelWidget
+from ksp_mission_control.control.widgets.log_registry import LogRegistryWidget
 from ksp_mission_control.control.widgets.telemetry_display import TelemetryDisplayWidget
 
 
@@ -87,9 +87,9 @@ class ControlScreen(Screen[None]):
         with Container(id="control-grid"):
             with Container(id="content-area"):
                 yield TelemetryDisplayWidget(id="telemetry-display")
-                yield DebugConsoleWidget(id="debug-console")
+                yield LogRegistryWidget(id="log-registry")
             with Vertical(id="sidebar"):
-                yield ActionListWidget(id="action-list")
+                yield ControlPanelWidget(id="control-panel")
                 yield CommandHistoryWidget(id="command-history")
         yield Footer()
 
@@ -121,7 +121,7 @@ class ControlScreen(Screen[None]):
         logs: list[LogEntry],
         plan_snap: PlanSnapshot,
     ) -> None:
-        """Update telemetry, action list, command history, and debug console."""
+        """Update telemetry, control panel, command history, and log registry."""
         self._tick_counter += 1
         self._tick_history.append(
             TickRecord(
@@ -139,9 +139,9 @@ class ControlScreen(Screen[None]):
             self._tick_history.pop(0)
 
         self.query_one("#telemetry-display", TelemetryDisplayWidget).update_vessel_state(state)
-        action_list = self.query_one("#action-list", ActionListWidget)
-        action_list.update_running(runner_state.action_id)
-        action_list.update_plan(plan_snap)
+        control_panel = self.query_one("#control-panel", ControlPanelWidget)
+        control_panel.update_running(runner_state.action_id)
+        control_panel.update_plan(plan_snap)
         self.query_one("#command-history", CommandHistoryWidget).record_commands(
             commands,
             applied_fields=applied_fields,
@@ -150,7 +150,7 @@ class ControlScreen(Screen[None]):
             tick_id=self._tick_counter,
             status=runner_state.status,
         )
-        self.query_one("#debug-console", DebugConsoleWidget).append_logs(logs, met=state.met, tick_id=self._tick_counter)
+        self.query_one("#log-registry", LogRegistryWidget).append_logs(logs, met=state.met, tick_id=self._tick_counter)
 
         # Show failure dialog if plan is paused on failure
         if self._session is not None and self._session.paused_on_failure and not self._showing_failure_dialog:
@@ -172,18 +172,18 @@ class ControlScreen(Screen[None]):
                 self.notify(str(exc), severity="error")
         else:
             self._session.abort_plan()
-            self.query_one("#action-list", ActionListWidget).update_running(None)
+            self.query_one("#control-panel", ControlPanelWidget).update_running(None)
 
     def _show_error(self, message: str) -> None:
         self.query_one("#telemetry-display", TelemetryDisplayWidget).show_error(message)
 
     def on_command_history_widget_tick_changed(self, event: CommandHistoryWidget.TickChanged) -> None:
         """Highlight logs matching the previewed command, or clear highlighting."""
-        console = self.query_one("#debug-console", DebugConsoleWidget)
+        console = self.query_one("#log-registry", LogRegistryWidget)
         console.set_following(event.following)
         console.highlight_tick(event.tick_id)
 
-    def on_action_list_widget_run_action_requested(self, event: ActionListWidget.RunActionRequested) -> None:
+    def on_control_panel_widget_run_action_requested(self, event: ControlPanelWidget.RunActionRequested) -> None:
         """Open the action picker dialog."""
         self.app.push_screen(
             ActionPicker(),
@@ -202,14 +202,14 @@ class ControlScreen(Screen[None]):
         else:
             self._handle_action_with_params(action, None)
 
-    def on_action_list_widget_load_plan_requested(self, event: ActionListWidget.LoadPlanRequested) -> None:
+    def on_control_panel_widget_load_plan_requested(self, event: ControlPanelWidget.LoadPlanRequested) -> None:
         """Open the flight plan picker."""
         self.app.push_screen(
             FlightPlanPicker(),
             callback=self._handle_plan_selected,
         )
 
-    def on_action_list_widget_manual_command_requested(self, event: ActionListWidget.ManualCommandRequested) -> None:
+    def on_control_panel_widget_manual_command_requested(self, event: ControlPanelWidget.ManualCommandRequested) -> None:
         """Open the manual command dialog."""
         self.app.push_screen(
             ManualCommandDialog(),
@@ -248,7 +248,7 @@ class ControlScreen(Screen[None]):
             self.notify("Nothing to cancel", severity="warning", timeout=1.5)
             return
         self._session.abort()
-        self.query_one("#action-list", ActionListWidget).update_running(None)
+        self.query_one("#control-panel", ControlPanelWidget).update_running(None)
         self.notify("Cancelled", timeout=1.5)
 
     def action_abort(self) -> None:
