@@ -60,7 +60,7 @@ class TelemetryDisplayWidget(Static):
         if header.has_class("error"):
             header.remove_class("error")
             self.query_one("#telemetry-title", Static).update("[b]Telemetry[/b]")
-        self.query_one("#telemetry-ut", Static).update(f"UT: {_format_time(state.universal_time)}")
+        self.query_one("#telemetry-ut", Static).update(f"UT: {_format_time(state.universal_time)} ")
         self.query_one("#telemetry-flight", Static).update(_format_flight(state))
         self.query_one("#telemetry-orbit", Static).update(_format_orbit(state))
         self.query_one("#telemetry-resources", Static).update(_format_resources(state))
