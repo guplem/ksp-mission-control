@@ -20,9 +20,9 @@ kRPC's own naming is inconsistent (mixing camelCase, different object hierarchie
 
 5. **Variant suffixes**: When multiple variants of the same concept exist, the base concept comes first and the variant is suffixed: `thrust`, `thrust_available`, `thrust_peak`; `mass`, `mass_dry`.
 
-6. **Full descriptive names**: No abbreviations, even for domain-standard terms. `gravitational_parameter` not `gm`, `sphere_of_influence` not `soi`, `impulse_specific` not `isp`. The codebase is self-documenting; abbreviations require domain knowledge to read.
+6. **Domain abbreviations allowed**: Well-known orbital mechanics and KSP abbreviations are permitted when the full name would be excessively verbose: `soi` (sphere of influence), `gm` (gravitational parameter), `isp` (specific impulse), `twr` (thrust-to-weight ratio), `met` (mission elapsed time). The abbreviation must be universally understood in the KSP/orbital mechanics domain. When in doubt, use the full name.
 
-7. **Ungrouped fundamentals**: A small set of core vessel-identity fields have no prefix: `met`, `name`, `situation`, `g_force`. These are vessel-level scalars that don't belong to any semantic group.
+7. **Ungrouped fundamentals**: A small set of core vessel-identity fields have no prefix: `met`, `name`, `situation`, `g_force`, `universal_time`. These are vessel-level or game-level scalars that don't belong to any semantic group.
 
 ### Semantic groups
 
@@ -109,5 +109,5 @@ When a field could fit two groups, prefer the more specific one. Mach number cou
 - **Positive**: Any developer can predict the correct name for a new field by following the rules, without searching existing code.
 - **Positive**: IDE autocomplete works naturally: type `orbit_` to see all orbital fields, `control_autopilot_` for all autopilot state.
 - **Positive**: The mechanical VesselCommands rule (strip `control_`) eliminates naming debates for new commands.
-- **Negative**: Some names are verbose (`engine_impulse_specific`, `body_atmosphere_depth`). We accept this trade-off for self-documentation over brevity.
+- **Negative**: Some names are verbose (`body_atmosphere_depth`). We accept this trade-off for self-documentation, with well-known domain abbreviations as a relief valve.
 - **Negative**: Adding a new semantic group requires updating this ADR and CLAUDE.md.

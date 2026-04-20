@@ -292,6 +292,8 @@ class VesselState:
     """Speed relative to the surface of the body, in m/s."""
     speed_orbital: float = 0.0
     """Speed relative to the orbited body's center of mass, in m/s."""
+    speed_horizontal: float = 0.0
+    """Speed component parallel to the surface, in m/s."""
 
     # --- Atmosphere ---
     pressure_dynamic: float = 0.0
@@ -302,6 +304,12 @@ class VesselState:
     """Aerodynamic drag force vector, in Newtons. (0,0,0) in vacuum."""
     aero_lift: tuple[float, float, float] = (0.0, 0.0, 0.0)
     """Aerodynamic lift force vector, in Newtons. (0,0,0) in vacuum."""
+    aero_mach: float = 0.0
+    """Mach number (speed / speed of sound). 0 in vacuum."""
+    aero_angle_of_attack: float = 0.0
+    """Angle between vessel orientation and velocity vector, in degrees. 0 in vacuum."""
+    aero_terminal_velocity: float = 0.0
+    """Speed at which drag equals gravity, in m/s. 0 in vacuum."""
     g_force: float = 0.0
     """Current g-force experienced by the vessel. 1.0 on Kerbin's surface at rest."""
 
@@ -320,8 +328,12 @@ class VesselState:
     """Time until apoapsis, in seconds."""
     orbit_periapsis_time_to: float = 0.0
     """Time until periapsis, in seconds."""
+    orbit_soi_time_to: float = float("inf")
+    """Time until sphere of influence transition, in seconds. inf if no transition upcoming."""
 
     # --- Vessel ---
+    universal_time: float = 0.0
+    """Universal game time, in seconds. Not vessel-specific but needed for maneuver timing."""
     met: float = 0.0
     """Mission Elapsed Time since launch, in seconds."""
     name: str = ""
@@ -340,6 +352,8 @@ class VesselState:
     """Full-throttle thrust from ALL active engines, including flamed-out ones. Does NOT account for throttle or fuel state."""
     engine_impulse_specific: float = 0.0
     """Current overall specific impulse, in seconds. 0 if no active engines."""
+    engine_impulse_specific_vacuum: float = 0.0
+    """Specific impulse in vacuum, in seconds. Reference value for delta-v calculations."""
 
     # --- Position ---
     body_name: str = ""
@@ -352,6 +366,10 @@ class VesselState:
     """Whether the orbited body has an atmosphere at all (e.g. Kerbin=True, Mun=False)."""
     body_atmosphere_depth: float = 70000.0
     """Maximum altitude of the body's atmosphere, in meters. 0 if no atmosphere. Kerbin=70km."""
+    body_gm: float = 0.0
+    """Gravitational parameter (GM) of the orbited body, in m^3/s^2."""
+    body_soi: float = 0.0
+    """Sphere of influence radius of the orbited body, in meters."""
     position_latitude: float = 0.0
     """Geographic latitude on the body surface, in degrees. -90 to 90."""
     position_longitude: float = 0.0
@@ -410,6 +428,14 @@ class VesselState:
     """Whether wheel motors are active."""
     control_abort: bool = False
     """Whether the abort action group has been triggered."""
+    control_stage_lock: bool = False
+    """Whether staging is locked (prevents accidental staging)."""
+    control_reaction_wheels: bool = True
+    """Whether reaction wheels are active."""
+    control_wheel_throttle: float = 0.0
+    """Wheel motor throttle. -1.0 = full reverse, 1.0 = full forward."""
+    control_wheel_steering: float = 0.0
+    """Wheel steering input. -1.0 = full left, 1.0 = full right."""
     control_translate_forward: float = 0.0
     """RCS translation forward/backward. -1.0 = backward, 1.0 = forward."""
     control_translate_right: float = 0.0
@@ -437,6 +463,12 @@ class VesselState:
     control_deployable_radiators: bool = False
     """Whether radiators are deployed."""
 
+    # --- Comms ---
+    comms_connected: bool = False
+    """Whether the vessel can communicate with KSC."""
+    comms_signal_strength: float = 0.0
+    """Signal strength to KSC. 0.0 = no signal, 1.0 = full strength."""
+
     # --- Resources ---
     resource_electric_charge: float = 0.0
     """Available electric charge, in units."""
@@ -446,6 +478,14 @@ class VesselState:
     """Available oxidizer, in units."""
     resource_mono_propellant: float = 0.0
     """Available monopropellant (RCS fuel), in units."""
+    resource_electric_charge_max: float = 0.0
+    """Maximum electric charge capacity, in units."""
+    resource_liquid_fuel_max: float = 0.0
+    """Maximum liquid fuel capacity, in units."""
+    resource_oxidizer_max: float = 0.0
+    """Maximum oxidizer capacity, in units."""
+    resource_mono_propellant_max: float = 0.0
+    """Maximum monopropellant capacity, in units."""
 
     # --- Derived properties (computed from raw telemetry) ---
 
@@ -497,6 +537,34 @@ class VesselState:
         if self.mass <= 0.0:
             return 0.0
         return (self.mass - self.mass_dry) / self.mass
+
+    @property
+    def resource_electric_charge_fraction(self) -> float:
+        """Fraction of electric charge remaining (0.0 to 1.0). 0.0 if no capacity."""
+        if self.resource_electric_charge_max <= 0.0:
+            return 0.0
+        return self.resource_electric_charge / self.resource_electric_charge_max
+
+    @property
+    def resource_liquid_fuel_fraction(self) -> float:
+        """Fraction of liquid fuel remaining (0.0 to 1.0). 0.0 if no capacity."""
+        if self.resource_liquid_fuel_max <= 0.0:
+            return 0.0
+        return self.resource_liquid_fuel / self.resource_liquid_fuel_max
+
+    @property
+    def resource_oxidizer_fraction(self) -> float:
+        """Fraction of oxidizer remaining (0.0 to 1.0). 0.0 if no capacity."""
+        if self.resource_oxidizer_max <= 0.0:
+            return 0.0
+        return self.resource_oxidizer / self.resource_oxidizer_max
+
+    @property
+    def resource_mono_propellant_fraction(self) -> float:
+        """Fraction of monopropellant remaining (0.0 to 1.0). 0.0 if no capacity."""
+        if self.resource_mono_propellant_max <= 0.0:
+            return 0.0
+        return self.resource_mono_propellant / self.resource_mono_propellant_max
 
     @property
     def time_to_impact(self) -> float:
@@ -574,6 +642,8 @@ class VesselCommands:
     """Main engine throttle. 0.0 = off, 1.0 = full thrust."""
     stage: bool | None = None
     """Set to True to activate the next stage this tick."""
+    stage_lock: bool | None = None
+    """Lock/unlock staging. True = prevent staging, False = allow staging."""
 
     # --- Rotation axes (-1.0 to 1.0, raw stick input) ---
     input_pitch: float | None = None
@@ -624,6 +694,12 @@ class VesselCommands:
     """Brakes. True = engage, False = release."""
     wheels: bool | None = None
     """Wheel motor. True = on, False = off."""
+    reaction_wheels: bool | None = None
+    """Reaction wheels. True = active, False = disabled."""
+    wheel_throttle: float | None = None
+    """Wheel motor throttle. -1.0 = full reverse, 1.0 = full forward."""
+    wheel_steering: float | None = None
+    """Wheel steering. -1.0 = full left, 1.0 = full right."""
     abort: bool | None = None
     """Abort action group. True = trigger."""
 

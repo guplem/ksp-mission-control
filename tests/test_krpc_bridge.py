@@ -65,6 +65,10 @@ def _make_mock_conn(
         right=0.0,
         up=0.0,
         wheels=False,
+        stage_lock=False,
+        reaction_wheels=True,
+        wheel_throttle=0.0,
+        wheel_steering=0.0,
     )
 
     body_ref_frame = SimpleNamespace()
@@ -75,6 +79,8 @@ def _make_mock_conn(
         surface_gravity=9.81,
         has_atmosphere=True,
         atmosphere_depth=70000.0,
+        gravitational_parameter=3.5316e12,
+        sphere_of_influence=84159286.0,
         reference_frame=body_ref_frame,
         non_rotating_reference_frame=body_non_rotating_ref_frame,
     )
@@ -88,6 +94,7 @@ def _make_mock_conn(
         period=2400.0,
         time_to_apoapsis=300.0,
         time_to_periapsis=900.0,
+        time_to_soi_change=float("nan"),
         body=body,
     )
 
@@ -96,10 +103,14 @@ def _make_mock_conn(
         surface_altitude=74800.0,
         vertical_speed=1.5,
         speed=2180.0,
+        horizontal_speed=2179.0,
         dynamic_pressure=5000.0,
         static_pressure=10000.0,
         drag=(100.0, 100.0, 100.0),
         lift=(25.0, 25.0, 25.0),
+        mach=6.5,
+        angle_of_attack=2.3,
+        terminal_velocity=250.0,
         g_force=1.2,
         latitude=-0.1,
         longitude=74.5,
@@ -164,6 +175,17 @@ def _make_mock_conn(
             "Oxidizer": 480.0,
             "MonoPropellant": 50.0,
         }.get(name, 0.0),
+        max=lambda name: {
+            "ElectricCharge": 200.0,
+            "LiquidFuel": 800.0,
+            "Oxidizer": 960.0,
+            "MonoPropellant": 100.0,
+        }.get(name, 0.0),
+    )
+
+    comms = SimpleNamespace(
+        can_communicate=True,
+        signal_strength=0.85,
     )
 
     vessel: SimpleNamespace | None = None
@@ -181,11 +203,13 @@ def _make_mock_conn(
             available_thrust=50000.0,
             max_thrust=60000.0,
             specific_impulse=320.0,
+            vacuum_specific_impulse=350.0,
             surface_reference_frame=vessel_surface_ref,
             orbital_reference_frame=vessel_orbital_ref,
             reference_frame=vessel_ref,
             parts=parts,
             resources=resources,
+            comms=comms,
             flight=lambda ref: flight,
         )
 
@@ -216,6 +240,7 @@ def _make_mock_conn(
         navball=navball,
         SASMode=sas_modes,
         SpeedMode=speed_modes,
+        ut=1000000.0,
     )
 
     return SimpleNamespace(space_center=space_center)
@@ -292,6 +317,9 @@ class TestReadVesselState:
         assert state.pressure_static == 10000.0
         assert state.aero_drag == (100.0, 100.0, 100.0)
         assert state.aero_lift == (25.0, 25.0, 25.0)
+        assert state.aero_mach == 6.5
+        assert state.aero_angle_of_attack == 2.3
+        assert state.aero_terminal_velocity == 250.0
         assert state.g_force == 1.2
 
     def test_reads_orbital_timing(self) -> None:
@@ -299,6 +327,28 @@ class TestReadVesselState:
         state = read_vessel_state(conn)
         assert state.orbit_apoapsis_time_to == 300.0
         assert state.orbit_periapsis_time_to == 900.0
+
+    def test_reads_speed_horizontal(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        assert state.speed_horizontal == 2179.0
+
+    def test_reads_orbital_soi_time(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        # Default mock has NaN -> should become inf
+        assert state.orbit_soi_time_to == float("inf")
+
+    def test_reads_orbital_soi_time_when_available(self) -> None:
+        conn = _make_mock_conn()
+        conn.space_center.active_vessel.orbit.time_to_soi_change = 5000.0
+        state = read_vessel_state(conn)
+        assert state.orbit_soi_time_to == 5000.0
+
+    def test_reads_universal_time(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        assert state.universal_time == 1000000.0
 
     def test_reads_vessel_mass_and_thrust(self) -> None:
         conn = _make_mock_conn()
@@ -309,6 +359,7 @@ class TestReadVesselState:
         assert state.thrust_available == 50000.0
         assert state.thrust_peak == 60000.0
         assert state.engine_impulse_specific == 320.0
+        assert state.engine_impulse_specific_vacuum == 350.0
 
     def test_reads_body_properties(self) -> None:
         conn = _make_mock_conn()
@@ -318,6 +369,8 @@ class TestReadVesselState:
         assert state.body_name == "Kerbin"
         assert state.body_has_atmosphere is True
         assert state.body_atmosphere_depth == 70000.0
+        assert state.body_gm == 3.5316e12
+        assert state.body_soi == 84159286.0
 
     def test_reads_body_without_atmosphere(self) -> None:
         conn = _make_mock_conn()
@@ -325,6 +378,41 @@ class TestReadVesselState:
         state = read_vessel_state(conn)
         assert state.body_has_atmosphere is False
         assert state.body_atmosphere_depth == 0.0
+
+    def test_reads_comms(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        assert state.comms_connected is True
+        assert state.comms_signal_strength == 0.85
+
+    def test_comms_defaults_when_unavailable(self) -> None:
+        conn = _make_mock_conn()
+        # Remove comms attribute to simulate unavailable
+        del conn.space_center.active_vessel.comms
+        state = read_vessel_state(conn)
+        assert state.comms_connected is False
+        assert state.comms_signal_strength == 0.0
+
+    def test_reads_resource_max_capacities(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        assert state.resource_electric_charge_max == 200.0
+        assert state.resource_liquid_fuel_max == 800.0
+        assert state.resource_oxidizer_max == 960.0
+        assert state.resource_mono_propellant_max == 100.0
+
+    def test_reads_new_control_fields(self) -> None:
+        conn = _make_mock_conn()
+        vc = conn.space_center.active_vessel.control
+        vc.stage_lock = True
+        vc.reaction_wheels = False
+        vc.wheel_throttle = 0.5
+        vc.wheel_steering = -0.3
+        state = read_vessel_state(conn)
+        assert state.control_stage_lock is True
+        assert state.control_reaction_wheels is False
+        assert state.control_wheel_throttle == 0.5
+        assert state.control_wheel_steering == -0.3
 
     def test_no_active_vessel_raises(self) -> None:
         conn = _make_mock_conn(active_vessel=False)
@@ -597,6 +685,49 @@ class TestApplyControlsNoVessel:
 
 
 # ---------------------------------------------------------------------------
+# apply_controls tests: new Tier 1 commands
+# ---------------------------------------------------------------------------
+
+
+class TestApplyControlsNewCommands:
+    """Tests for stage_lock, reaction_wheels, wheel_throttle, wheel_steering."""
+
+    def test_sets_stage_lock(self) -> None:
+        conn = _make_mock_conn()
+        commands = VesselCommands(stage_lock=True)
+        apply_controls(conn, commands)
+        assert conn.space_center.active_vessel.control.stage_lock is True
+
+    def test_sets_reaction_wheels(self) -> None:
+        conn = _make_mock_conn()
+        commands = VesselCommands(reaction_wheels=False)
+        apply_controls(conn, commands)
+        assert conn.space_center.active_vessel.control.reaction_wheels is False
+
+    def test_sets_wheel_throttle(self) -> None:
+        conn = _make_mock_conn()
+        commands = VesselCommands(wheel_throttle=0.7)
+        apply_controls(conn, commands)
+        assert conn.space_center.active_vessel.control.wheel_throttle == 0.7
+
+    def test_sets_wheel_steering(self) -> None:
+        conn = _make_mock_conn()
+        commands = VesselCommands(wheel_steering=-0.5)
+        apply_controls(conn, commands)
+        assert conn.space_center.active_vessel.control.wheel_steering == -0.5
+
+    def test_none_leaves_unchanged(self) -> None:
+        conn = _make_mock_conn()
+        vc = conn.space_center.active_vessel.control
+        vc.stage_lock = True
+        vc.wheel_throttle = 0.3
+        commands = VesselCommands()  # all None
+        apply_controls(conn, commands)
+        assert vc.stage_lock is True
+        assert vc.wheel_throttle == 0.3
+
+
+# ---------------------------------------------------------------------------
 # filter_commands tests
 # ---------------------------------------------------------------------------
 
@@ -655,6 +786,34 @@ class TestFilterCommands:
         filtered, applied = filter_commands(commands, state)
         assert filtered.autopilot_config == AutopilotConfig.AUTO
         assert "autopilot_config" in applied
+
+    def test_filters_redundant_stage_lock(self) -> None:
+        commands = VesselCommands(stage_lock=True)
+        state = VesselState(control_stage_lock=True)
+        filtered, applied = filter_commands(commands, state)
+        assert filtered.stage_lock is None
+        assert "stage_lock" not in applied
+
+    def test_passes_changed_reaction_wheels(self) -> None:
+        commands = VesselCommands(reaction_wheels=False)
+        state = VesselState(control_reaction_wheels=True)
+        filtered, applied = filter_commands(commands, state)
+        assert filtered.reaction_wheels is False
+        assert "reaction_wheels" in applied
+
+    def test_filters_redundant_wheel_throttle(self) -> None:
+        commands = VesselCommands(wheel_throttle=0.0)
+        state = VesselState(control_wheel_throttle=0.0)
+        filtered, applied = filter_commands(commands, state)
+        assert filtered.wheel_throttle is None
+        assert "wheel_throttle" not in applied
+
+    def test_passes_changed_wheel_steering(self) -> None:
+        commands = VesselCommands(wheel_steering=0.5)
+        state = VesselState(control_wheel_steering=0.0)
+        filtered, applied = filter_commands(commands, state)
+        assert filtered.wheel_steering == 0.5
+        assert "wheel_steering" in applied
 
     def test_all_none_returns_empty(self) -> None:
         commands = VesselCommands()

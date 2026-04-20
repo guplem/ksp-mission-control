@@ -125,8 +125,8 @@ When adding or renaming fields, follow these rules (full rationale in ADR 0008):
 - **Entity prefix for external objects**: `body_*`, `orbit_*` for non-vessel entities.
 - **Entity-first ordering**: Subject before qualifier. `orbit_apoapsis_time_to` not `orbit_time_to_apoapsis`.
 - **Variant suffixes**: Base concept first. `thrust`, `thrust_available`, `thrust_peak`.
-- **Full descriptive names**: No abbreviations. `gravitational_parameter` not `gm`.
-- **Ungrouped fundamentals**: `met`, `name`, `situation`, `g_force`.
+- **Domain abbreviations allowed**: Well-known KSP/orbital mechanics terms OK (`soi`, `gm`, `isp`, `twr`, `met`). When in doubt, use the full name.
+- **Ungrouped fundamentals**: `met`, `name`, `situation`, `g_force`, `universal_time`.
 - **Commands = control_ stripped**: State `control_throttle` -> Command `throttle`.
 - **Resource pattern**: `resource_X` (amount), `resource_X_max` (capacity), `resource_X_fraction` (derived property).
 - **Derived properties**: `@property` methods, natural names without group prefix (`weight`, `twr`, `delta_v`).

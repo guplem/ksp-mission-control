@@ -39,6 +39,10 @@ _COMPARABLE_FIELDS: dict[str, str] = {
     "brakes": "control_brakes",
     "wheels": "control_wheels",
     "abort": "control_abort",
+    "stage_lock": "control_stage_lock",
+    "reaction_wheels": "control_reaction_wheels",
+    "wheel_throttle": "control_wheel_throttle",
+    "wheel_steering": "control_wheel_steering",
     "translate_forward": "control_translate_forward",
     "translate_right": "control_translate_right",
     "translate_up": "control_translate_up",
@@ -126,16 +130,35 @@ def read_vessel_state(conn: object) -> VesselState:
         speed_mode_raw = str(conn.space_center.navball.speed_mode)  # type: ignore[attr-defined]
     except (AttributeError, Exception):
         speed_mode_raw = "orbit"
+    # CommNet status may not be available on all vessels or kRPC versions.
+    try:
+        comms_connected = vessel.comms.can_communicate
+        comms_signal_strength = vessel.comms.signal_strength
+    except (AttributeError, Exception):
+        comms_connected = False
+        comms_signal_strength = 0.0
+    # SOI transition time: NaN when no transition is upcoming.
+    try:
+        soi_time_raw = orbit.time_to_soi_change
+        import math as _math
+
+        orbit_soi_time_to = float("inf") if _math.isnan(soi_time_raw) else soi_time_raw
+    except (AttributeError, Exception):
+        orbit_soi_time_to = float("inf")
     return VesselState(
         altitude_sea=flight.mean_altitude,
         altitude_surface=flight.surface_altitude,
         speed_vertical=flight.vertical_speed,
         speed_surface=flight.speed,
         speed_orbital=orbit.speed,
+        speed_horizontal=flight.horizontal_speed,
         pressure_dynamic=flight.dynamic_pressure,
         pressure_static=flight.static_pressure,
         aero_drag=flight.drag,
         aero_lift=flight.lift,
+        aero_mach=flight.mach,
+        aero_angle_of_attack=flight.angle_of_attack,
+        aero_terminal_velocity=flight.terminal_velocity,
         g_force=flight.g_force,
         orbit_apoapsis=orbit.apoapsis_altitude,
         orbit_periapsis=orbit.periapsis_altitude,
@@ -144,6 +167,8 @@ def read_vessel_state(conn: object) -> VesselState:
         orbit_period=orbit.period,
         orbit_apoapsis_time_to=orbit.time_to_apoapsis,
         orbit_periapsis_time_to=orbit.time_to_periapsis,
+        orbit_soi_time_to=orbit_soi_time_to,
+        universal_time=conn.space_center.ut,  # type: ignore[attr-defined]
         met=vessel.met,
         name=vessel.name,
         situation=_parse_vessel_situation(str(vessel.situation)),
@@ -153,11 +178,14 @@ def read_vessel_state(conn: object) -> VesselState:
         thrust_available=vessel.available_thrust,
         thrust_peak=vessel.max_thrust,
         engine_impulse_specific=vessel.specific_impulse,
+        engine_impulse_specific_vacuum=vessel.vacuum_specific_impulse,
         body_name=orbit.body.name,
         body_radius=orbit.body.equatorial_radius,
         body_gravity=orbit.body.surface_gravity,
         body_has_atmosphere=orbit.body.has_atmosphere,
         body_atmosphere_depth=orbit.body.atmosphere_depth if orbit.body.has_atmosphere else 0.0,
+        body_gm=orbit.body.gravitational_parameter,
+        body_soi=orbit.body.sphere_of_influence,
         position_latitude=flight.latitude,
         position_longitude=flight.longitude,
         orientation_pitch=surface_flight.pitch,
@@ -185,6 +213,10 @@ def read_vessel_state(conn: object) -> VesselState:
         control_brakes=control.brakes,
         control_wheels=control.wheels,
         control_abort=control.abort,
+        control_stage_lock=control.stage_lock,
+        control_reaction_wheels=control.reaction_wheels,
+        control_wheel_throttle=control.wheel_throttle,
+        control_wheel_steering=control.wheel_steering,
         control_translate_forward=control.forward,
         control_translate_right=control.right,
         control_translate_up=control.up,
@@ -197,10 +229,16 @@ def read_vessel_state(conn: object) -> VesselState:
         control_deployable_intakes=control.intakes,
         control_deployable_parachutes=control.parachutes,
         control_deployable_radiators=control.radiators,
+        comms_connected=comms_connected,
+        comms_signal_strength=comms_signal_strength,
         resource_electric_charge=vessel.resources.amount("ElectricCharge"),
         resource_liquid_fuel=vessel.resources.amount("LiquidFuel"),
         resource_oxidizer=vessel.resources.amount("Oxidizer"),
         resource_mono_propellant=vessel.resources.amount("MonoPropellant"),
+        resource_electric_charge_max=vessel.resources.max("ElectricCharge"),
+        resource_liquid_fuel_max=vessel.resources.max("LiquidFuel"),
+        resource_oxidizer_max=vessel.resources.max("Oxidizer"),
+        resource_mono_propellant_max=vessel.resources.max("MonoPropellant"),
     )
 
 
@@ -245,6 +283,8 @@ def apply_controls(conn: object, controls: VesselCommands) -> None:
         vc.throttle = controls.throttle
     if controls.stage is not None and controls.stage:
         vc.activate_next_stage()
+    if controls.stage_lock is not None:
+        vc.stage_lock = controls.stage_lock
 
     # Rotation axes
     if controls.input_pitch is not None:
@@ -329,6 +369,12 @@ def apply_controls(conn: object, controls: VesselCommands) -> None:
         vc.brakes = controls.brakes
     if controls.wheels is not None:
         vc.wheels = controls.wheels
+    if controls.reaction_wheels is not None:
+        vc.reaction_wheels = controls.reaction_wheels
+    if controls.wheel_throttle is not None:
+        vc.wheel_throttle = controls.wheel_throttle
+    if controls.wheel_steering is not None:
+        vc.wheel_steering = controls.wheel_steering
     if controls.abort is not None:
         vc.abort = controls.abort
 

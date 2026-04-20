@@ -207,6 +207,8 @@ _TOGGLE_FIELDS: frozenset[str] = frozenset(
         "lights",
         "brakes",
         "wheels",
+        "reaction_wheels",
+        "stage_lock",
         "deployable_solar_panels",
         "deployable_antennas",
         "deployable_cargo_bays",
@@ -232,6 +234,8 @@ _AXIS_FIELDS: frozenset[str] = frozenset(
         "translate_forward",
         "translate_right",
         "translate_up",
+        "wheel_throttle",
+        "wheel_steering",
     }
 )
 

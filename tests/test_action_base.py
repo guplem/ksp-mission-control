@@ -290,6 +290,30 @@ class TestVesselStateDerived:
         assert VesselState(speed_vertical=5.0).is_descending is False
         assert VesselState(speed_vertical=0.0).is_descending is False
 
+    def test_resource_electric_charge_fraction(self) -> None:
+        state = VesselState(resource_electric_charge=150.0, resource_electric_charge_max=200.0)
+        assert abs(state.resource_electric_charge_fraction - 0.75) < 0.001
+
+    def test_resource_liquid_fuel_fraction(self) -> None:
+        state = VesselState(resource_liquid_fuel=400.0, resource_liquid_fuel_max=800.0)
+        assert abs(state.resource_liquid_fuel_fraction - 0.5) < 0.001
+
+    def test_resource_oxidizer_fraction(self) -> None:
+        state = VesselState(resource_oxidizer=240.0, resource_oxidizer_max=960.0)
+        assert abs(state.resource_oxidizer_fraction - 0.25) < 0.001
+
+    def test_resource_mono_propellant_fraction(self) -> None:
+        state = VesselState(resource_mono_propellant=100.0, resource_mono_propellant_max=100.0)
+        assert state.resource_mono_propellant_fraction == 1.0
+
+    def test_resource_fraction_zero_capacity(self) -> None:
+        state = VesselState(resource_electric_charge=50.0, resource_electric_charge_max=0.0)
+        assert state.resource_electric_charge_fraction == 0.0
+
+    def test_resource_fraction_defaults_to_zero(self) -> None:
+        state = VesselState()
+        assert state.resource_liquid_fuel_fraction == 0.0
+
 
 class TestVesselCommands:
     """Tests for the VesselCommands mutable command buffer."""
