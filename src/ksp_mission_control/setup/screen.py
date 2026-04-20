@@ -34,6 +34,7 @@ class SetupScreen(Screen[None]):
         super().__init__()
         self._checks: list[SetupCheck] = checks if checks is not None else []
         self._check_runner: CheckRunner | None = None
+        self._auto_navigate: bool = True
 
         if not self._checks:
             config_manager: ConfigManager = cast(MissionControlApp, self.app).config_manager
@@ -106,7 +107,8 @@ class SetupScreen(Screen[None]):
         )
         all_passed = self.all_checks_passed
         self.query_one("#enter-control-room", Button).disabled = not all_passed
-        if all_passed:
+        if all_passed and self._auto_navigate:
+            self._auto_navigate = False
             self.app.push_screen(ControlScreen())
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -146,4 +148,5 @@ class SetupScreen(Screen[None]):
 
     def action_rerun_checks(self) -> None:
         """Manually re-run all system checks."""
+        self._auto_navigate = True
         self._run_all_checks()

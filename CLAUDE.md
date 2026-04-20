@@ -56,6 +56,7 @@ src/ksp_mission_control/
 │   ├── param_input_modal.py    # ParamInputModal (parameter collection before action start)
 │   ├── action_picker.py       # ActionPicker (modal for selecting an action to run)
 │   ├── flight_plan_picker.py  # FlightPlanPicker (modal for selecting .plan files)
+│   ├── confirm_exit_dialog.py  # ConfirmExitDialog (leave control room confirmation)
 │   ├── plan_failure_dialog.py # PlanFailureDialog (continue/abort on step failure)
 │   ├── actions/          # Action execution system (ADR 0006)
 │   │   ├── base.py       # Action ABC, VesselState, VesselCommands, ActionLogger, enums

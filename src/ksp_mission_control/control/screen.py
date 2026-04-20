@@ -26,6 +26,7 @@ from ksp_mission_control.control.actions.base import (
 from ksp_mission_control.control.actions.flight_plan import FlightPlan
 from ksp_mission_control.control.actions.plan_executor import PlanSnapshot
 from ksp_mission_control.control.actions.runner import RunnerSnapshot
+from ksp_mission_control.control.confirm_exit_dialog import ConfirmExitDialog
 from ksp_mission_control.control.flight_plan_picker import FlightPlanPicker
 from ksp_mission_control.control.formatting import format_met
 from ksp_mission_control.control.manual_command_dialog import ManualCommandDialog
@@ -67,7 +68,7 @@ class ControlScreen(Screen[None]):
     CSS_PATH = "style.tcss"
 
     BINDINGS = [
-        ("escape", "go_back", "Back to Setup"),
+        ("escape", "clear", "Clear"),
         ("c", "cancel", "Cancel"),
         ("a", "abort", "Abort!"),
         ("s", "save_logs", "Save Logs"),
@@ -317,10 +318,18 @@ class ControlScreen(Screen[None]):
         """Called when the screen is removed from the DOM (app quit)."""
         self._shutdown()
 
-    def action_go_back(self) -> None:
-        """Return to the setup screen."""
-        self._shutdown()
-        self.app.pop_screen()
+    def action_clear(self) -> None:
+        """Ask the user to confirm, then shut down and return to setup."""
+        self.app.push_screen(
+            ConfirmExitDialog(),
+            callback=self._handle_exit_confirmed,
+        )
+
+    def _handle_exit_confirmed(self, confirmed: bool | None) -> None:
+        """Handle the result of the exit confirmation dialog."""
+        if confirmed:
+            self._shutdown()
+            self.app.pop_screen()
 
 
 def _format_field_value_xml(value: object) -> str:
