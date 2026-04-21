@@ -29,7 +29,7 @@ Thumbs.db
 .env.local
 
 # Flight logs
-flight_logs/
+/flight_logs
 
 # Test / Coverage / Misc. Cache
 .pytest_cache/
