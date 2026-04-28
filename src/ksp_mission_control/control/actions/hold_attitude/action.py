@@ -17,8 +17,8 @@ from ksp_mission_control.control.actions.base import (
     ActionResult,
     ActionStatus,
     ParamType,
+    State,
     VesselCommands,
-    VesselState,
 )
 
 _DEFAULT_HOLD_TICKS = 100  # number of ticks to hold attitude before succeeding
@@ -42,7 +42,7 @@ class HoldAttitudeAction(Action):
         ),
     ]
 
-    def start(self, state: VesselState, param_values: dict[str, Any]) -> None:
+    def start(self, state: State, param_values: dict[str, Any]) -> None:
         self._hold_ticks: int = int(param_values.get("hold_ticks", _DEFAULT_HOLD_TICKS))
         self._tick_count: int = 0
         self._staged: bool = False
@@ -52,7 +52,7 @@ class HoldAttitudeAction(Action):
         self._target_heading: float = state.orientation_heading
         self._target_roll: float = state.orientation_roll
 
-    def tick(self, state: VesselState, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
+    def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         self._tick_count += 1
 
         # Stage once on the first tick.
@@ -84,7 +84,7 @@ class HoldAttitudeAction(Action):
 
         return ActionResult(status=ActionStatus.RUNNING)
 
-    def stop(self, state: VesselState, commands: VesselCommands, log: ActionLogger) -> None:
+    def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
         super().stop(state, commands, log)
         commands.autopilot = False
         commands.throttle = 0.0

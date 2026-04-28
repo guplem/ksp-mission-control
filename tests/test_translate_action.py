@@ -8,8 +8,8 @@ from ksp_mission_control.control.actions.base import (
     ActionLogger,
     ActionStatus,
     SASMode,
+    State,
     VesselCommands,
-    VesselState,
 )
 from ksp_mission_control.control.actions.translate.action import (
     TranslateAction,
@@ -185,7 +185,7 @@ class TestTranslateActionTick:
         initial_altitude: float = 100.0,
     ) -> TranslateAction:
         action = TranslateAction()
-        state = VesselState(
+        state = State(
             altitude_surface=initial_altitude,
             position_latitude=self._START_LAT,
             position_longitude=self._START_LON,
@@ -209,8 +209,8 @@ class TestTranslateActionTick:
         heading: float = 0.0,
         pitch: float = 0.0,
         roll: float = 0.0,
-    ) -> VesselState:
-        return VesselState(
+    ) -> State:
+        return State(
             altitude_surface=altitude,
             orientation_heading=heading,
             orientation_pitch=pitch,
@@ -411,7 +411,7 @@ class TestTranslateActionStop:
 
     def test_stop_kills_throttle(self) -> None:
         action = TranslateAction()
-        state = VesselState(altitude_surface=100.0)
+        state = State(altitude_surface=100.0)
         action.start(state, self._default_params())
         controls = VesselCommands()
         action.stop(state, controls, log=ActionLogger())
@@ -419,7 +419,7 @@ class TestTranslateActionStop:
 
     def test_stop_disables_rcs(self) -> None:
         action = TranslateAction()
-        state = VesselState(altitude_surface=100.0)
+        state = State(altitude_surface=100.0)
         action.start(state, self._default_params())
         controls = VesselCommands()
         action.stop(state, controls, log=ActionLogger())
@@ -427,7 +427,7 @@ class TestTranslateActionStop:
 
     def test_stop_zeroes_translation(self) -> None:
         action = TranslateAction()
-        state = VesselState(altitude_surface=100.0)
+        state = State(altitude_surface=100.0)
         action.start(state, self._default_params())
         controls = VesselCommands()
         action.stop(state, controls, log=ActionLogger())

@@ -19,9 +19,9 @@ from ksp_mission_control.control.action_picker import ActionPicker
 from ksp_mission_control.control.actions.base import (
     Action,
     LogEntry,
+    State,
     VesselCommands,
     VesselSituation,
-    VesselState,
 )
 from ksp_mission_control.control.actions.flight_plan import FlightPlan
 from ksp_mission_control.control.actions.plan_executor import PlanSnapshot
@@ -116,7 +116,7 @@ class ControlScreen(Screen[None]):
 
     def _update_ui(
         self,
-        state: VesselState,
+        state: State,
         runner_state: RunnerSnapshot,
         commands: VesselCommands,
         applied_fields: frozenset[str],
@@ -349,7 +349,7 @@ def _format_field_value_xml(value: object) -> str:
     return str(value)
 
 
-def _build_vessel_state_element(parent: Element, state: VesselState, previous_state: VesselState | None) -> None:
+def _build_vessel_state_element(parent: Element, state: State, previous_state: State | None) -> None:
     """Add vessel state fields that changed since *previous_state* under *parent*.
 
     If *previous_state* is ``None`` (first tick), all fields are included.
@@ -379,7 +379,7 @@ def _format_tick_history(ticks: list[TickRecord]) -> str:
     """
     root = Element("ticks")
 
-    previous_state: VesselState | None = None
+    previous_state: State | None = None
     for tick in ticks:
         tick_el = SubElement(root, "tick", number=str(tick.tick_number), met=format_met(tick.met))
 

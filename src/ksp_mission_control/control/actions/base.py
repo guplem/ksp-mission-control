@@ -337,7 +337,7 @@ class ScienceCommand:
 
 
 @dataclass(frozen=True)
-class VesselState:
+class State:
     """Immutable snapshot of vessel telemetry.
 
     Pure dataclass — no kRPC or Textual imports. All fields default to
@@ -812,7 +812,7 @@ class Action(ABC):
     """Typed parameter descriptors for this action."""
 
     @abstractmethod
-    def start(self, state: VesselState, param_values: dict[str, Any]) -> None:
+    def start(self, state: State, param_values: dict[str, Any]) -> None:
         """Initialize internal state from parameter values.
 
         Called once before the first tick. *state* is the current vessel
@@ -820,7 +820,7 @@ class Action(ABC):
         """
 
     @abstractmethod
-    def tick(self, state: VesselState, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
+    def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         """Execute one step of the action.
 
         Read from *state*, mutate *commands* to express desired changes,
@@ -828,7 +828,7 @@ class Action(ABC):
         and return an ActionResult indicating lifecycle status.
         """
 
-    def stop(self, state: VesselState, commands: VesselCommands, log: ActionLogger) -> None:
+    def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
         """Clean up on abort or completion.
 
         Default implementation logs the stop. Subclasses override for custom

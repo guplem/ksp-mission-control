@@ -12,8 +12,8 @@ from ksp_mission_control.control.actions.base import (
     ActionParam,
     ActionResult,
     ActionStatus,
+    State,
     VesselCommands,
-    VesselState,
 )
 from ksp_mission_control.control.actions.runner import ActionRunner
 
@@ -37,19 +37,17 @@ class StubAction(Action):
     def set_return_status(self, status: ActionStatus) -> None:
         self._return_status = status
 
-    def start(self, state: VesselState, param_values: dict[str, Any]) -> None:
+    def start(self, state: State, param_values: dict[str, Any]) -> None:
         self.started = True
         self._param_values = param_values
 
-    def tick(
-        self, state: VesselState, controls: VesselCommands, dt: float, log: ActionLogger
-    ) -> ActionResult:
+    def tick(self, state: State, controls: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         self.tick_count += 1
         controls.throttle = 0.7
         controls.sas = True
         return ActionResult(status=self._return_status)
 
-    def stop(self, state: VesselState, controls: VesselCommands, log: ActionLogger) -> None:
+    def stop(self, state: State, controls: VesselCommands, log: ActionLogger) -> None:
         self.stopped = True
         super().stop(state, controls, log)
 
@@ -64,12 +62,10 @@ class RequiredParamAction(Action):
         ActionParam("altitude", "Altitude", "Target altitude", required=True, unit="m"),
     ]
 
-    def start(self, state: VesselState, param_values: dict[str, Any]) -> None:
+    def start(self, state: State, param_values: dict[str, Any]) -> None:
         pass
 
-    def tick(
-        self, state: VesselState, controls: VesselCommands, dt: float, log: ActionLogger
-    ) -> ActionResult:
+    def tick(self, state: State, controls: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         return ActionResult(status=ActionStatus.RUNNING)
 
 
@@ -78,7 +74,7 @@ class TestActionRunnerNoAction:
 
     def test_step_returns_empty_controls(self) -> None:
         runner = ActionRunner()
-        result = runner.step(VesselState(), dt=0.5)
+        result = runner.step(State(), dt=0.5)
         assert result.commands.throttle is None
         assert result.commands.sas is None
         assert result.commands.autopilot_pitch is None
@@ -98,14 +94,14 @@ class TestActionRunnerStartAndStep:
     def test_start_action_with_defaults(self) -> None:
         runner = ActionRunner()
         action = StubAction()
-        runner.start_action(action, VesselState())
+        runner.start_action(action, State())
         assert action.started
 
     def test_step_calls_tick_and_returns_controls(self) -> None:
         runner = ActionRunner()
         action = StubAction()
-        runner.start_action(action, VesselState())
-        result = runner.step(VesselState(), dt=0.5)
+        runner.start_action(action, State())
+        result = runner.step(State(), dt=0.5)
         assert action.tick_count == 1
         assert result.commands.throttle == 0.7
         assert result.commands.sas is True
@@ -113,17 +109,17 @@ class TestActionRunnerStartAndStep:
     def test_step_increments_tick_count(self) -> None:
         runner = ActionRunner()
         action = StubAction()
-        runner.start_action(action, VesselState())
-        runner.step(VesselState(), dt=0.5)
-        runner.step(VesselState(), dt=0.5)
-        runner.step(VesselState(), dt=0.5)
+        runner.start_action(action, State())
+        runner.step(State(), dt=0.5)
+        runner.step(State(), dt=0.5)
+        runner.step(State(), dt=0.5)
         assert action.tick_count == 3
 
     def test_snapshot_reflects_running_state(self) -> None:
         runner = ActionRunner()
         action = StubAction()
-        runner.start_action(action, VesselState())
-        runner.step(VesselState(), dt=0.5)
+        runner.start_action(action, State())
+        runner.step(State(), dt=0.5)
         snap = runner.snapshot()
         assert snap.action_id == "stub"
         assert snap.action_label == "Stub"
@@ -132,13 +128,13 @@ class TestActionRunnerStartAndStep:
     def test_start_with_explicit_params(self) -> None:
         runner = ActionRunner()
         action = StubAction()
-        runner.start_action(action, VesselState(), param_values={"speed": 20.0})
+        runner.start_action(action, State(), param_values={"speed": 20.0})
         assert action._param_values == {"speed": 20.0}  # noqa: SLF001
 
     def test_start_with_no_params_uses_defaults(self) -> None:
         runner = ActionRunner()
         action = StubAction()
-        runner.start_action(action, VesselState())
+        runner.start_action(action, State())
         assert action._param_values == {"speed": 10.0}  # noqa: SLF001
 
 
@@ -148,8 +144,8 @@ class TestActionRunnerAbort:
     def test_abort_calls_stop(self) -> None:
         runner = ActionRunner()
         action = StubAction()
-        runner.start_action(action, VesselState())
-        runner.step(VesselState(), dt=0.5)
+        runner.start_action(action, State())
+        runner.step(State(), dt=0.5)
         result = runner.abort()
         assert action.stopped
         # Base Action.stop() only logs; no command resets
@@ -158,17 +154,17 @@ class TestActionRunnerAbort:
     def test_abort_clears_state(self) -> None:
         runner = ActionRunner()
         action = StubAction()
-        runner.start_action(action, VesselState())
-        runner.step(VesselState(), dt=0.5)
+        runner.start_action(action, State())
+        runner.step(State(), dt=0.5)
         runner.abort()
         # Subsequent step returns empty controls
-        result = runner.step(VesselState(), dt=0.5)
+        result = runner.step(State(), dt=0.5)
         assert result.commands.throttle is None
 
     def test_snapshot_after_abort_shows_no_action(self) -> None:
         runner = ActionRunner()
         action = StubAction()
-        runner.start_action(action, VesselState())
+        runner.start_action(action, State())
         runner.abort()
         snap = runner.snapshot()
         assert snap.action_id is None
@@ -187,8 +183,8 @@ class TestActionRunnerAutoStop:
         runner = ActionRunner()
         action = StubAction()
         action.set_return_status(ActionStatus.SUCCEEDED)
-        runner.start_action(action, VesselState())
-        result = runner.step(VesselState(), dt=0.5)
+        runner.start_action(action, State())
+        result = runner.step(State(), dt=0.5)
         assert action.stopped
         # tick() set throttle=0.7; stop() doesn't reset it
         assert result.commands.throttle == 0.7
@@ -197,16 +193,16 @@ class TestActionRunnerAutoStop:
         runner = ActionRunner()
         action = StubAction()
         action.set_return_status(ActionStatus.FAILED)
-        runner.start_action(action, VesselState())
-        runner.step(VesselState(), dt=0.5)
+        runner.start_action(action, State())
+        runner.step(State(), dt=0.5)
         assert action.stopped
 
     def test_snapshot_after_auto_stop_shows_no_action(self) -> None:
         runner = ActionRunner()
         action = StubAction()
         action.set_return_status(ActionStatus.SUCCEEDED)
-        runner.start_action(action, VesselState())
-        runner.step(VesselState(), dt=0.5)
+        runner.start_action(action, State())
+        runner.step(State(), dt=0.5)
         snap = runner.snapshot()
         assert snap.action_id is None
         assert snap.status is None
@@ -219,12 +215,12 @@ class TestActionRunnerParamValidation:
         runner = ActionRunner()
         action = RequiredParamAction()
         with pytest.raises(ValueError, match="altitude"):
-            runner.start_action(action, VesselState())
+            runner.start_action(action, State())
 
     def test_required_param_provided_succeeds(self) -> None:
         runner = ActionRunner()
         action = RequiredParamAction()
-        runner.start_action(action, VesselState(), param_values={"altitude": 500.0})
+        runner.start_action(action, State(), param_values={"altitude": 500.0})
         # Should not raise
         snap = runner.snapshot()
         assert snap.action_id == "required-param"

@@ -38,8 +38,8 @@ from ksp_mission_control.control.actions.base import (
     ActionStatus,
     ParamType,
     SpeedMode,
+    State,
     VesselCommands,
-    VesselState,
 )
 
 # ---------------------------------------------------------------------------
@@ -167,7 +167,7 @@ class LaunchAction(Action):
 
     # -- Lifecycle ------------------------------------------------------------
 
-    def start(self, state: VesselState, param_values: dict[str, Any]) -> None:
+    def start(self, state: State, param_values: dict[str, Any]) -> None:
         # Snapshot initial altitude so _pitch_for_altitude can reference it.
         self._initial_altitude: float = state.altitude_sea
 
@@ -208,7 +208,7 @@ class LaunchAction(Action):
         # Compute the launch heading from the target inclination.
         self._launch_heading: float = _inclination_to_heading(self._target_inclination, state.position_latitude)
 
-    def tick(self, state: VesselState, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
+    def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
 
         # Check if finished
         if state.orbit_apoapsis >= self._target_altitude - self.tolerance_altitude:
@@ -241,7 +241,7 @@ class LaunchAction(Action):
 
         return ActionResult(status=ActionStatus.RUNNING)
 
-    def stop(self, state: VesselState, commands: VesselCommands, log: ActionLogger) -> None:
+    def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
         super().stop(state, commands, log)
         # Cut engines and disengage autopilot on stop/abort.
         commands.autopilot = False

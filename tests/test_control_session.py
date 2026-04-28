@@ -11,8 +11,8 @@ from ksp_mission_control.control.actions.base import (
     ActionParam,
     ActionResult,
     ActionStatus,
+    State,
     VesselCommands,
-    VesselState,
 )
 from ksp_mission_control.control.session import ControlSession
 
@@ -42,12 +42,10 @@ class StubAction(Action):
         self.started = False
         self.tick_count = 0
 
-    def start(self, state: VesselState, param_values: dict[str, Any]) -> None:
+    def start(self, state: State, param_values: dict[str, Any]) -> None:
         self.started = True
 
-    def tick(
-        self, state: VesselState, controls: VesselCommands, dt: float, log: ActionLogger
-    ) -> ActionResult:
+    def tick(self, state: State, controls: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         self.tick_count += 1
         controls.throttle = 0.5
         return ActionResult(status=ActionStatus.RUNNING)

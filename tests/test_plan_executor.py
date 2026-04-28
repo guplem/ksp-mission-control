@@ -12,8 +12,8 @@ from ksp_mission_control.control.actions.base import (
     ActionParam,
     ActionResult,
     ActionStatus,
+    State,
     VesselCommands,
-    VesselState,
 )
 from ksp_mission_control.control.actions.flight_plan import FlightPlan, FlightPlanStep
 from ksp_mission_control.control.actions.plan_executor import (
@@ -41,16 +41,14 @@ class StubAction(Action):
     def set_return_status(self, status: ActionStatus) -> None:
         self._return_status = status
 
-    def start(self, state: VesselState, param_values: dict[str, Any]) -> None:
+    def start(self, state: State, param_values: dict[str, Any]) -> None:
         self.started = True
 
-    def tick(
-        self, state: VesselState, commands: VesselCommands, dt: float, log: ActionLogger
-    ) -> ActionResult:
+    def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         commands.throttle = 0.5
         return ActionResult(status=self._return_status)
 
-    def stop(self, state: VesselState, commands: VesselCommands, log: ActionLogger) -> None:
+    def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
         self.stopped = True
         super().stop(state, commands, log)
 
@@ -69,7 +67,7 @@ class TestPlanExecutorSingleAction:
     def test_start_and_step_single_action(self) -> None:
         executor = PlanExecutor()
         action = StubAction()
-        state = VesselState()
+        state = State()
         executor.start_action(action, state)
         result = executor.step(state, dt=0.5)
         assert result.commands.throttle == 0.5
@@ -80,7 +78,7 @@ class TestPlanExecutorSingleAction:
     def test_single_action_clears_plan(self) -> None:
         executor = PlanExecutor()
         plan, actions = _make_plan(1)
-        state = VesselState()
+        state = State()
         executor.start_plan(plan, state, actions=actions)
 
         # Override with single action
@@ -92,7 +90,7 @@ class TestPlanExecutorSingleAction:
     def test_abort_single_action(self) -> None:
         executor = PlanExecutor()
         action = StubAction()
-        state = VesselState()
+        state = State()
         executor.start_action(action, state)
         executor.abort()
         snap = executor.snapshot()
@@ -105,7 +103,7 @@ class TestPlanExecutorPlan:
     def test_plan_snapshot_shows_progress(self) -> None:
         executor = PlanExecutor()
         plan, actions = _make_plan(2)
-        state = VesselState()
+        state = State()
         executor.start_plan(plan, state, actions=actions)
 
         snap = executor.snapshot()
@@ -118,7 +116,7 @@ class TestPlanExecutorPlan:
     def test_step_advances_on_success(self) -> None:
         executor = PlanExecutor()
         plan, actions = _make_plan(2)
-        state = VesselState()
+        state = State()
         executor.start_plan(plan, state, actions=actions)
 
         # Step while running
@@ -138,7 +136,7 @@ class TestPlanExecutorPlan:
     def test_plan_completes_after_last_step(self) -> None:
         executor = PlanExecutor()
         plan, actions = _make_plan(1)
-        state = VesselState()
+        state = State()
         executor.start_plan(plan, state, actions=actions)
 
         actions[0].set_return_status(ActionStatus.SUCCEEDED)
@@ -152,7 +150,7 @@ class TestPlanExecutorPlan:
     def test_two_step_plan_completes_fully(self) -> None:
         executor = PlanExecutor()
         plan, actions = _make_plan(2)
-        state = VesselState()
+        state = State()
         executor.start_plan(plan, state, actions=actions)
 
         # Complete step 1
@@ -170,7 +168,7 @@ class TestPlanExecutorPlan:
     def test_completed_plan_clears_on_new_action(self) -> None:
         executor = PlanExecutor()
         plan, actions = _make_plan(1)
-        state = VesselState()
+        state = State()
         executor.start_plan(plan, state, actions=actions)
 
         actions[0].set_return_status(ActionStatus.SUCCEEDED)
@@ -184,7 +182,7 @@ class TestPlanExecutorPlan:
     def test_plan_pauses_on_failure(self) -> None:
         executor = PlanExecutor()
         plan, actions = _make_plan(2)
-        state = VesselState()
+        state = State()
         executor.start_plan(plan, state, actions=actions)
 
         actions[0].set_return_status(ActionStatus.FAILED)
@@ -198,7 +196,7 @@ class TestPlanExecutorPlan:
     def test_continue_after_failure(self) -> None:
         executor = PlanExecutor()
         plan, actions = _make_plan(2)
-        state = VesselState()
+        state = State()
         executor.start_plan(plan, state, actions=actions)
 
         actions[0].set_return_status(ActionStatus.FAILED)
@@ -214,7 +212,7 @@ class TestPlanExecutorPlan:
     def test_abort_plan_after_failure(self) -> None:
         executor = PlanExecutor()
         plan, actions = _make_plan(2)
-        state = VesselState()
+        state = State()
         executor.start_plan(plan, state, actions=actions)
 
         actions[0].set_return_status(ActionStatus.FAILED)
@@ -228,7 +226,7 @@ class TestPlanExecutorPlan:
     def test_abort_cancels_remaining_steps(self) -> None:
         executor = PlanExecutor()
         plan, actions = _make_plan(2)
-        state = VesselState()
+        state = State()
         executor.start_plan(plan, state, actions=actions)
 
         executor.step(state, dt=0.5)
@@ -241,7 +239,7 @@ class TestPlanExecutorPlan:
     def test_paused_plan_does_not_advance(self) -> None:
         executor = PlanExecutor()
         plan, actions = _make_plan(2)
-        state = VesselState()
+        state = State()
         executor.start_plan(plan, state, actions=actions)
 
         actions[0].set_return_status(ActionStatus.FAILED)
@@ -257,12 +255,12 @@ class TestPlanExecutorPlan:
     def test_continue_raises_when_no_paused_plan(self) -> None:
         executor = PlanExecutor()
         with pytest.raises(ValueError, match="No paused plan"):
-            executor.continue_plan(VesselState())
+            executor.continue_plan(State())
 
     def test_continue_raises_when_no_more_steps(self) -> None:
         executor = PlanExecutor()
         plan, actions = _make_plan(1)
-        state = VesselState()
+        state = State()
         executor.start_plan(plan, state, actions=actions)
 
         actions[0].set_return_status(ActionStatus.FAILED)
@@ -275,13 +273,13 @@ class TestPlanExecutorPlan:
         executor = PlanExecutor()
         plan = FlightPlan(name="empty", steps=())
         with pytest.raises(ValueError, match="has no steps"):
-            executor.start_plan(plan, VesselState())
+            executor.start_plan(plan, State())
 
     def test_actions_list_length_mismatch_raises(self) -> None:
         executor = PlanExecutor()
         plan, _ = _make_plan(2)
         with pytest.raises(ValueError, match="must match"):
-            executor.start_plan(plan, VesselState(), actions=[StubAction()])
+            executor.start_plan(plan, State(), actions=[StubAction()])
 
 
 class TestPlanSnapshot:

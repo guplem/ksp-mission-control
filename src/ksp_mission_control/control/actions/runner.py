@@ -14,8 +14,8 @@ from ksp_mission_control.control.actions.base import (
     ActionLogger,
     ActionStatus,
     LogEntry,
+    State,
     VesselCommands,
-    VesselState,
 )
 
 
@@ -49,12 +49,12 @@ class ActionRunner:
         self._status: ActionStatus | None = None
         self._message: str = ""
         self._emit_started: bool = False
-        self._last_state: VesselState = VesselState()
+        self._last_state: State = State()
 
     def start_action(
         self,
         action: Action,
-        state: VesselState,
+        state: State,
         param_values: dict[str, Any] | None = None,
     ) -> None:
         """Begin executing an action.
@@ -87,7 +87,7 @@ class ActionRunner:
             self._emit_started = False
         return StepResult(commands=commands, logs=log.entries)
 
-    def step(self, vessel_state: VesselState, dt: float) -> StepResult:
+    def step(self, vessel_state: State, dt: float) -> StepResult:
         """Execute one tick of the current action.
 
         Creates a fresh VesselCommands and ActionLogger, passes them to
@@ -145,9 +145,6 @@ class ActionRunner:
             elif not param.required and param.default is not None:
                 resolved[param.param_id] = param.default
             elif param.required:
-                msg = (
-                    f"Required parameter '{param.param_id}' "
-                    f"not provided for action '{action.action_id}'"
-                )
+                msg = f"Required parameter '{param.param_id}' not provided for action '{action.action_id}'"
                 raise ValueError(msg)
         return resolved

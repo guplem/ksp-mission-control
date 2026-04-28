@@ -17,8 +17,8 @@ from ksp_mission_control.control.actions.base import (
     ActionStatus,
     ParamType,
     ScienceAction,
+    State,
     VesselCommands,
-    VesselState,
 )
 
 
@@ -39,12 +39,12 @@ class RunScienceAction(Action):
         ),
     ]
 
-    def start(self, state: VesselState, param_values: dict[str, Any]) -> None:
+    def start(self, state: State, param_values: dict[str, Any]) -> None:
         self._wait_for_apoapsis: bool = bool(param_values.get("wait_for_apoapsis", False))
         self._triggered: bool = False
         self._was_ascending: bool = state.speed_vertical > 0.0
 
-    def tick(self, state: VesselState, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
+    def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
 
         if self._wait_for_apoapsis:
             now_ascending = state.speed_vertical > 0.0
@@ -66,5 +66,5 @@ class RunScienceAction(Action):
         commands.all_science = ScienceAction.RUN
         return ActionResult(status=ActionStatus.SUCCEEDED, message="Science experiments activated")
 
-    def stop(self, state: VesselState, commands: VesselCommands, log: ActionLogger) -> None:
+    def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
         super().stop(state, commands, log)

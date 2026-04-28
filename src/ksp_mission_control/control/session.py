@@ -19,8 +19,8 @@ from ksp_mission_control.control.actions.base import (
     Action,
     LogEntry,
     LogLevel,
+    State,
     VesselCommands,
-    VesselState,
 )
 from ksp_mission_control.control.actions.flight_plan import FlightPlan
 from ksp_mission_control.control.actions.plan_executor import PlanExecutor, PlanSnapshot
@@ -66,7 +66,7 @@ class ControlSession:
         *,
         on_update: Callable[
             [
-                VesselState,
+                State,
                 RunnerSnapshot,
                 VesselCommands,
                 frozenset[str],
@@ -84,7 +84,7 @@ class ControlSession:
         self._conn: object | None = None
         self._executor = PlanExecutor()
         self._stop_event = threading.Event()
-        self._last_state: VesselState = VesselState()
+        self._last_state: State = State()
         self._pending_manual_command: VesselCommands | None = None
 
     def run_poll_loop(self) -> None:
@@ -167,7 +167,7 @@ class ControlSession:
             # Connection died or was never established; wait before reconnecting
             self._wait_for_reconnect()
 
-    def _poll_tick(self, conn: object) -> tuple[VesselState, StepResult, frozenset[str]]:
+    def _poll_tick(self, conn: object) -> tuple[State, StepResult, frozenset[str]]:
         """Execute one poll iteration: read state, step executor, filter and apply.
 
         Runs in a thread pool so a hung kRPC call can be timed out.

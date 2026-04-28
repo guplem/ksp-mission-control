@@ -8,8 +8,8 @@ from ksp_mission_control.control.actions.base import (
     ParamType,
     ScienceAction,
     ScienceExperiment,
+    State,
     VesselCommands,
-    VesselState,
 )
 from ksp_mission_control.control.actions.run_science.action import RunScienceAction
 
@@ -70,31 +70,31 @@ class TestRunScienceActionImmediate:
 
     def _make_started_action(self, experiments: tuple[ScienceExperiment, ...] = _SAMPLE_EXPERIMENTS) -> RunScienceAction:
         action = RunScienceAction()
-        state = VesselState(science_experiments=experiments)
+        state = State(science_experiments=experiments)
         action.start(state, {"wait_for_apoapsis": False})
         return action
 
     def test_sets_all_science_run_on_first_tick(self) -> None:
         action = self._make_started_action()
         commands = VesselCommands()
-        action.tick(VesselState(science_experiments=_SAMPLE_EXPERIMENTS), commands, dt=0.5, log=ActionLogger())
+        action.tick(State(science_experiments=_SAMPLE_EXPERIMENTS), commands, dt=0.5, log=ActionLogger())
         assert commands.all_science == ScienceAction.RUN
 
     def test_succeeds_on_first_tick(self) -> None:
         action = self._make_started_action()
-        result = action.tick(VesselState(science_experiments=_SAMPLE_EXPERIMENTS), VesselCommands(), dt=0.5, log=ActionLogger())
+        result = action.tick(State(science_experiments=_SAMPLE_EXPERIMENTS), VesselCommands(), dt=0.5, log=ActionLogger())
         assert result.status == ActionStatus.SUCCEEDED
 
     def test_logs_available_experiment_count(self) -> None:
         action = self._make_started_action()
         log = ActionLogger()
-        action.tick(VesselState(science_experiments=_SAMPLE_EXPERIMENTS), VesselCommands(), dt=0.5, log=log)
+        action.tick(State(science_experiments=_SAMPLE_EXPERIMENTS), VesselCommands(), dt=0.5, log=log)
         assert any("2" in entry.message for entry in log.entries)
 
     def test_logs_zero_when_no_experiments(self) -> None:
         action = self._make_started_action(experiments=())
         log = ActionLogger()
-        action.tick(VesselState(), VesselCommands(), dt=0.5, log=log)
+        action.tick(State(), VesselCommands(), dt=0.5, log=log)
         assert any("0" in entry.message for entry in log.entries)
 
 
@@ -103,13 +103,13 @@ class TestRunScienceActionWaitForApoapsis:
 
     def _make_started_action(self, speed_vertical: float = 50.0) -> RunScienceAction:
         action = RunScienceAction()
-        state = VesselState(speed_vertical=speed_vertical, science_experiments=_SAMPLE_EXPERIMENTS)
+        state = State(speed_vertical=speed_vertical, science_experiments=_SAMPLE_EXPERIMENTS)
         action.start(state, {"wait_for_apoapsis": True})
         return action
 
     def test_running_while_ascending(self) -> None:
         action = self._make_started_action(speed_vertical=50.0)
-        state = VesselState(speed_vertical=30.0, science_experiments=_SAMPLE_EXPERIMENTS)
+        state = State(speed_vertical=30.0, science_experiments=_SAMPLE_EXPERIMENTS)
         commands = VesselCommands()
         result = action.tick(state, commands, dt=0.5, log=ActionLogger())
         assert result.status == ActionStatus.RUNNING
@@ -118,11 +118,11 @@ class TestRunScienceActionWaitForApoapsis:
     def test_triggers_when_vertical_speed_crosses_zero(self) -> None:
         action = self._make_started_action(speed_vertical=50.0)
         # Still ascending
-        state_ascending = VesselState(speed_vertical=5.0, science_experiments=_SAMPLE_EXPERIMENTS)
+        state_ascending = State(speed_vertical=5.0, science_experiments=_SAMPLE_EXPERIMENTS)
         action.tick(state_ascending, VesselCommands(), dt=0.5, log=ActionLogger())
 
         # Now descending: crossed apoapsis
-        state_descending = VesselState(speed_vertical=-1.0, altitude_sea=20000.0, science_experiments=_SAMPLE_EXPERIMENTS)
+        state_descending = State(speed_vertical=-1.0, altitude_sea=20000.0, science_experiments=_SAMPLE_EXPERIMENTS)
         commands = VesselCommands()
         result = action.tick(state_descending, commands, dt=0.5, log=ActionLogger())
         assert commands.all_science == ScienceAction.RUN
@@ -131,7 +131,7 @@ class TestRunScienceActionWaitForApoapsis:
     def test_does_not_trigger_if_started_while_descending(self) -> None:
         """If the vessel is already descending at start, it should not trigger immediately."""
         action = self._make_started_action(speed_vertical=-10.0)
-        state = VesselState(speed_vertical=-15.0, science_experiments=_SAMPLE_EXPERIMENTS)
+        state = State(speed_vertical=-15.0, science_experiments=_SAMPLE_EXPERIMENTS)
         commands = VesselCommands()
         result = action.tick(state, commands, dt=0.5, log=ActionLogger())
         assert result.status == ActionStatus.RUNNING
@@ -139,7 +139,7 @@ class TestRunScienceActionWaitForApoapsis:
 
     def test_triggers_at_exact_zero_vertical_speed(self) -> None:
         action = self._make_started_action(speed_vertical=10.0)
-        state = VesselState(speed_vertical=0.0, altitude_sea=20000.0, science_experiments=_SAMPLE_EXPERIMENTS)
+        state = State(speed_vertical=0.0, altitude_sea=20000.0, science_experiments=_SAMPLE_EXPERIMENTS)
         commands = VesselCommands()
         result = action.tick(state, commands, dt=0.5, log=ActionLogger())
         assert commands.all_science == ScienceAction.RUN
@@ -151,7 +151,7 @@ class TestRunScienceActionStop:
 
     def test_stop_logs_message(self) -> None:
         action = RunScienceAction()
-        state = VesselState()
+        state = State()
         action.start(state, {"wait_for_apoapsis": False})
         log = ActionLogger()
         action.stop(state, VesselCommands(), log=log)

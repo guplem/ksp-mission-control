@@ -23,8 +23,8 @@ from ksp_mission_control.control.actions.base import (
     ActionResult,
     ActionStatus,
     ParamType,
+    State,
     VesselCommands,
-    VesselState,
 )
 
 _DEFAULT_ROLL_OFFSET = 45.0
@@ -117,7 +117,7 @@ class ControllabilityTestAction(Action):
         ),
     ]
 
-    def start(self, state: VesselState, param_values: dict[str, Any]) -> None:
+    def start(self, state: State, param_values: dict[str, Any]) -> None:
         roll_offset = float(param_values.get("roll_offset", _DEFAULT_ROLL_OFFSET))
         pitch_offset = float(param_values.get("pitch_offset", _DEFAULT_PITCH_OFFSET))
         heading_offset = float(param_values.get("heading_offset", _DEFAULT_HEADING_OFFSET))
@@ -190,7 +190,7 @@ class ControllabilityTestAction(Action):
         self._settling: bool = True  # skip tolerance check for 1 tick after step change
         self._tick_count: int = 0
 
-    def tick(self, state: VesselState, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
+    def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         self._tick_count += 1
 
         # Stage once on the first tick.
@@ -289,7 +289,7 @@ class ControllabilityTestAction(Action):
 
         return ActionResult(status=ActionStatus.RUNNING)
 
-    def stop(self, state: VesselState, commands: VesselCommands, log: ActionLogger) -> None:
+    def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
         super().stop(state, commands, log)
         commands.autopilot = False
         commands.throttle = 0.0

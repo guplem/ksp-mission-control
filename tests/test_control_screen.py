@@ -8,13 +8,13 @@ from ksp_mission_control.control.actions.base import (
     ActionStatus,
     LogEntry,
     LogLevel,
+    State,
     VesselCommands,
-    VesselState,
 )
 from ksp_mission_control.control.screen import _format_tick_history
 from ksp_mission_control.control.tick_record import TickRecord
 
-_DEFAULT_STATE = VesselState()
+_DEFAULT_STATE = State()
 
 
 class TestFormatTickHistory:
@@ -41,7 +41,7 @@ class TestFormatTickHistory:
         assert tick_el.find("idle") is not None
 
     def test_tick_includes_vessel_state(self) -> None:
-        state = VesselState(
+        state = State(
             altitude_surface=150.3,
             speed_vertical=-2.5,
             control_throttle=0.65,
@@ -193,8 +193,8 @@ class TestFormatTickHistory:
         assert tag_names.index("state") < tag_names.index("logs")
 
     def test_state_delta_compression_omits_unchanged_fields(self) -> None:
-        state1 = VesselState(altitude_surface=100.0, speed_vertical=-1.0, control_throttle=0.5)
-        state2 = VesselState(altitude_surface=95.0, speed_vertical=-1.0, control_throttle=0.5)
+        state1 = State(altitude_surface=100.0, speed_vertical=-1.0, control_throttle=0.5)
+        state2 = State(altitude_surface=95.0, speed_vertical=-1.0, control_throttle=0.5)
         tick1 = TickRecord(
             tick_number=1,
             met=0.5,
@@ -234,7 +234,7 @@ class TestFormatTickHistory:
         assert state2_el.findtext("control_throttle") is None
 
     def test_state_omitted_entirely_when_nothing_changed(self) -> None:
-        state = VesselState(altitude_surface=100.0)
+        state = State(altitude_surface=100.0)
         tick1 = TickRecord(
             tick_number=1,
             met=0.5,

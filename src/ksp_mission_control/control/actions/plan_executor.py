@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from ksp_mission_control.control.actions.base import Action, ActionStatus, VesselState
+from ksp_mission_control.control.actions.base import Action, ActionStatus, State
 from ksp_mission_control.control.actions.flight_plan import FlightPlan
 from ksp_mission_control.control.actions.registry import get_available_actions
 from ksp_mission_control.control.actions.runner import (
@@ -61,7 +61,7 @@ class PlanExecutor:
     def start_action(
         self,
         action: Action,
-        state: VesselState,
+        state: State,
         param_values: dict[str, Any] | None = None,
     ) -> None:
         """Start a single action (clears any active plan)."""
@@ -71,7 +71,7 @@ class PlanExecutor:
     def start_plan(
         self,
         plan: FlightPlan,
-        state: VesselState,
+        state: State,
         actions: list[Action] | None = None,
     ) -> None:
         """Start executing a flight plan from the first step.
@@ -97,7 +97,7 @@ class PlanExecutor:
         self._step_statuses[0] = StepStatus.RUNNING
         self._runner.start_action(self._step_actions[0], state, plan.steps[0].param_values)
 
-    def step(self, vessel_state: VesselState, dt: float) -> StepResult:
+    def step(self, vessel_state: State, dt: float) -> StepResult:
         """Tick the runner. If a plan is active, handle step transitions."""
         had_action = self._runner.snapshot().action_id is not None
         result = self._runner.step(vessel_state, dt)
@@ -137,7 +137,7 @@ class PlanExecutor:
         self._clear_plan()
         return result
 
-    def continue_plan(self, vessel_state: VesselState) -> None:
+    def continue_plan(self, vessel_state: State) -> None:
         """Resume a paused plan by skipping the failed step and starting the next.
 
         Called by the UI when the user chooses to continue after a failure.

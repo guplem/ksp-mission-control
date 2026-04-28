@@ -14,9 +14,9 @@ from ksp_mission_control.control.actions.base import (
     ParamType,
     SASMode,
     SpeedMode,
+    State,
     VesselCommands,
     VesselSituation,
-    VesselState,
 )
 
 # --- PD controller tuning constants ---
@@ -64,14 +64,14 @@ class LandAction(Action):
         ),
     ]
 
-    def start(self, state: VesselState, param_values: dict[str, Any]) -> None:
+    def start(self, state: State, param_values: dict[str, Any]) -> None:
         self._target_speed: float = float(param_values["target_speed"])
         self._gear_deployed: bool = False
         self._first_tick: bool = True
         # Store initial vertical speed for acceleration estimation on first tick
         self._prev_vertical_speed: float = state.speed_vertical
 
-    def tick(self, state: VesselState, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
+    def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         # --- Descent speed target ---
         # sqrt(altitude) gives a smooth curve: e.g. 400m -> 20 m/s, 100m -> 10 m/s,
         # 4m -> 2 m/s. Clamped to never go below target_speed (the touchdown speed).
@@ -123,7 +123,7 @@ class LandAction(Action):
 
         return ActionResult(status=ActionStatus.RUNNING)
 
-    def stop(self, state: VesselState, commands: VesselCommands, log: ActionLogger) -> None:
+    def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
         super().stop(state, commands, log)
         commands.throttle = 0.0
         commands.sas = False

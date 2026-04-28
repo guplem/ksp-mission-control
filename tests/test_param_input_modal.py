@@ -15,8 +15,8 @@ from ksp_mission_control.control.actions.base import (
     ActionResult,
     ActionStatus,
     ParamType,
+    State,
     VesselCommands,
-    VesselState,
 )
 from ksp_mission_control.control.param_input_modal import ParamInputModal
 
@@ -45,9 +45,7 @@ class SingleParamAction(Action):
     def start(self, param_values: dict[str, Any]) -> None:
         pass
 
-    def tick(
-        self, state: VesselState, controls: VesselCommands, dt: float, log: ActionLogger
-    ) -> ActionResult:
+    def tick(self, state: State, controls: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         return ActionResult(status=ActionStatus.RUNNING)
 
 
@@ -78,9 +76,7 @@ class MultiParamAction(Action):
     def start(self, param_values: dict[str, Any]) -> None:
         pass
 
-    def tick(
-        self, state: VesselState, controls: VesselCommands, dt: float, log: ActionLogger
-    ) -> ActionResult:
+    def tick(self, state: State, controls: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         return ActionResult(status=ActionStatus.RUNNING)
 
 
@@ -95,9 +91,7 @@ class NoParamAction(Action):
     def start(self, param_values: dict[str, Any]) -> None:
         pass
 
-    def tick(
-        self, state: VesselState, controls: VesselCommands, dt: float, log: ActionLogger
-    ) -> ActionResult:
+    def tick(self, state: State, controls: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         return ActionResult(status=ActionStatus.RUNNING)
 
 
@@ -129,9 +123,7 @@ class BoolParamAction(Action):
     def start(self, param_values: dict[str, Any]) -> None:
         pass
 
-    def tick(
-        self, state: VesselState, controls: VesselCommands, dt: float, log: ActionLogger
-    ) -> ActionResult:
+    def tick(self, state: State, controls: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         return ActionResult(status=ActionStatus.RUNNING)
 
 
@@ -162,9 +154,7 @@ class StrParamAction(Action):
     def start(self, param_values: dict[str, Any]) -> None:
         pass
 
-    def tick(
-        self, state: VesselState, controls: VesselCommands, dt: float, log: ActionLogger
-    ) -> ActionResult:
+    def tick(self, state: State, controls: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         return ActionResult(status=ActionStatus.RUNNING)
 
 

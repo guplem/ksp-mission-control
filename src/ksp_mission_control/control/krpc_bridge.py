@@ -15,9 +15,9 @@ from ksp_mission_control.control.actions.base import (
     ScienceAction,
     ScienceExperiment,
     SpeedMode,
+    State,
     VesselCommands,
     VesselSituation,
-    VesselState,
 )
 
 # Command fields that have a matching field in VesselState for comparison.
@@ -111,7 +111,7 @@ class NoActiveVesselError(Exception):
     """
 
 
-def read_vessel_state(conn: object) -> VesselState:
+def read_vessel_state(conn: object) -> State:
     """Read current vessel telemetry from a kRPC connection into a VesselState."""
     vessel = conn.space_center.active_vessel  # type: ignore[attr-defined]
     if vessel is None:
@@ -193,7 +193,7 @@ def read_vessel_state(conn: object) -> VesselState:
     except Exception:
         science_experiments = []
 
-    return VesselState(
+    return State(
         altitude_sea=flight.mean_altitude,
         altitude_surface=flight.surface_altitude,
         speed_vertical=flight.vertical_speed,
@@ -291,7 +291,7 @@ def read_vessel_state(conn: object) -> VesselState:
     )
 
 
-def filter_commands(commands: VesselCommands, state: VesselState) -> tuple[VesselCommands, frozenset[str]]:
+def filter_commands(commands: VesselCommands, state: State) -> tuple[VesselCommands, frozenset[str]]:
     """Filter out command fields that already match the vessel's current state.
 
     Returns:

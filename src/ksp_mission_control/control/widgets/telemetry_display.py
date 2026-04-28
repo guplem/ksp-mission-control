@@ -10,7 +10,7 @@ from textual.events import Click
 from textual.message import Message
 from textual.widgets import Static
 
-from ksp_mission_control.control.actions.base import ScienceExperiment, VesselState
+from ksp_mission_control.control.actions.base import ScienceExperiment, State
 
 
 class ScienceCardWidget(Static, can_focus=False):
@@ -139,7 +139,7 @@ class TelemetryDisplayWidget(Static):
         yield Static("", id="telemetry-science-header")
         yield Container(id="telemetry-science-grid")
 
-    def update_vessel_state(self, state: VesselState) -> None:
+    def update_vessel_state(self, state: State) -> None:
         """Format and display the current vessel state across three columns."""
         header = self.query_one("#telemetry-header", Horizontal)
         if header.has_class("error"):
@@ -151,7 +151,7 @@ class TelemetryDisplayWidget(Static):
         self.query_one("#telemetry-resources", Static).update(_format_resources(state))
         self._update_science(state)
 
-    def _update_science(self, state: VesselState) -> None:
+    def _update_science(self, state: State) -> None:
         """Update the science experiments section below the telemetry grid."""
         experiments = state.science_experiments
         self._science_experiments = experiments
@@ -243,7 +243,7 @@ def _format_stage(stage_current: int, stage_max: int) -> str:
     return f"{stages_fired}/{total} fired"
 
 
-def _format_flight(state: VesselState) -> str:
+def _format_flight(state: State) -> str:
     return "\n".join(
         [
             "[b]Overview[/b]",
@@ -285,7 +285,7 @@ def _on_off(value: bool) -> str:
     return "ON" if value else "OFF"
 
 
-def _format_orbit(state: VesselState) -> str:
+def _format_orbit(state: State) -> str:
     return "\n".join(
         [
             "[b]Orbit[/b]",
@@ -323,7 +323,7 @@ def _format_resource(amount: float, fraction: float) -> str:
     return f"{amount:.1f} ({fraction * 100:.0f}%)"
 
 
-def _format_resources(state: VesselState) -> str:
+def _format_resources(state: State) -> str:
     return "\n".join(
         [
             "[b]Resources[/b]",

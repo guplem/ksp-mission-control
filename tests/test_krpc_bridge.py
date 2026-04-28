@@ -12,8 +12,8 @@ from ksp_mission_control.control.actions.base import (
     ReferenceFrame,
     ScienceAction,
     ScienceCommand,
+    State,
     VesselCommands,
-    VesselState,
 )
 from ksp_mission_control.control.krpc_bridge import (
     NoActiveVesselError,
@@ -781,14 +781,14 @@ class TestFilterCommands:
     def test_filters_redundant_sas(self) -> None:
         """SAS already True in state should be filtered out."""
         commands = VesselCommands(sas=True)
-        state = VesselState(control_sas=True)
+        state = State(control_sas=True)
         filtered, applied = filter_commands(commands, state)
         assert filtered.sas is None
         assert "sas" not in applied
 
     def test_passes_changed_throttle(self) -> None:
         commands = VesselCommands(throttle=0.8)
-        state = VesselState(control_throttle=0.0)
+        state = State(control_throttle=0.0)
         filtered, applied = filter_commands(commands, state)
         assert filtered.throttle == 0.8
         assert "throttle" in applied
@@ -796,21 +796,21 @@ class TestFilterCommands:
     def test_autopilot_pitch_always_applied(self) -> None:
         """autopilot_pitch is not in _COMPARABLE_FIELDS, so always passes through."""
         commands = VesselCommands(autopilot_pitch=45.0)
-        state = VesselState(orientation_pitch=45.0)  # Same angle, but not comparable
+        state = State(orientation_pitch=45.0)  # Same angle, but not comparable
         filtered, applied = filter_commands(commands, state)
         assert filtered.autopilot_pitch == 45.0
         assert "autopilot_pitch" in applied
 
     def test_autopilot_heading_always_applied(self) -> None:
         commands = VesselCommands(autopilot_heading=90.0)
-        state = VesselState(orientation_heading=90.0)
+        state = State(orientation_heading=90.0)
         filtered, applied = filter_commands(commands, state)
         assert filtered.autopilot_heading == 90.0
         assert "autopilot_heading" in applied
 
     def test_autopilot_roll_always_applied(self) -> None:
         commands = VesselCommands(autopilot_roll=10.0)
-        state = VesselState()
+        state = State()
         filtered, applied = filter_commands(commands, state)
         assert filtered.autopilot_roll == 10.0
         assert "autopilot_roll" in applied
@@ -818,55 +818,55 @@ class TestFilterCommands:
     def test_autopilot_direction_always_applied(self) -> None:
         direction = AutopilotDirection(vector=(1.0, 0.0, 0.0), reference_frame=ReferenceFrame.VESSEL_ORBITAL)
         commands = VesselCommands(autopilot_direction=direction)
-        state = VesselState()
+        state = State()
         filtered, applied = filter_commands(commands, state)
         assert filtered.autopilot_direction == direction
         assert "autopilot_direction" in applied
 
     def test_autopilot_config_always_applied(self) -> None:
         commands = VesselCommands(autopilot_config=AutopilotConfig.AUTO)
-        state = VesselState()
+        state = State()
         filtered, applied = filter_commands(commands, state)
         assert filtered.autopilot_config == AutopilotConfig.AUTO
         assert "autopilot_config" in applied
 
     def test_filters_redundant_stage_lock(self) -> None:
         commands = VesselCommands(stage_lock=True)
-        state = VesselState(control_stage_lock=True)
+        state = State(control_stage_lock=True)
         filtered, applied = filter_commands(commands, state)
         assert filtered.stage_lock is None
         assert "stage_lock" not in applied
 
     def test_passes_changed_reaction_wheels(self) -> None:
         commands = VesselCommands(reaction_wheels=False)
-        state = VesselState(control_reaction_wheels=True)
+        state = State(control_reaction_wheels=True)
         filtered, applied = filter_commands(commands, state)
         assert filtered.reaction_wheels is False
         assert "reaction_wheels" in applied
 
     def test_filters_redundant_wheel_throttle(self) -> None:
         commands = VesselCommands(wheel_throttle=0.0)
-        state = VesselState(control_wheel_throttle=0.0)
+        state = State(control_wheel_throttle=0.0)
         filtered, applied = filter_commands(commands, state)
         assert filtered.wheel_throttle is None
         assert "wheel_throttle" not in applied
 
     def test_passes_changed_wheel_steering(self) -> None:
         commands = VesselCommands(wheel_steering=0.5)
-        state = VesselState(control_wheel_steering=0.0)
+        state = State(control_wheel_steering=0.0)
         filtered, applied = filter_commands(commands, state)
         assert filtered.wheel_steering == 0.5
         assert "wheel_steering" in applied
 
     def test_all_none_returns_empty(self) -> None:
         commands = VesselCommands()
-        state = VesselState()
+        state = State()
         filtered, applied = filter_commands(commands, state)
         assert len(applied) == 0
 
     def test_all_science_always_applied(self) -> None:
         commands = VesselCommands(all_science=ScienceAction.RUN)
-        state = VesselState()
+        state = State()
         filtered, applied = filter_commands(commands, state)
         assert filtered.all_science == ScienceAction.RUN
         assert "all_science" in applied
@@ -874,7 +874,7 @@ class TestFilterCommands:
     def test_science_commands_always_applied(self) -> None:
         cmds = (ScienceCommand(experiment_index=0, action=ScienceAction.RUN),)
         commands = VesselCommands(science_commands=cmds)
-        state = VesselState()
+        state = State()
         filtered, applied = filter_commands(commands, state)
         assert filtered.science_commands == cmds
         assert "science_commands" in applied

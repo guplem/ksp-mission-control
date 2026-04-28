@@ -6,9 +6,9 @@ from ksp_mission_control.control.actions.base import (
     ActionLogger,
     ActionStatus,
     SpeedMode,
+    State,
     VesselCommands,
     VesselSituation,
-    VesselState,
 )
 from ksp_mission_control.control.actions.land.action import LandAction
 
@@ -38,14 +38,14 @@ class TestLandActionTick:
 
     def _make_started_action(self, target_speed: float = 2.0) -> LandAction:
         action = LandAction()
-        state = VesselState(altitude_surface=500.0)
+        state = State(altitude_surface=500.0)
         action.start(state, {"target_speed": target_speed})
         return action
 
     def test_descending_too_fast_increases_throttle(self) -> None:
         """Falling faster than target speed should boost throttle above 0.5."""
         action = self._make_started_action(target_speed=2.0)
-        state = VesselState(altitude_surface=30.0, speed_vertical=-10.0)
+        state = State(altitude_surface=30.0, speed_vertical=-10.0)
         controls = VesselCommands()
         result = action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert controls.throttle is not None
@@ -55,7 +55,7 @@ class TestLandActionTick:
     def test_descending_at_target_speed_near_ground(self) -> None:
         """At target speed near ground, throttle should be moderate."""
         action = self._make_started_action(target_speed=2.0)
-        state = VesselState(altitude_surface=10.0, speed_vertical=-2.0)
+        state = State(altitude_surface=10.0, speed_vertical=-2.0)
         controls = VesselCommands()
         action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert controls.throttle is not None
@@ -65,7 +65,7 @@ class TestLandActionTick:
     def test_ascending_reduces_throttle(self) -> None:
         """If vessel is ascending during landing, throttle should be low."""
         action = self._make_started_action(target_speed=2.0)
-        state = VesselState(altitude_surface=50.0, speed_vertical=5.0)
+        state = State(altitude_surface=50.0, speed_vertical=5.0)
         controls = VesselCommands()
         action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert controls.throttle is not None
@@ -73,35 +73,35 @@ class TestLandActionTick:
 
     def test_throttle_clamped_to_zero(self) -> None:
         action = self._make_started_action(target_speed=2.0)
-        state = VesselState(altitude_surface=50.0, speed_vertical=20.0)
+        state = State(altitude_surface=50.0, speed_vertical=20.0)
         controls = VesselCommands()
         action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert controls.throttle == 0.0
 
     def test_throttle_clamped_to_one(self) -> None:
         action = self._make_started_action(target_speed=2.0)
-        state = VesselState(altitude_surface=10.0, speed_vertical=-50.0)
+        state = State(altitude_surface=10.0, speed_vertical=-50.0)
         controls = VesselCommands()
         action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert controls.throttle == 1.0
 
     def test_sas_enabled_during_tick(self) -> None:
         action = self._make_started_action()
-        state = VesselState(altitude_surface=100.0, speed_vertical=-2.0)
+        state = State(altitude_surface=100.0, speed_vertical=-2.0)
         controls = VesselCommands()
         action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert controls.sas is True
 
     def test_gear_deployed_below_50m(self) -> None:
         action = self._make_started_action()
-        state = VesselState(altitude_surface=40.0, speed_vertical=-2.0)
+        state = State(altitude_surface=40.0, speed_vertical=-2.0)
         controls = VesselCommands()
         action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert controls.gear is True
 
     def test_gear_not_deployed_above_50m(self) -> None:
         action = self._make_started_action()
-        state = VesselState(altitude_surface=100.0, speed_vertical=-2.0)
+        state = State(altitude_surface=100.0, speed_vertical=-2.0)
         controls = VesselCommands()
         action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert controls.gear is None
@@ -110,12 +110,12 @@ class TestLandActionTick:
         """Above 100m, descent rate should be faster than target speed."""
         # Use separate action instances so acceleration estimate doesn't interfere
         action_high = self._make_started_action(target_speed=2.0)
-        state_high = VesselState(altitude_surface=300.0, speed_vertical=-2.0)
+        state_high = State(altitude_surface=300.0, speed_vertical=-2.0)
         controls_high = VesselCommands()
         action_high.tick(state_high, controls_high, dt=0.5, log=ActionLogger())
 
         action_low = self._make_started_action(target_speed=2.0)
-        state_low = VesselState(altitude_surface=30.0, speed_vertical=-2.0)
+        state_low = State(altitude_surface=30.0, speed_vertical=-2.0)
         controls_low = VesselCommands()
         action_low.tick(state_low, controls_low, dt=0.5, log=ActionLogger())
 
@@ -126,21 +126,21 @@ class TestLandActionTick:
 
     def test_lights_on_first_tick(self) -> None:
         action = self._make_started_action()
-        state = VesselState(altitude_surface=200.0, speed_vertical=-2.0)
+        state = State(altitude_surface=200.0, speed_vertical=-2.0)
         controls = VesselCommands()
         action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert controls.lights is True
 
     def test_speed_mode_surface_on_first_tick(self) -> None:
         action = self._make_started_action()
-        state = VesselState(altitude_surface=200.0, speed_vertical=-2.0)
+        state = State(altitude_surface=200.0, speed_vertical=-2.0)
         controls = VesselCommands()
         action.tick(state, controls, dt=0.5, log=ActionLogger())
         assert controls.ui_speed_mode == SpeedMode.SURFACE
 
     def test_speed_mode_not_set_after_first_tick(self) -> None:
         action = self._make_started_action()
-        state = VesselState(altitude_surface=200.0, speed_vertical=-2.0)
+        state = State(altitude_surface=200.0, speed_vertical=-2.0)
         action.tick(state, VesselCommands(), dt=0.5, log=ActionLogger())
         controls = VesselCommands()
         action.tick(state, controls, dt=0.5, log=ActionLogger())
@@ -148,7 +148,7 @@ class TestLandActionTick:
 
     def test_lights_only_on_first_tick(self) -> None:
         action = self._make_started_action()
-        state = VesselState(altitude_surface=200.0, speed_vertical=-2.0)
+        state = State(altitude_surface=200.0, speed_vertical=-2.0)
         # First tick sets lights
         action.tick(state, VesselCommands(), dt=0.5, log=ActionLogger())
         # Second tick should not set lights
@@ -158,7 +158,7 @@ class TestLandActionTick:
 
     def test_brakes_not_set_during_tick(self) -> None:
         action = self._make_started_action()
-        state = VesselState(
+        state = State(
             altitude_surface=0.5,
             speed_vertical=-0.1,
             situation=VesselSituation.LANDED,
@@ -170,7 +170,7 @@ class TestLandActionTick:
 
     def test_succeeds_on_landed(self) -> None:
         action = self._make_started_action()
-        state = VesselState(
+        state = State(
             altitude_surface=0.5,
             speed_vertical=-0.1,
             situation=VesselSituation.LANDED,
@@ -181,7 +181,7 @@ class TestLandActionTick:
 
     def test_running_while_flying(self) -> None:
         action = self._make_started_action()
-        state = VesselState(
+        state = State(
             altitude_surface=100.0,
             speed_vertical=-2.0,
             situation=VesselSituation.FLYING,
@@ -196,7 +196,7 @@ class TestLandActionStop:
 
     def test_stop_kills_throttle(self) -> None:
         action = LandAction()
-        state = VesselState()
+        state = State()
         action.start(state, {"target_speed": 2.0})
         controls = VesselCommands()
         action.stop(state, controls, log=ActionLogger())
@@ -204,7 +204,7 @@ class TestLandActionStop:
 
     def test_stop_disables_sas(self) -> None:
         action = LandAction()
-        state = VesselState()
+        state = State()
         action.start(state, {"target_speed": 2.0})
         controls = VesselCommands()
         action.stop(state, controls, log=ActionLogger())
@@ -212,7 +212,7 @@ class TestLandActionStop:
 
     def test_stop_engages_brakes(self) -> None:
         action = LandAction()
-        state = VesselState()
+        state = State()
         action.start(state, {"target_speed": 2.0})
         controls = VesselCommands()
         action.stop(state, controls, log=ActionLogger())

@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from ksp_mission_control.control.actions.base import (
     ActionStatus,
     LogEntry,
+    State,
     VesselCommands,
-    VesselState,
 )
 
 
@@ -18,7 +18,7 @@ class TickRecord:
 
     tick_number: int
     met: float
-    state: VesselState
+    state: State
     action_label: str | None
     action_status: ActionStatus | None
     logs: list[LogEntry]

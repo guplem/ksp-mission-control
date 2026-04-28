@@ -23,9 +23,9 @@ from ksp_mission_control.control.actions.base import (
     ParamType,
     SASMode,
     SpeedMode,
+    State,
     VesselCommands,
     VesselSituation,
-    VesselState,
 )
 
 # Cascaded velocity controller gains
@@ -80,7 +80,7 @@ class HoverAction(Action):
         ),
     ]
 
-    def start(self, state: VesselState, param_values: dict[str, Any]) -> None:
+    def start(self, state: State, param_values: dict[str, Any]) -> None:
         self._target_altitude: float = float(param_values["target_altitude"])
         self._hover_duration: float = float(param_values["hover_duration"])
         self._horizontal_control: float = float(param_values["horizontal_control"])
@@ -91,7 +91,7 @@ class HoverAction(Action):
         self._hover_elapsed: float = 0.0
         self._initial_altitude: float = state.altitude_surface
 
-    def tick(self, state: VesselState, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
+    def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         # --- Throttle control (cascaded velocity controller) ---
         # Outer loop: how fast should we be climbing/descending right now?
         # At 100m below target -> desired_vspeed = 50 m/s (capped)
@@ -162,5 +162,5 @@ class HoverAction(Action):
 
         return ActionResult(status=ActionStatus.RUNNING)
 
-    def stop(self, state: VesselState, commands: VesselCommands, log: ActionLogger) -> None:
+    def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
         super().stop(state, commands, log)

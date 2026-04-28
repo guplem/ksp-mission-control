@@ -52,8 +52,8 @@ from ksp_mission_control.control.actions.base import (
     ActionStatus,
     ParamType,
     SASMode,
+    State,
     VesselCommands,
-    VesselState,
 )
 
 # ---------------------------------------------------------------------------
@@ -187,7 +187,7 @@ class TranslateAction(Action):
 
     # -- Lifecycle ------------------------------------------------------------
 
-    def start(self, state: VesselState, param_values: dict[str, Any]) -> None:
+    def start(self, state: State, param_values: dict[str, Any]) -> None:
         self._distance_north: float = float(param_values["distance_north"])
         self._distance_east: float = float(param_values["distance_east"])
         self._max_speed: float = float(param_values["max_speed"])
@@ -202,7 +202,7 @@ class TranslateAction(Action):
         self._prev_traveled_north: float = 0.0
         self._prev_traveled_east: float = 0.0
 
-    def tick(self, state: VesselState, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
+    def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
 
         # ── 1. Where are we? ────────────────────────────────────────────────
         traveled_north, traveled_east = _lat_lon_to_meters(
@@ -291,7 +291,7 @@ class TranslateAction(Action):
 
         return ActionResult(status=ActionStatus.RUNNING)
 
-    def stop(self, state: VesselState, commands: VesselCommands, log: ActionLogger) -> None:
+    def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
         super().stop(state, commands, log)
         commands.throttle = 0.0
         commands.rcs = False
