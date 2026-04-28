@@ -41,7 +41,7 @@ class RunScienceAction(Action):
         ActionParam(
             param_id="science_index",
             label="Science Experiment Index",
-            description="Index of the science experiment to run, instead of all. Zero-based index, sorted by experiment name. Overrides 'Wait for Apoapsis' since it will trigger immediately.",
+            description=("Index of the science experiment to run, instead of all."),
             required=False,
             param_type=ParamType.INT,
             default=None,
