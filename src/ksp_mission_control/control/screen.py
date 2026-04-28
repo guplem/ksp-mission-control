@@ -52,7 +52,7 @@ class ViewMode(Enum):
     TELEMETRY = "telemetry"
 
 
-_VIEW_MODE_CYCLE = [ViewMode.SPLIT, ViewMode.LOGS, ViewMode.TELEMETRY]
+_VIEW_MODE_CYCLE = [ViewMode.SPLIT, ViewMode.TELEMETRY, ViewMode.LOGS]
 
 _MAX_TICK_HISTORY = 10_000
 """Maximum number of tick records to keep for clipboard export."""
