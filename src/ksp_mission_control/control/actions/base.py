@@ -173,6 +173,7 @@ class ParamType(Enum):
     """Data type of an action parameter."""
 
     FLOAT = "float"
+    INT = "int"
     BOOL = "bool"
     STR = "str"
 
@@ -190,7 +191,7 @@ class ActionParam:
     description: str
     required: bool
     param_type: ParamType = ParamType.FLOAT
-    default: float | bool | str | None = None
+    default: float | int | bool | str | None = None
     unit: str = ""
 
 

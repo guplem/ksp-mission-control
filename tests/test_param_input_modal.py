@@ -158,6 +158,37 @@ class StrParamAction(Action):
         return ActionResult(status=ActionStatus.RUNNING)
 
 
+class IntParamAction(Action):
+    """Action with an integer param."""
+
+    action_id: ClassVar[str] = "intparam"
+    label: ClassVar[str] = "Int Param"
+    description: ClassVar[str] = "Action with an integer param"
+    params: ClassVar[list[ActionParam]] = [
+        ActionParam(
+            param_id="count",
+            label="Count",
+            description="Number of iterations",
+            required=True,
+            param_type=ParamType.INT,
+        ),
+        ActionParam(
+            param_id="index",
+            label="Index",
+            description="Optional zero-based index",
+            required=False,
+            param_type=ParamType.INT,
+            default=0,
+        ),
+    ]
+
+    def start(self, param_values: dict[str, Any]) -> None:
+        pass
+
+    def tick(self, state: State, controls: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
+        return ActionResult(status=ActionStatus.RUNNING)
+
+
 # ---------------------------------------------------------------------------
 # Test apps
 # ---------------------------------------------------------------------------
@@ -260,6 +291,26 @@ class StrParamTestApp(App[None]):
         )
 
     def _on_dismiss(self, result: dict[str, float | bool | str] | None) -> None:
+        self.dismissed_value = result
+
+
+class IntParamTestApp(App[None]):
+    """Pushes ParamInputModal with an int-param action."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.dismissed_value: dict[str, float | int | bool | str] | None = "NOT_SET"  # type: ignore[assignment]
+
+    def compose(self) -> ComposeResult:
+        yield from ()
+
+    def on_mount(self) -> None:
+        self.push_screen(
+            ParamInputModal(IntParamAction()),
+            callback=self._on_dismiss,
+        )
+
+    def _on_dismiss(self, result: dict[str, float | int | bool | str] | None) -> None:
         self.dismissed_value = result
 
 
@@ -549,3 +600,87 @@ class TestParamInputModalStrParams:
             await pilot.click("#confirm-btn")
             await pilot.pause()
             assert app.dismissed_value == {"vessel_name": "Test"}
+
+
+# ---------------------------------------------------------------------------
+# Tests: Integer params
+# ---------------------------------------------------------------------------
+
+
+class TestParamInputModalIntParams:
+    @pytest.mark.asyncio
+    async def test_int_param_renders_as_input(self) -> None:
+        async with IntParamTestApp().run_test() as pilot:
+            await pilot.pause()
+            inp = pilot.app.screen.query_one("#param-count", Input)
+            assert inp is not None
+
+    @pytest.mark.asyncio
+    async def test_int_param_prefills_default(self) -> None:
+        async with IntParamTestApp().run_test() as pilot:
+            await pilot.pause()
+            inp = pilot.app.screen.query_one("#param-index", Input)
+            assert inp.value == "0"
+
+    @pytest.mark.asyncio
+    async def test_int_param_required_empty_rejected(self) -> None:
+        app = IntParamTestApp()
+        async with app.run_test(size=(80, 40)) as pilot:
+            await pilot.pause()
+            # count is required, leave it empty
+            await pilot.click("#confirm-btn")
+            await pilot.pause()
+            assert isinstance(pilot.app.screen, ParamInputModal)
+            assert app.dismissed_value == "NOT_SET"  # type: ignore[comparison-overlap]
+
+    @pytest.mark.asyncio
+    async def test_int_param_accepts_valid_integer(self) -> None:
+        app = IntParamTestApp()
+        async with app.run_test(size=(80, 40)) as pilot:
+            await pilot.pause()
+            inp = pilot.app.screen.query_one("#param-count", Input)
+            inp.value = "5"
+            await pilot.pause()
+            await pilot.click("#confirm-btn")
+            await pilot.pause()
+            assert app.dismissed_value == {"count": 5, "index": 0}
+            assert isinstance(app.dismissed_value["count"], int)
+            assert isinstance(app.dismissed_value["index"], int)
+
+    @pytest.mark.asyncio
+    async def test_int_param_rejects_float_value(self) -> None:
+        app = IntParamTestApp()
+        async with app.run_test(size=(80, 40)) as pilot:
+            await pilot.pause()
+            inp = pilot.app.screen.query_one("#param-count", Input)
+            inp.value = "3.5"
+            await pilot.click("#confirm-btn")
+            await pilot.pause()
+            assert isinstance(pilot.app.screen, ParamInputModal)
+            assert app.dismissed_value == "NOT_SET"  # type: ignore[comparison-overlap]
+
+    @pytest.mark.asyncio
+    async def test_int_param_rejects_non_numeric(self) -> None:
+        app = IntParamTestApp()
+        async with app.run_test(size=(80, 40)) as pilot:
+            await pilot.pause()
+            inp = pilot.app.screen.query_one("#param-count", Input)
+            inp.value = "abc"
+            await pilot.click("#confirm-btn")
+            await pilot.pause()
+            assert isinstance(pilot.app.screen, ParamInputModal)
+            assert app.dismissed_value == "NOT_SET"  # type: ignore[comparison-overlap]
+
+    @pytest.mark.asyncio
+    async def test_int_param_optional_empty_excluded(self) -> None:
+        app = IntParamTestApp()
+        async with app.run_test(size=(80, 40)) as pilot:
+            await pilot.pause()
+            count_inp = pilot.app.screen.query_one("#param-count", Input)
+            count_inp.value = "3"
+            index_inp = pilot.app.screen.query_one("#param-index", Input)
+            index_inp.value = ""
+            await pilot.pause()
+            await pilot.click("#confirm-btn")
+            await pilot.pause()
+            assert app.dismissed_value == {"count": 3}

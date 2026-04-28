@@ -10,7 +10,7 @@ from textual.widgets import Button, Input, Static, Switch
 from ksp_mission_control.control.actions.base import Action, ParamType
 
 
-class ParamInputModal(ModalScreen[dict[str, float | bool | str] | None]):
+class ParamInputModal(ModalScreen[dict[str, float | int | bool | str] | None]):
     """Modal dialog for editing an action's parameters before execution.
 
     Renders one Input per ActionParam, pre-fills defaults, validates on
@@ -109,7 +109,7 @@ class ParamInputModal(ModalScreen[dict[str, float | bool | str] | None]):
     def _do_confirm(self) -> None:
         """Validate inputs and dismiss with the param dict."""
         error_widget = self.query_one("#modal-error", Static)
-        result: dict[str, float | bool | str] = {}
+        result: dict[str, float | int | bool | str] = {}
 
         for param in self._action.params:
             if param.param_type == ParamType.BOOL:
@@ -129,6 +129,13 @@ class ParamInputModal(ModalScreen[dict[str, float | bool | str] | None]):
 
             if param.param_type == ParamType.STR:
                 result[param.param_id] = raw
+            elif param.param_type == ParamType.INT:
+                try:
+                    result[param.param_id] = int(raw)
+                except ValueError:
+                    error_widget.update(f"[b]{param.label}[/b] must be a whole number")
+                    inp.focus()
+                    return
             else:
                 try:
                     result[param.param_id] = float(raw)
