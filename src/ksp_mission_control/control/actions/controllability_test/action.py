@@ -118,11 +118,11 @@ class ControllabilityTestAction(Action):
     ]
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
-        roll_offset = float(param_values.get("roll_offset", _DEFAULT_ROLL_OFFSET))
-        pitch_offset = float(param_values.get("pitch_offset", _DEFAULT_PITCH_OFFSET))
-        heading_offset = float(param_values.get("heading_offset", _DEFAULT_HEADING_OFFSET))
-        self.hold_duration = float(param_values.get("hold_duration", _DEFAULT_HOLD_DURATION))
-        self._tolerance: float = float(param_values.get("tolerance", _DEFAULT_TOLERANCE))
+        roll_offset = float(param_values["roll_offset"])
+        pitch_offset = float(param_values["pitch_offset"])
+        heading_offset = float(param_values["heading_offset"])
+        self.hold_duration = float(param_values["hold_duration"])
+        self._tolerance: float = float(param_values["tolerance"])
 
         # Capture initial orientation as baseline.
         initial_pitch = state.orientation_pitch

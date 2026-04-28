@@ -306,7 +306,7 @@ def filter_commands(commands: VesselCommands, state: State) -> tuple[VesselComma
 
     for field in fields(commands):
         value = getattr(commands, field.name)
-        if value is None:
+        if value is None or value == ():
             continue
 
         state_field = _COMPARABLE_FIELDS.get(field.name)
@@ -431,7 +431,7 @@ def apply_controls(conn: object, controls: VesselCommands) -> None:
         experiments = vessel.parts.experiments
         for exp in experiments:
             _apply_science_action(exp, controls.all_science)
-    if controls.science_commands is not None:
+    if controls.science_commands:
         experiments = vessel.parts.experiments
         for cmd in controls.science_commands:
             if 0 <= cmd.experiment_index < len(experiments):

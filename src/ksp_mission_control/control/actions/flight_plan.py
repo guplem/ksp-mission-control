@@ -38,6 +38,8 @@ def _parse_param_value(raw: str, param_type: ParamType) -> float | bool | str:
     """Convert a raw string value to the correct type."""
     if param_type == ParamType.FLOAT:
         return float(raw)
+    if param_type == ParamType.INT:
+        return int(raw)
     if param_type == ParamType.BOOL:
         if raw.lower() in ("true", "1", "yes"):
             return True
@@ -63,16 +65,11 @@ def _parse_line_params(tokens: list[str], action: Action) -> dict[str, Any]:
 
     for token in tokens:
         if "=" not in token:
-            raise ValueError(
-                f"Invalid parameter format {token!r} for action {action.action_id!r}. "
-                f"Expected key=value"
-            )
+            raise ValueError(f"Invalid parameter format {token!r} for action {action.action_id!r}. Expected key=value")
         key, raw_value = token.split("=", 1)
         if key not in param_lookup:
             available = list(param_lookup.keys())
-            raise ValueError(
-                f"Unknown parameter {key!r} for action {action.action_id!r}. Available: {available}"
-            )
+            raise ValueError(f"Unknown parameter {key!r} for action {action.action_id!r}. Available: {available}")
         param = param_lookup[key]
         result[key] = _parse_param_value(raw_value, param.param_type)
 

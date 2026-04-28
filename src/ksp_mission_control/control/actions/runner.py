@@ -142,7 +142,7 @@ class ActionRunner:
         for param in action.params:
             if param_values is not None and param.param_id in param_values:
                 resolved[param.param_id] = param_values[param.param_id]
-            elif not param.required and param.default is not None:
+            elif not param.required:
                 resolved[param.param_id] = param.default
             elif param.required:
                 msg = f"Required parameter '{param.param_id}' not provided for action '{action.action_id}'"

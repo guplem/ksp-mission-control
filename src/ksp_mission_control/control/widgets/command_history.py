@@ -300,7 +300,7 @@ def _format_commands(commands: VesselCommands, applied_fields: frozenset[str]) -
     lines: list[str] = []
     for field in fields(commands):
         value = getattr(commands, field.name)
-        if value is None:
+        if value is None or value == ():
             continue
         label = field.name.replace("_", " ").title()
         formatted = format_field_value(field.name, value)

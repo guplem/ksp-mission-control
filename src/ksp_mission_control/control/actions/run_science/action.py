@@ -17,6 +17,7 @@ from ksp_mission_control.control.actions.base import (
     ActionStatus,
     ParamType,
     ScienceAction,
+    ScienceCommand,
     State,
     VesselCommands,
 )
@@ -37,30 +38,29 @@ class RunScienceAction(Action):
             param_type=ParamType.BOOL,
             default=False,
         ),
+        ActionParam(
+            param_id="science_index",
+            label="Science Experiment Index",
+            description="(Advanced) Index of the science experiment to run, instead of all. Zero-based index, sorted by experiment name. Overrides 'Wait for Apoapsis' since it will trigger immediately.",
+            required=False,
+            param_type=ParamType.INT,
+            default=None,
+        ),
     ]
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
-        self._wait_for_apoapsis: bool = bool(param_values.get("wait_for_apoapsis", False))
-        self._triggered: bool = False
-        self._was_ascending: bool = state.speed_vertical > 0.0
+        self._wait_for_apoapsis: bool = bool(param_values["wait_for_apoapsis"])
+        self._science_index: int | None = param_values["science_index"]
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
 
-        if self._wait_for_apoapsis:
-            now_ascending = state.speed_vertical > 0.0
+        if self._wait_for_apoapsis and state.orbit_apoapsis_time_to > 0:
+            return ActionResult(status=ActionStatus.RUNNING, message=f"Waiting for apoapsis (time to apoapsis: {state.orbit_apoapsis_time_to:.1f}s)")
 
-            if self._was_ascending and not now_ascending:
-                # Crossed apoapsis: vertical speed went from positive to non-positive.
-                available_count = sum(1 for e in state.science_experiments if e.available and not e.has_data)
-                log.info(f"Apoapsis reached at {state.altitude_sea:.0f}m, running {available_count} science experiment(s)")
-                commands.all_science = ScienceAction.RUN
-                return ActionResult(status=ActionStatus.SUCCEEDED, message="Science experiments activated at apoapsis")
+        if self._science_index is not None and 0 <= self._science_index < len(state.science_experiments):
+            commands.science_commands += (ScienceCommand(self._science_index, ScienceAction.RUN),)
+            return ActionResult(status=ActionStatus.SUCCEEDED, message=f"Running science experiment index {self._science_index}")
 
-            self._was_ascending = now_ascending
-            log.debug(f"Waiting for apoapsis (vertical speed: {state.speed_vertical:.1f} m/s)")
-            return ActionResult(status=ActionStatus.RUNNING)
-
-        # No wait: trigger immediately.
         available_count = sum(1 for e in state.science_experiments if e.available and not e.has_data)
         log.info(f"Running {available_count} science experiment(s)")
         commands.all_science = ScienceAction.RUN

@@ -43,7 +43,7 @@ class HoldAttitudeAction(Action):
     ]
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
-        self._hold_ticks: int = int(param_values.get("hold_ticks", _DEFAULT_HOLD_TICKS))
+        self._hold_ticks: int = int(param_values["hold_ticks"])
         self._tick_count: int = 0
         self._staged: bool = False
 

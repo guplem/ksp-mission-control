@@ -774,7 +774,7 @@ class VesselCommands:
     # --- Science ---
     all_science: ScienceAction | None = None
     """Apply an action to ALL science experiments. One-shot like stage."""
-    science_commands: tuple[ScienceCommand, ...] | None = None
+    science_commands: tuple[ScienceCommand, ...] = ()
     """Targeted commands for specific experiments. One-shot like stage."""
 
     # --- Deployables ---

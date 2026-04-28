@@ -172,7 +172,7 @@ class LaunchAction(Action):
         self._initial_altitude: float = state.altitude_sea
 
         # Resolve target_altitude: use provided value, or infer from body.
-        raw_altitude = param_values.get("target_altitude")
+        raw_altitude = param_values["target_altitude"]
         if raw_altitude is not None:
             self._target_altitude: float = float(raw_altitude)
         elif state.body_has_atmosphere:
@@ -184,7 +184,7 @@ class LaunchAction(Action):
         self.tolerance_altitude = self._target_altitude * _APOAPSIS_TOLERANCE_MULTIPLIER
 
         # Resolve target_inclination: use provided value, or default to 0.
-        raw_inclination = param_values.get("target_inclination")
+        raw_inclination = param_values["target_inclination"]
         if raw_inclination is not None:
             self._target_inclination: float = float(raw_inclination)
         else:
@@ -192,14 +192,14 @@ class LaunchAction(Action):
 
         # Resolve turn_start_altitude: use provided value, or default to
         # 50m above the initial altitude (just enough to clear the pad).
-        raw_turn_start = param_values.get("turn_start_altitude")
+        raw_turn_start = param_values["turn_start_altitude"]
         if raw_turn_start is not None:
             self._turn_start_altitude: float = float(raw_turn_start)
         else:
             self._turn_start_altitude = self._initial_altitude
 
         # Resolve turn_end_altitude: use provided value, or default to 70% of target.
-        raw_turn_end = param_values.get("turn_end_altitude")
+        raw_turn_end = param_values["turn_end_altitude"]
         if raw_turn_end is not None:
             self._turn_end_altitude: float = float(raw_turn_end)
         else:

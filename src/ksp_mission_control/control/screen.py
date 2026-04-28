@@ -407,7 +407,7 @@ def _format_tick_history(ticks: list[TickRecord]) -> str:
 
         for field in fields(tick.commands):
             value = getattr(tick.commands, field.name)
-            if value is None:
+            if value is None or value == ():
                 continue
             formatted = format_field_value(field.name, value)
             if field.name in tick.applied_fields:

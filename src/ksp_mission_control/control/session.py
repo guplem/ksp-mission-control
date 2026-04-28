@@ -49,7 +49,7 @@ def _merge_manual_command(commands: VesselCommands, manual: VesselCommands) -> l
     overridden: list[str] = []
     for field in dataclass_fields(manual):
         value = getattr(manual, field.name)
-        if value is not None:
+        if value is not None and value != ():
             setattr(commands, field.name, value)
             overridden.append(field.name)
     return overridden
