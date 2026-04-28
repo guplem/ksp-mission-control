@@ -234,17 +234,6 @@ def _format_mass(kg: float) -> str:
     return f"{kg:.1f} kg"
 
 
-def _format_stage(stage_current: int, stage_max: int) -> str:
-    """Format staging as 'fired/total fired'.
-
-    KSP's current_stage is the *next* stage to fire (counts down),
-    so stages_fired = stage_max - stage_current + 1 and total = stage_max + 1.
-    """
-    total = stage_max + 1
-    stages_fired = max(0, stage_max - stage_current + 1)
-    return f"{stages_fired}/{total} fired"
-
-
 def _format_flight(state: State) -> str:
     return "\n".join(
         [
@@ -336,7 +325,7 @@ def _format_resources(state: State) -> str:
             "",
             "[b]Controls[/b]",
             f"Throttle:        {state.control_throttle * 100:.0f}%",
-            f"Stage:           {_format_stage(state.stage_current, state.stage_max)}",
+            f"Stage:           {state.stage_current} (remaining)",
             f"SAS:             {_on_off(state.control_sas)}",
             f"SAS mode:        {state.control_sas_mode.display_name if state.control_sas_mode is not None else '-'}",
             f"RCS:             {_on_off(state.control_rcs)}",

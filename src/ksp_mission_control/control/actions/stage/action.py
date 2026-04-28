@@ -30,8 +30,11 @@ class StageAction(Action):
         pass
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
-        if state.stage_current >= state.stage_max - 1:
-            return ActionResult(status=ActionStatus.FAILED, message="Cannot stage: already at final stage")
+        if state.stage_current <= 0:
+            return ActionResult(
+                status=ActionStatus.FAILED,
+                message="Cannot stage: already at stage 0",
+            )
         commands.stage = True
         return ActionResult(status=ActionStatus.SUCCEEDED, message=f"Vessel staged. Current stage: {state.stage_current + 1}")
 

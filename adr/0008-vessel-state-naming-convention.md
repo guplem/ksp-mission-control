@@ -39,7 +39,7 @@ kRPC's own naming is inconsistent (mixing camelCase, different object hierarchie
 | `mass_` | Vessel mass variants | `mass`, `mass_dry` |
 | `thrust_` | Thrust variants | `thrust`, `thrust_available`, `thrust_peak` |
 | `engine_` | Engine-specific properties | `engine_impulse_specific`, `engine_flameout_count` |
-| `stage_` | Staging info | `stage_current`, `stage_max` |
+| `stage_` | Staging info | `stage_current` |
 | `resource_` | Consumable resources (amount, capacity, fraction) | `resource_liquid_fuel`, `resource_liquid_fuel_max` |
 | `control_` | Commandable state (readable AND writable via VesselCommands) | `control_throttle`, `control_sas`, `control_autopilot` |
 | `comms_` | Communication link status | `comms_connected`, `comms_signal_strength` |

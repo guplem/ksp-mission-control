@@ -38,6 +38,57 @@ def _record(
     )
 
 
+class TestIdleTickSkip:
+    """Idle ticks (no commands set) must not create command history entries."""
+
+    @pytest.mark.asyncio
+    async def test_default_commands_skipped(self) -> None:
+        """A default VesselCommands() (all None / empty tuple) is idle."""
+        async with CommandHistoryApp().run_test(size=(120, 40)) as pilot:
+            widget = pilot.app.query_one("#command-history", CommandHistoryWidget)
+            widget.record_commands(
+                VesselCommands(),
+                applied_fields=frozenset(),
+                action_label=None,
+                met=0.0,
+                tick_id=1,
+            )
+            await pilot.pause()
+            assert len(widget._history) == 0
+
+    @pytest.mark.asyncio
+    async def test_empty_tuple_science_commands_skipped(self) -> None:
+        """science_commands=() should not count as a real command."""
+        async with CommandHistoryApp().run_test(size=(120, 40)) as pilot:
+            widget = pilot.app.query_one("#command-history", CommandHistoryWidget)
+            commands = VesselCommands()
+            assert commands.science_commands == ()
+            widget.record_commands(
+                commands,
+                applied_fields=frozenset(),
+                action_label=None,
+                met=0.0,
+                tick_id=1,
+            )
+            await pilot.pause()
+            assert len(widget._history) == 0
+
+    @pytest.mark.asyncio
+    async def test_real_command_recorded(self) -> None:
+        """A VesselCommands with a non-None field is recorded."""
+        async with CommandHistoryApp().run_test(size=(120, 40)) as pilot:
+            widget = pilot.app.query_one("#command-history", CommandHistoryWidget)
+            widget.record_commands(
+                VesselCommands(throttle=1.0),
+                applied_fields=frozenset({"throttle"}),
+                action_label="Test",
+                met=0.0,
+                tick_id=1,
+            )
+            await pilot.pause()
+            assert len(widget._history) == 1
+
+
 class TestMessageDisplay:
     """Action result message is shown in the command history widget."""
 

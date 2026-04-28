@@ -142,7 +142,6 @@ class TestVesselState:
         assert state.control_ui_speed_mode == SpeedMode.ORBIT
         assert state.control_rcs is False
         assert state.stage_current == 0
-        assert state.stage_max == 0
         assert state.resource_electric_charge == 0.0
         assert state.resource_liquid_fuel == 0.0
         assert state.resource_oxidizer == 0.0

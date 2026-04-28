@@ -270,7 +270,6 @@ def read_vessel_state(conn: object) -> State:
         control_translate_right=control.right,
         control_translate_up=control.up,
         stage_current=control.current_stage,
-        stage_max=max((p.stage for p in vessel.parts.all), default=0),
         engine_flameout_count=sum(1 for e in vessel.parts.engines if e.active and not e.has_fuel),
         control_deployable_solar_panels=control.solar_panels,
         control_deployable_antennas=control.antennas,

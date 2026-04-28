@@ -507,9 +507,7 @@ class State:
     control_translate_up: float = 0.0
     """RCS translation down/up. -1.0 = down, 1.0 = up."""
     stage_current: int = 0
-    """Currently active stage number."""
-    stage_max: int = 0
-    """Total number of stages on the vessel."""
+    """Currently active stage number. 0 = last stage, 1 = one stage left, etc."""
     engine_flameout_count: int = 0
     """Number of active engines that have run out of fuel (flameout)."""
 
