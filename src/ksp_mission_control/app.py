@@ -22,11 +22,17 @@ class MissionControlApp(App[None]):
 
     def on_mount(self) -> None:
         self.register_theme(mission_control_theme)
-        self.theme = "mission-control"
+        self.theme = self.config_manager.config.theme
 
         from ksp_mission_control.setup.screen import SetupScreen
 
         self.push_screen(SetupScreen())
+
+    def watch_theme(self, theme: str) -> None:
+        """Persist theme changes to config."""
+        if hasattr(self, "config_manager"):
+            self.config_manager.config.theme = theme
+            self.config_manager.save()
 
     def compose(self) -> ComposeResult:
         yield from ()

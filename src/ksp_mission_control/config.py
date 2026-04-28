@@ -25,6 +25,7 @@ class AppConfig:
     """
 
     ksp_path: str | None = field(default=None)
+    theme: str = field(default="mission-control")
 
 
 def get_config_dir() -> Path:
@@ -82,4 +83,5 @@ class ConfigManager:
             return AppConfig()
         return AppConfig(
             ksp_path=raw.get("ksp_path"),
+            theme=raw.get("theme", "mission-control"),
         )

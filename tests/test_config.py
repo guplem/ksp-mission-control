@@ -112,7 +112,7 @@ class TestConfigManager:
         manager.save()
 
         raw = json.loads((tmp_path / "config.json").read_text())
-        assert raw == {"ksp_path": "/ksp"}
+        assert raw == {"ksp_path": "/ksp", "theme": "mission-control"}
 
     def test_save_null_path_writes_null(self, tmp_path: Path) -> None:
         manager = ConfigManager(config_dir=tmp_path)

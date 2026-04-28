@@ -124,7 +124,7 @@ class CommandHistoryWidget(VerticalScroll, can_focus=True):
         see the full command stream.
         """
         # Skip idle ticks (no action running, no commands at all).
-        has_any_command = any(getattr(commands, f.name) is not None for f in fields(commands))
+        has_any_command = any((value := getattr(commands, f.name)) is not None and value != () for f in fields(commands))
         if not has_any_command:
             return
 
