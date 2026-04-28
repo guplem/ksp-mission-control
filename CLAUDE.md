@@ -58,16 +58,27 @@ src/ksp_mission_control/
 │   ├── flight_plan_picker.py  # FlightPlanPicker (modal for selecting .plan files)
 │   ├── confirm_exit_dialog.py  # ConfirmExitDialog (leave control room confirmation)
 │   ├── plan_failure_dialog.py # PlanFailureDialog (continue/abort on step failure)
+│   ├── manual_command_dialog.py   # ManualCommandDialog (one-shot manual VesselCommands)
+│   ├── science_command_dialog.py  # ScienceCommandDialog (targeted science experiment command)
+│   ├── tick_record.py        # TickRecord (per-tick snapshot for export)
 │   ├── actions/          # Action execution system (ADR 0006)
-│   │   ├── base.py       # Action ABC, VesselState, VesselCommands, ActionLogger, enums
+│   │   ├── base.py       # Action ABC, State, VesselCommands, ActionParam, ActionLogger, ScienceExperiment, ScienceCommand, enums
 │   │   ├── runner.py     # ActionRunner (step-based executor), StepResult
 │   │   ├── plan_executor.py # PlanExecutor (wraps ActionRunner, chains plan steps)
 │   │   ├── flight_plan.py   # FlightPlan, FlightPlanStep, parse_flight_plan()
 │   │   ├── registry.py   # get_available_actions() factory
+│   │   ├── controllability_test/ # Diagnostic attitude control verification
+│   │   │   └── action.py # ControllabilityTestAction (tests roll/pitch/heading axes)
+│   │   ├── hold_attitude/    # Diagnostic autopilot hold test
+│   │   │   └── action.py # HoldAttitudeAction (autopilot attitude hold for N ticks)
 │   │   ├── hover/        # Hover altitude-hold action
 │   │   │   └── action.py # HoverAction (PD controller, hover duration)
 │   │   ├── land/         # Landing action
 │   │   │   └── action.py # LandAction (controlled descent PD controller)
+│   │   ├── launch/       # Ascent action
+│   │   │   └── action.py # LaunchAction (gravity turn to target apoapsis)
+│   │   ├── run_science/  # Science experiment activation
+│   │   │   └── action.py # RunScienceAction (trigger available experiments)
 │   │   └── translate/    # Translation action
 │   │       └── action.py # TranslateAction (RCS translation control)
 │   ├── widgets/          # Control-screen widgets
@@ -101,8 +112,10 @@ src/ksp_mission_control/
     └── welcome_view.py   # WelcomeView
 
 plans/                        # Flight plan files (.plan)
+├── altitude-steps.plan       # Step through altitudes then land
+├── first-science-flight.plan # Suborbital science flight
 ├── hover-and-land.plan       # Hover then land
-└── altitude-steps.plan       # Step through altitudes then land
+└── square-patrol.plan        # Square patrol pattern via translation
 ```
 
 ### Module organization rules
@@ -117,7 +130,7 @@ This project uses **feature-based modules**, not layer-based. Every feature is a
 - **Sub-features nest as subfolders**. If a feature has distinct sub-concerns (e.g. `setup/` has `kRPC_installer/`, `kRPC_comms/`, `vessel/`), each gets its own folder with its own files.
 - **Shared code stays at the parent level**. Base classes and shared types (e.g. `SetupCheck`, `CheckResult`) live in the parent module (e.g. `setup/checks.py`), not duplicated in sub-features.
 
-### VesselState / VesselCommands naming convention (ADR 0008)
+### State / VesselCommands naming convention (ADR 0008)
 
 When adding or renaming fields, follow these rules (full rationale in ADR 0008):
 
@@ -152,7 +165,7 @@ Groups: `altitude_`, `speed_`, `pressure_`, `aero_`, `orbit_`, `body_`, `positio
 ### Data flow
 
 ```
-kRPC --read--> krpc_bridge --> VesselState --> PlanExecutor.step() --> VesselCommands
+kRPC --read--> krpc_bridge --> State --> PlanExecutor.step() --> VesselCommands
                                                       |
                                               ActionRunner.step()
                                               (single action tick)
@@ -170,12 +183,12 @@ kRPC --read--> krpc_bridge --> VesselState --> PlanExecutor.step() --> VesselCom
                                   ControlScreen (UI glue: call_from_thread -> widgets)
 ```
 
-- **Read path**: `krpc_bridge.read_vessel_state()` reads kRPC telemetry into a pure `VesselState` dataclass.
-- **Action loop**: `PlanExecutor.step()` delegates to `ActionRunner.step()`, which passes `VesselState` to the current action's `tick()`, mutating a `VesselCommands` buffer. When a plan is active, PlanExecutor detects action completion and auto-advances to the next step.
+- **Read path**: `krpc_bridge.read_vessel_state()` reads kRPC telemetry into a pure `State` dataclass.
+- **Action loop**: `PlanExecutor.step()` delegates to `ActionRunner.step()`, which passes `State` to the current action's `tick()`, mutating a `VesselCommands` buffer. When a plan is active, PlanExecutor detects action completion and auto-advances to the next step.
 - **Command filtering**: `filter_commands()` compares each command field against the vessel's current state. Only fields that differ are sent to kRPC. Returns `applied_fields` (which fields were actually sent) for the UI.
 - **Write path**: `krpc_bridge.apply_controls()` writes the filtered commands to kRPC.
 - **Session/screen split**: `ControlSession` owns the poll loop and calls `on_update`/`on_error` callbacks. `ControlScreen` wraps these callbacks with `call_from_thread()` to bridge to the UI thread.
-- **Models are pure (ADR 0004)**: `VesselState` and `VesselCommands` have no kRPC or Textual imports. Actions are testable with constructed states.
+- **Models are pure (ADR 0004)**: `State` and `VesselCommands` have no kRPC or Textual imports. Actions are testable with constructed states.
 - **Flight plans**: Text files (`.plan`) parsed by `parse_flight_plan()`. Each line is `action_id key=value ...`. Plans are loaded via `FlightPlanPicker` modal. On step failure, `PlanFailureDialog` asks user to continue or abort.
 
 ### Key patterns
@@ -237,7 +250,7 @@ Format: `adr/NNNN-short-title.md` with Context, Decision, Consequences sections.
 | [0005](adr/0005-tdd-workflow.md) | Test-driven development workflow | Writing or restructuring tests |
 | [0006](adr/0006-action-execution-system.md) | Tick-based action execution system | Adding actions, changing runner, or modifying the control loop |
 | [0007](adr/0007-screen-session-pattern.md) | Screen + session/runner separation of concerns | Adding new screens or refactoring screen logic |
-| [0008](adr/0008-vessel-state-naming-convention.md) | VesselState/VesselCommands field naming convention | Adding or renaming fields on VesselState or VesselCommands |
+| [0008](adr/0008-vessel-state-naming-convention.md) | State/VesselCommands field naming convention | Adding or renaming fields on State or VesselCommands |
 
 When to create a new ADR: any decision involving trade-offs between alternatives, especially around dependencies, architecture boundaries, or data flow.
 

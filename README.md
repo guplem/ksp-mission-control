@@ -8,7 +8,7 @@ A terminal-based mission control console for **Kerbal Space Program**. Connect t
 ## Features
 
 - **Live flight telemetry** -- 3-column display: flight data, orbital parameters, resources and configuration, updated every 0.5s
-- **Automated vessel actions** -- tick-based action system with parameter input. Ships with Hover (PD altitude-hold) and Land (controlled descent) actions
+- **Automated vessel actions** -- tick-based action system with parameter input. Ships with Launch (gravity turn ascent), Hover (PD altitude-hold), Land (controlled descent), Translate (RCS translation), Run Science (experiment activation), and diagnostic actions (Hold Attitude, Controllability Test)
 - **Flight plans** -- load multi-step mission plans from `.plan` text files. Steps execute sequentially with per-step status tracking, auto-advance on success, and a failure dialog to continue or abort
 - **Action debug console** -- scrolling, color-coded log (DEBUG/INFO/WARN/ERROR) with MET timestamps showing action internals
 - **Command history** -- paginated record of every command sent to the vessel, showing which fields were actually applied vs redundant
@@ -70,9 +70,6 @@ git config core.hooksPath hooks
 
 # Run with Textual dev mode (live CSS reload)
 uv run textual run --dev src/ksp_mission_control/app.py
-
-# Run with Textual dev mode (live CSS reload)
-uv run textual serve --dev src/ksp_mission_control/app.py
 
 # Access the Textual console for debugging (in another terminal you must run the app with --dev)
 uv run textual console
