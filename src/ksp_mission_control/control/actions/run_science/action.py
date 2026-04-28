@@ -24,7 +24,7 @@ from ksp_mission_control.control.actions.base import (
 
 
 class RunScienceAction(Action):
-    """Activate all science experiments, optionally waiting for apoapsis."""
+    """Activate science experiments, optionally waiting for apoapsis."""
 
     action_id: ClassVar[str] = "run_science"
     label: ClassVar[str] = "Run Science"

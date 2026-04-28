@@ -63,7 +63,11 @@ class PlanFailureDialog(ModalScreen[bool]):
         step_number = self._plan_snap.current_step_index + 1
         total = self._plan_snap.total_steps
         plan_name = self._plan_snap.plan_name or "Unknown"
-        action_label = self._plan_snap.runner.action_label or "Unknown"
+        step_index = self._plan_snap.current_step_index
+        if step_index < len(self._plan_snap.step_action_labels):
+            action_label = self._plan_snap.step_action_labels[step_index]
+        else:
+            action_label = self._plan_snap.runner.action_label or "Unknown"
 
         with Vertical(id="failure-container"):
             yield Static("[b]Flight Plan Step Failed[/b]", id="failure-title")

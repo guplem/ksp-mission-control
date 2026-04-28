@@ -17,7 +17,7 @@ from ksp_mission_control.control.actions.registry import get_available_actions
 from ksp_mission_control.control.formatting import resolve_theme_colors
 
 _STATUS_VARIABLE: dict[StepStatus, str] = {
-    StepStatus.PENDING: "text-muted",
+    StepStatus.PENDING: "foreground-darken-2",
     StepStatus.RUNNING: "accent",
     StepStatus.SUCCEEDED: "success",
     StepStatus.FAILED: "error",

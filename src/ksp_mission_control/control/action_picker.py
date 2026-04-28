@@ -43,6 +43,10 @@ class ActionPicker(ModalScreen[Action | None]):
         max-height: 20;
     }
 
+    #action-picker-listview ListItem {
+        padding: 0 0 1 0;
+    }
+
     #action-picker-buttons {
         dock: bottom;
         padding: 1 0 0 0;

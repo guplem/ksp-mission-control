@@ -96,6 +96,7 @@ def _make_mock_conn(
         period=2400.0,
         time_to_apoapsis=300.0,
         time_to_periapsis=900.0,
+        true_anomaly=1.0,
         time_to_soi_change=float("nan"),
         body=body,
     )
@@ -369,7 +370,7 @@ class TestReadVesselState:
         conn = _make_mock_conn()
         state = read_vessel_state(conn)
         assert state.orbit_apoapsis_time_to == 300.0
-        assert state.orbit_periapsis_time_to == 900.0
+        assert state.orbit_periapsis_time_to == -900.0
 
     def test_reads_speed_horizontal(self) -> None:
         conn = _make_mock_conn()

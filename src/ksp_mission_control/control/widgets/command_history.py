@@ -44,6 +44,7 @@ class CommandRecord:
     applied_fields: frozenset[str]
     """Field names that were actually sent (differed from vessel state)."""
     status: ActionStatus | None = None
+    message: str = ""
 
 
 class CommandHistoryWidget(VerticalScroll, can_focus=True):
@@ -63,6 +64,10 @@ class CommandHistoryWidget(VerticalScroll, can_focus=True):
     #command-history-title {
         height: auto;
         padding: 0 0 1 0;
+    }
+    #command-history-message {
+        height: auto;
+        padding: 0;
     }
     #command-history-nav {
         height: auto;
@@ -92,6 +97,7 @@ class CommandHistoryWidget(VerticalScroll, can_focus=True):
     def compose(self) -> ComposeResult:
         yield Static("[b]Command History[/b]", id="command-history-title")
         yield Static("[dim]No commands yet[/dim]", id="command-history-content")
+        yield Static("", id="command-history-message")
         with Horizontal(id="command-history-nav"):
             yield Button("\u25c0\u25c0", id="cmd-first", disabled=True)
             yield Button("\u25c0", id="cmd-prev", disabled=True)
@@ -108,6 +114,7 @@ class CommandHistoryWidget(VerticalScroll, can_focus=True):
         met: float,
         tick_id: int,
         status: ActionStatus | None = None,
+        message: str = "",
     ) -> None:
         """Record a command snapshot from the current tick.
 
@@ -129,6 +136,7 @@ class CommandHistoryWidget(VerticalScroll, can_focus=True):
             commands=commands,
             applied_fields=applied_fields,
             status=status,
+            message=message,
         )
 
         self._history.append(record)
@@ -189,6 +197,8 @@ class CommandHistoryWidget(VerticalScroll, can_focus=True):
         title = f"[b]{record.action_label}[/b]  {status_text}  [dim]{format_met(record.met)}[/dim]"
         self.query_one("#command-history-title", Static).update(title)
         self.query_one("#command-history-content", Static).update(_format_commands(record.commands, record.applied_fields))
+        message_text = f"[dim italic]{record.message}[/dim italic]" if record.message else ""
+        self.query_one("#command-history-message", Static).update(message_text)
         total = len(self._history)
         page = self._index + 1
         accent_color = self._resolve_accent()

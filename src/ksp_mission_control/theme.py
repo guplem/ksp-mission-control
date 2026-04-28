@@ -20,26 +20,6 @@ mission_control_theme = Theme(
     variables={
         # Text
         "text": "#00ff41",
-        "text-muted": "#005f1a",
-        "text-disabled": "#003d10",
-        "text-primary": "#00ff41",
-        "text-secondary": "#00cc33",
-        "text-accent": "#33ff77",
-        "text-warning": "#ccff00",
-        "text-error": "#ff3333",
-        "text-success": "#00ff41",
-        # Foreground
-        "foreground-muted": "#007a1f",
-        "foreground-disabled": "#003d10",
-        # Muted backgrounds
-        "primary-muted": "#00ff41 20%",
-        "secondary-muted": "#00cc33 20%",
-        "accent-muted": "#33ff77 20%",
-        "warning-muted": "#ccff00 20%",
-        "error-muted": "#ff3333 20%",
-        "success-muted": "#00ff41 20%",
-        # Surface
-        "surface-active": "#1a3d1a",
         # Border
         "border": "#00ff41",
         "border-blurred": "#005f1a",

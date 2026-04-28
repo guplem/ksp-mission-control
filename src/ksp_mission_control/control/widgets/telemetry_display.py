@@ -41,11 +41,11 @@ class ScienceCardWidget(Static, can_focus=False):
     }
 
     ScienceCardWidget.unavailable {
-        border: round $text-muted;
+        border: round $surface-lighten-2;
     }
 
     ScienceCardWidget:hover {
-        background: $surface-active;
+        background: $surface-lighten-1;
     }
     """
 
@@ -200,17 +200,19 @@ def _format_altitude(meters: float) -> str:
 
 def _format_time(seconds: float) -> str:
     """Format seconds into a human-readable duration."""
-    if seconds <= 0 or seconds == float("inf"):
+    if seconds == 0.0 or seconds == float("inf"):
         return "N/A"
+    sign = "-" if seconds < 0 else ""
+    seconds = abs(seconds)
     if seconds < 60:
-        return f"{seconds:.0f}s"
+        return f"{sign}{seconds:.0f}s"
     minutes = int(seconds) // 60
     secs = int(seconds) % 60
     if minutes < 60:
-        return f"{minutes}m {secs:02d}s"
+        return f"{sign}{minutes}m {secs:02d}s"
     hours = minutes // 60
     mins = minutes % 60
-    return f"{hours}h {mins:02d}m {secs:02d}s"
+    return f"{sign}{hours}h {mins:02d}m {secs:02d}s"
 
 
 def _magnitude(vector: tuple[float, float, float]) -> float:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 from pathlib import Path
 
 from textual.app import ComposeResult
@@ -19,6 +18,7 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
     """Modal dialog for selecting a flight plan from the plans/ directory.
 
     Lists all .plan files, shows their name and step count.
+    Plans are re-scanned each time the dialog opens.
     Dismisses with the parsed FlightPlan or None on cancel.
     """
 
@@ -53,7 +53,7 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
     }
 
     #picker-empty {
-        color: $text-muted;
+        color: $text 60%;
         padding: 1 0;
     }
 
@@ -77,38 +77,62 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
     def __init__(self, plans_dir: Path | None = None) -> None:
         super().__init__()
         self._plans_dir = plans_dir or Path.cwd() / _PLANS_DIR_NAME
-        self._plan_files: list[Path] = []
         self._parsed_plans: dict[str, FlightPlan] = {}
-        self._load_plans()
+        self._parse_errors: dict[str, str] = {}
 
     def _load_plans(self) -> None:
         """Scan the plans directory for .plan files."""
+        self._parsed_plans.clear()
+        self._parse_errors.clear()
         if not self._plans_dir.is_dir():
             return
-        self._plan_files = sorted(self._plans_dir.glob("*.plan"))
-        for plan_file in self._plan_files:
-            with contextlib.suppress(ValueError):
+        for plan_file in sorted(self._plans_dir.glob("*.plan")):
+            try:
                 self._parsed_plans[plan_file.stem] = parse_flight_plan(plan_file)
+            except ValueError as exc:
+                self._parse_errors[plan_file.stem] = str(exc)
 
     def compose(self) -> ComposeResult:
         with VerticalScroll(id="picker-container"):
             yield Static("[b]Select Flight Plan[/b]", id="picker-title")
-            if not self._parsed_plans:
-                yield Static(
-                    f"No .plan files found in {self._plans_dir}",
-                    id="picker-empty",
-                )
-            with ListView(id="picker-listview"):
-                for name, plan in self._parsed_plans.items():
-                    step_count = len(plan.steps)
-                    step_word = "step" if step_count == 1 else "steps"
-                    yield ListItem(
-                        Static(f"{name} ({step_count} {step_word})"),
-                        id=f"plan-{name}",
-                    )
+            yield Static("", id="picker-empty")
+            yield ListView(id="picker-listview")
             yield Static("", id="picker-error")
             with Horizontal(id="picker-buttons"):
                 yield Button("Cancel", id="picker-cancel-btn", variant="error")
+
+    def on_mount(self) -> None:
+        """Re-scan plans from disk each time the dialog opens."""
+        self._load_plans()
+        self._refresh_list()
+
+    def _refresh_list(self) -> None:
+        """Rebuild the list view and error display from loaded plans."""
+        listview = self.query_one("#picker-listview", ListView)
+        listview.clear()
+
+        for name, plan in self._parsed_plans.items():
+            step_count = len(plan.steps)
+            step_word = "step" if step_count == 1 else "steps"
+            listview.append(
+                ListItem(
+                    Static(f"{name} ({step_count} {step_word})"),
+                    id=f"plan-{name}",
+                )
+            )
+
+        empty_widget = self.query_one("#picker-empty", Static)
+        if not self._parsed_plans and not self._parse_errors:
+            empty_widget.update(f"No .plan files found in {self._plans_dir}")
+        else:
+            empty_widget.update("")
+
+        error_widget = self.query_one("#picker-error", Static)
+        if self._parse_errors:
+            error_lines = [f"[b]{name}.plan[/b]: {msg}" for name, msg in self._parse_errors.items()]
+            error_widget.update("\n".join(error_lines))
+        else:
+            error_widget.update("")
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         """Select and dismiss with the chosen plan."""
@@ -119,9 +143,6 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
         plan = self._parsed_plans.get(plan_name)
         if plan is not None:
             self.dismiss(plan)
-        else:
-            error = self.query_one("#picker-error", Static)
-            error.update(f"Failed to load plan: {plan_name}")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "picker-cancel-btn":

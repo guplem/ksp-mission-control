@@ -179,7 +179,7 @@ class ManualCommandDialog(ModalScreen[VesselCommands | None]):
 
     #manual-cmd-description {
         padding: 0 0 1 0;
-        color: $text-muted;
+        color: $text 60%;
     }
 
     .manual-cmd-section {

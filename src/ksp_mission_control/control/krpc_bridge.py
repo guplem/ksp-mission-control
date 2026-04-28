@@ -7,6 +7,7 @@ module stays decoupled from the game connection.
 
 from __future__ import annotations
 
+import math
 from dataclasses import fields
 
 from ksp_mission_control.control.actions.base import (
@@ -213,8 +214,8 @@ def read_vessel_state(conn: object) -> State:
         orbit_inclination=orbit.inclination,
         orbit_eccentricity=orbit.eccentricity,
         orbit_period=orbit.period,
-        orbit_apoapsis_time_to=orbit.time_to_apoapsis,
-        orbit_periapsis_time_to=orbit.time_to_periapsis,
+        orbit_apoapsis_time_to=(-orbit.time_to_apoapsis if orbit.true_anomaly > math.pi else orbit.time_to_apoapsis),
+        orbit_periapsis_time_to=(-orbit.time_to_periapsis if orbit.true_anomaly < math.pi else orbit.time_to_periapsis),
         orbit_soi_time_to_change=orbit_soi_time_to_change,
         universal_time=conn.space_center.ut,  # type: ignore[attr-defined]
         met=vessel.met,

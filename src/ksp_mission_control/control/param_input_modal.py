@@ -39,7 +39,7 @@ class ParamInputModal(ModalScreen[dict[str, float | int | bool | str] | None]):
 
     #modal-description {
         padding: 0 0 1 0;
-        color: $text-muted;
+        color: $text 60%;
     }
 
     .param-label {

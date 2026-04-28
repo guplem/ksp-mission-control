@@ -493,7 +493,7 @@ class State:
     control_abort: bool = False
     """Whether the abort action group has been triggered."""
     control_stage_lock: bool = False
-    """Whether staging is locked (prevents accidental staging)."""
+    """Whether staging is locked. Disables the spacebar staging keybind in KSP."""
     control_reaction_wheels: bool = True
     """Whether reaction wheels are active."""
     control_wheel_throttle: float = 0.0
@@ -711,7 +711,7 @@ class VesselCommands:
     stage: bool | None = None
     """Set to True to activate the next stage this tick."""
     stage_lock: bool | None = None
-    """Lock/unlock staging. True = prevent staging, False = allow staging."""
+    """Lock/unlock staging. True = disables the spacebar staging keybind in KSP."""
 
     # --- Rotation axes (-1.0 to 1.0, raw stick input) ---
     input_pitch: float | None = None

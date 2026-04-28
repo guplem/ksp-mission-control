@@ -39,6 +39,7 @@ class PlanSnapshot:
     total_steps: int = 0
     step_statuses: tuple[StepStatus, ...] = ()
     step_action_ids: tuple[str, ...] = ()
+    step_action_labels: tuple[str, ...] = ()
     runner: RunnerSnapshot = field(default_factory=RunnerSnapshot)
 
 
@@ -181,6 +182,7 @@ class PlanExecutor:
                 total_steps=len(self._plan.steps),
                 step_statuses=tuple(self._step_statuses),
                 step_action_ids=tuple(s.action_id for s in self._plan.steps),
+                step_action_labels=tuple(a.label for a in self._step_actions),
                 runner=runner_snap,
             )
         return PlanSnapshot(runner=runner_snap)

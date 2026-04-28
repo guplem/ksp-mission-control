@@ -113,6 +113,8 @@ class ActionRunner:
         if result.status in (ActionStatus.SUCCEEDED, ActionStatus.FAILED):
             finished_status = result.status
             label = self._action.label
+            if result.status == ActionStatus.FAILED and result.message:
+                log.error(f"{label}: {result.message}")
             log.info(f"\u25c0 Finished: {label} ({result.status.value})")
             self._action.stop(vessel_state, commands, log)
             self._action = None

@@ -79,8 +79,9 @@ src/ksp_mission_control/
 │   │   │   └── action.py # LaunchAction (gravity turn to target apoapsis)
 │   │   ├── run_science/  # Science experiment activation
 │   │   │   └── action.py # RunScienceAction (trigger available experiments)
-│   │   └── translate/    # Translation action
-│   │       └── action.py # TranslateAction (RCS translation control)
+│   │   ├── translate/    # Translation action
+│   │   │   └── action.py # TranslateAction (RCS translation control)
+│   │   └── etc.           # More actions...
 │   ├── widgets/          # Control-screen widgets
 │   │   ├── telemetry_display.py # TelemetryDisplayWidget (3-column: flight, orbit, resources)
 │   │   ├── control_panel.py     # ControlPanelWidget (launch buttons, running status, plan steps)
@@ -113,9 +114,9 @@ src/ksp_mission_control/
 
 plans/                        # Flight plan files (.plan)
 ├── altitude-steps.plan       # Step through altitudes then land
-├── first-science-flight.plan # Suborbital science flight
 ├── hover-and-land.plan       # Hover then land
-└── square-patrol.plan        # Square patrol pattern via translation
+├── square-patrol.plan        # Square patrol pattern via translation
+└── etc.                      # More plans...
 ```
 
 ### Module organization rules

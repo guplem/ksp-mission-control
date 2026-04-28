@@ -151,6 +151,7 @@ class ControlScreen(Screen[None]):
             met=state.met,
             tick_id=self._tick_counter,
             status=runner_state.status,
+            message=runner_state.message,
         )
         self.query_one("#log-registry", LogRegistryWidget).append_logs(logs, met=state.met, tick_id=self._tick_counter)
 

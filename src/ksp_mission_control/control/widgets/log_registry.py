@@ -12,7 +12,7 @@ from ksp_mission_control.control.actions.base import LogEntry, LogLevel
 from ksp_mission_control.control.formatting import format_met, resolve_theme_colors
 
 _LEVEL_VARIABLE: dict[LogLevel, str] = {
-    LogLevel.DEBUG: "text-muted",
+    LogLevel.DEBUG: "foreground-darken-2",
     LogLevel.INFO: "success",
     LogLevel.WARN: "warning",
     LogLevel.ERROR: "error",
