@@ -177,7 +177,8 @@ def _make_mock_conn(
             rerunnable=True,
             deployed=False,
             biome="Shores",
-            science_subject=SimpleNamespace(science=0.0, science_cap=8.0),
+            data=[],
+            science_subject=SimpleNamespace(science_cap=8.0),
             _ran=False,
             _reset=False,
             _dumped=False,
@@ -193,7 +194,8 @@ def _make_mock_conn(
             rerunnable=False,
             deployed=False,
             biome="Shores",
-            science_subject=SimpleNamespace(science=5.0, science_cap=13.0),
+            data=[SimpleNamespace(science_value=5.0)],
+            science_subject=SimpleNamespace(science_cap=13.0),
             _ran=False,
             _reset=False,
             _dumped=False,
@@ -366,11 +368,36 @@ class TestReadVesselState:
         assert state.aero_terminal_velocity == 250.0
         assert state.g_force == 1.2
 
-    def test_reads_orbital_timing(self) -> None:
-        conn = _make_mock_conn()
+    def test_reads_orbital_timing_ascending(self) -> None:
+        """Ascending toward apoapsis (true_anomaly in 0..pi)."""
+        conn = _make_mock_conn()  # true_anomaly=1.0
         state = read_vessel_state(conn)
         assert state.orbit_apoapsis_time_to == 300.0
-        assert state.orbit_periapsis_time_to == -900.0
+        assert state.orbit_apoapsis_time_from == 2400.0 - 300.0
+        assert state.orbit_apoapsis_passed is False
+        assert state.orbit_periapsis_time_to == 900.0
+        assert state.orbit_periapsis_time_from == 2400.0 - 900.0
+        assert state.orbit_periapsis_passed is True
+
+    def test_reads_orbital_timing_descending_negative_anomaly(self) -> None:
+        """Past apoapsis, descending (kRPC negative true_anomaly)."""
+        conn = _make_mock_conn()
+        conn.space_center.active_vessel.orbit.true_anomaly = -2.0
+        state = read_vessel_state(conn)
+        assert state.orbit_apoapsis_time_to == 300.0
+        assert state.orbit_apoapsis_passed is True
+        assert state.orbit_periapsis_time_to == 900.0
+        assert state.orbit_periapsis_passed is False
+
+    def test_reads_orbital_timing_descending_large_anomaly(self) -> None:
+        """Past apoapsis, descending (true_anomaly > pi)."""
+        conn = _make_mock_conn()
+        conn.space_center.active_vessel.orbit.true_anomaly = 4.0
+        state = read_vessel_state(conn)
+        assert state.orbit_apoapsis_time_to == 300.0
+        assert state.orbit_apoapsis_passed is True
+        assert state.orbit_periapsis_time_to == 900.0
+        assert state.orbit_periapsis_passed is False
 
     def test_reads_speed_horizontal(self) -> None:
         conn = _make_mock_conn()

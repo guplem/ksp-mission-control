@@ -20,12 +20,14 @@ def get_available_actions() -> list[Action]:
     import ksp_mission_control.control.actions.hover.action as hover_module
     import ksp_mission_control.control.actions.land.action as land_module
     import ksp_mission_control.control.actions.launch.action as launch_module
+    import ksp_mission_control.control.actions.parachutes.action as parachutes_module
     import ksp_mission_control.control.actions.run_science.action as run_science_module
     import ksp_mission_control.control.actions.stage.action as stage_module
     import ksp_mission_control.control.actions.throttle.action as throttle_module
     import ksp_mission_control.control.actions.translate.action as translate_module
 
     # 2. Reload to pick up code changes without restarting the app
+    importlib.reload(parachutes_module)
     importlib.reload(controllability_test_module)
     importlib.reload(hold_attitude_module)
     importlib.reload(hover_module)
@@ -38,6 +40,7 @@ def get_available_actions() -> list[Action]:
 
     # 3. Instantiate and return
     return [
+        parachutes_module.ParachutesAction(),
         controllability_test_module.ControllabilityTestAction(),
         hold_attitude_module.HoldAttitudeAction(),
         hover_module.HoverAction(),

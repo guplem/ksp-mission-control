@@ -389,9 +389,17 @@ class State:
     orbit_period: float = 0.0
     """Time for one complete orbit, in seconds."""
     orbit_apoapsis_time_to: float = 0.0
-    """Time until apoapsis, in seconds."""
+    """Time until next apoapsis, in seconds. Always positive."""
+    orbit_apoapsis_time_from: float = 0.0
+    """Time since last apoapsis passage, in seconds."""
+    orbit_apoapsis_passed: bool = False
+    """True when periapsis is the next apse (true anomaly outside 0..pi)."""
     orbit_periapsis_time_to: float = 0.0
-    """Time until periapsis, in seconds."""
+    """Time until next periapsis, in seconds. Always positive."""
+    orbit_periapsis_time_from: float = 0.0
+    """Time since last periapsis passage, in seconds."""
+    orbit_periapsis_passed: bool = False
+    """True when apoapsis is the next apse (true anomaly in 0..pi)."""
     orbit_soi_time_to_change: float = float("inf")
     """Time until sphere of influence transition, in seconds. inf if no transition upcoming."""
 

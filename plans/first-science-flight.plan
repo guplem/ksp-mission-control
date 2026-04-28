@@ -1,4 +1,11 @@
-# First science flight: launch and collect science at apoapsis
-stage
+# Vertical launch and collect science at apoapsis, then return to Kerbin and deploy chutes for a safe landing
+
+# Engage first stage
+stage          
 set_throttle   throttle_level=1.0
+
+# Run science experiments at apoapsis
 run_science    wait_for_apoapsis=True
+
+# Trigger the parachutes to deploy at a safe altitude during descent
+parachutes         min_altitude=3_000

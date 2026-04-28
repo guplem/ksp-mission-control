@@ -123,7 +123,11 @@ class TestVesselState:
         assert state.aero_lift == (0.0, 0.0, 0.0)
         assert state.g_force == 0.0
         assert state.orbit_apoapsis_time_to == 0.0
+        assert state.orbit_apoapsis_time_from == 0.0
+        assert state.orbit_apoapsis_passed is False
         assert state.orbit_periapsis_time_to == 0.0
+        assert state.orbit_periapsis_time_from == 0.0
+        assert state.orbit_periapsis_passed is False
         assert state.mass == 0.0
         assert state.mass_dry == 0.0
         assert state.thrust_available == 0.0

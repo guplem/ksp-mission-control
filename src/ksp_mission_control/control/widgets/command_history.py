@@ -123,9 +123,9 @@ class CommandHistoryWidget(VerticalScroll, can_focus=True):
         field was redundant (filtered by the bridge), so the user can
         see the full command stream.
         """
-        # Skip idle ticks (no action running, no commands at all).
+        # Skip idle ticks (no action running, no commands, no message).
         has_any_command = any((value := getattr(commands, f.name)) is not None and value != () for f in fields(commands))
-        if not has_any_command:
+        if not has_any_command and not message:
             return
 
         label = action_label or "Manual"

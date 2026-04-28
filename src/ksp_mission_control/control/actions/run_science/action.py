@@ -54,8 +54,8 @@ class RunScienceAction(Action):
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
 
-        if self._wait_for_apoapsis and state.orbit_apoapsis_time_to > 0:
-            return ActionResult(status=ActionStatus.RUNNING, message=f"Waiting for apoapsis (time to apoapsis: {state.orbit_apoapsis_time_to:.1f}s)")
+        if self._wait_for_apoapsis and not state.orbit_apoapsis_passed:
+            return ActionResult(status=ActionStatus.RUNNING, message=f"Waiting for apoapsis ({state.orbit_apoapsis_time_to:.0f}s)")
 
         if self._science_index is not None and 0 <= self._science_index < len(state.science_experiments):
             commands.science_commands += (ScienceCommand(self._science_index, ScienceAction.RUN),)

@@ -169,11 +169,13 @@ def read_vessel_state(conn: object) -> State:
     try:
         for idx, exp in enumerate(vessel.parts.experiments):
             try:
-                subject = exp.science_subject
-                sci_value = subject.science if subject else 0.0
-                sci_cap = subject.science_cap if subject else 0.0
+                sci_value = sum(d.science_value for d in exp.data) if exp.has_data else 0.0
             except Exception:
                 sci_value = 0.0
+            try:
+                subject = exp.science_subject
+                sci_cap = subject.science_cap if subject else 0.0
+            except Exception:
                 sci_cap = 0.0
             science_experiments.append(
                 ScienceExperiment(
@@ -214,8 +216,12 @@ def read_vessel_state(conn: object) -> State:
         orbit_inclination=orbit.inclination,
         orbit_eccentricity=orbit.eccentricity,
         orbit_period=orbit.period,
-        orbit_apoapsis_time_to=(-orbit.time_to_apoapsis if orbit.true_anomaly > math.pi else orbit.time_to_apoapsis),
-        orbit_periapsis_time_to=(-orbit.time_to_periapsis if orbit.true_anomaly < math.pi else orbit.time_to_periapsis),
+        orbit_apoapsis_time_to=orbit.time_to_apoapsis,
+        orbit_apoapsis_time_from=orbit.period - orbit.time_to_apoapsis,
+        orbit_apoapsis_passed=not (0 <= orbit.true_anomaly <= math.pi),
+        orbit_periapsis_time_to=orbit.time_to_periapsis,
+        orbit_periapsis_time_from=orbit.period - orbit.time_to_periapsis,
+        orbit_periapsis_passed=0 < orbit.true_anomaly < math.pi,
         orbit_soi_time_to_change=orbit_soi_time_to_change,
         universal_time=conn.space_center.ut,  # type: ignore[attr-defined]
         met=vessel.met,
