@@ -138,6 +138,20 @@ class ReferenceFrame(Enum):
         return self.value.replace("_", " ").title()
 
 
+class ScienceAction(Enum):
+    """Action to perform on a science experiment."""
+
+    RUN = "run"
+    RESET = "reset"
+    DUMP = "dump"
+    TRANSMIT = "transmit"
+
+    @property
+    def display_name(self) -> str:
+        """Human-readable label (e.g. 'Run', 'Transmit')."""
+        return self.value.replace("_", " ").title()
+
+
 class ActionStatus(Enum):
     """Lifecycle status of an action."""
 
@@ -271,6 +285,55 @@ class AutopilotConfig:
 
 
 AutopilotConfig.AUTO = AutopilotConfig()
+
+
+@dataclass(frozen=True)
+class ScienceExperiment:
+    """Immutable snapshot of a single science experiment on the vessel.
+
+    Captured each poll tick from kRPC. The ``index`` field is the position
+    in ``vessel.parts.experiments`` and serves as the identifier for
+    targeting commands within the same tick.
+    """
+
+    index: int
+    """Position in vessel.parts.experiments. Used as identifier for commands."""
+    name: str
+    """Internal experiment ID (e.g. 'temperatureScan'). Not unique per vessel."""
+    title: str
+    """Display name (e.g. '2HOT Thermometer')."""
+    part_title: str
+    """Name of the part containing this experiment."""
+    available: bool
+    """Whether the experiment can be run in current conditions."""
+    has_data: bool
+    """Whether the experiment already has collected data."""
+    inoperable: bool
+    """Whether the experiment is permanently inoperable."""
+    rerunnable: bool
+    """Whether the experiment can be run again after collecting data."""
+    deployed: bool
+    """Whether the experiment is deployed."""
+    biome: str
+    """Current biome where the experiment would collect data."""
+    science_value: float
+    """Science points already earned from this experiment."""
+    science_cap: float
+    """Maximum science points this experiment can yield."""
+
+
+@dataclass(frozen=True)
+class ScienceCommand:
+    """One-shot command targeting a specific science experiment.
+
+    References an experiment by its ``index`` in the current
+    ``VesselState.science_experiments`` snapshot.
+    """
+
+    experiment_index: int
+    """Index into VesselState.science_experiments identifying the target."""
+    action: ScienceAction
+    """What to do with the experiment."""
 
 
 @dataclass(frozen=True)
@@ -487,6 +550,10 @@ class VesselState:
     resource_mono_propellant_max: float = 0.0
     """Maximum monopropellant capacity, in units."""
 
+    # --- Science ---
+    science_experiments: tuple[ScienceExperiment, ...] = ()
+    """All science experiments on the vessel, indexed for command targeting."""
+
     # --- Derived properties (computed from raw telemetry) ---
 
     @property
@@ -702,6 +769,12 @@ class VesselCommands:
     """Wheel steering. -1.0 = full left, 1.0 = full right."""
     abort: bool | None = None
     """Abort action group. True = trigger."""
+
+    # --- Science ---
+    all_science: ScienceAction | None = None
+    """Apply an action to ALL science experiments. One-shot like stage."""
+    science_commands: tuple[ScienceCommand, ...] | None = None
+    """Targeted commands for specific experiments. One-shot like stage."""
 
     # --- Deployables ---
     deployable_solar_panels: bool | None = None

@@ -1,0 +1,3 @@
+# First science flight: launch and collect science at apoapsis
+launch         target_altitude=20000
+run_science    wait_for_apoapsis=True

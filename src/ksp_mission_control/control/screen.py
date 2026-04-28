@@ -32,6 +32,7 @@ from ksp_mission_control.control.formatting import format_met
 from ksp_mission_control.control.manual_command_dialog import ManualCommandDialog
 from ksp_mission_control.control.param_input_modal import ParamInputModal
 from ksp_mission_control.control.plan_failure_dialog import PlanFailureDialog
+from ksp_mission_control.control.science_command_dialog import ScienceCommandDialog
 from ksp_mission_control.control.session import ControlSession
 from ksp_mission_control.control.tick_record import TickRecord
 from ksp_mission_control.control.widgets.command_history import (
@@ -231,6 +232,13 @@ class ControlScreen(Screen[None]):
         if commands is None or self._session is None:
             return
         self._session.send_manual_command(commands)
+
+    def on_telemetry_display_widget_science_experiment_clicked(self, event: TelemetryDisplayWidget.ScienceExperimentClicked) -> None:
+        """Open the science command dialog for the clicked experiment."""
+        self.app.push_screen(
+            ScienceCommandDialog(event.experiment),
+            callback=self._handle_manual_command,
+        )
 
     def _handle_action_with_params(self, action: Action, params: dict[str, float] | None) -> None:
         """Start the action with the given parameters."""

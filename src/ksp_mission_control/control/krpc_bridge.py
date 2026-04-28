@@ -12,6 +12,8 @@ from dataclasses import fields
 from ksp_mission_control.control.actions.base import (
     ReferenceFrame,
     SASMode,
+    ScienceAction,
+    ScienceExperiment,
     SpeedMode,
     VesselCommands,
     VesselSituation,
@@ -85,6 +87,22 @@ def _parse_vessel_situation(raw: str) -> VesselSituation:
     return VesselSituation(name)
 
 
+def _apply_science_action(experiment: object, action: ScienceAction) -> None:
+    """Apply a ScienceAction to a single kRPC experiment object.
+
+    For RUN, guards against experiments that already have data or are unavailable.
+    """
+    if action == ScienceAction.RUN:
+        if experiment.available and not experiment.has_data:  # type: ignore[attr-defined]
+            experiment.run()  # type: ignore[attr-defined]
+    elif action == ScienceAction.RESET:
+        experiment.reset()  # type: ignore[attr-defined]
+    elif action == ScienceAction.DUMP:
+        experiment.dump()  # type: ignore[attr-defined]
+    elif action == ScienceAction.TRANSMIT:
+        experiment.transmit()  # type: ignore[attr-defined]
+
+
 class NoActiveVesselError(Exception):
     """Raised when kRPC reports no active vessel.
 
@@ -145,6 +163,36 @@ def read_vessel_state(conn: object) -> VesselState:
         orbit_soi_time_to_change = float("inf") if _math.isnan(soi_time_raw) else soi_time_raw
     except (AttributeError, Exception):
         orbit_soi_time_to_change = float("inf")
+    # Science experiments: build a snapshot of every experiment on the vessel.
+    science_experiments: list[ScienceExperiment] = []
+    try:
+        for idx, exp in enumerate(vessel.parts.experiments):
+            try:
+                subject = exp.science_subject
+                sci_value = subject.science if subject else 0.0
+                sci_cap = subject.science_cap if subject else 0.0
+            except Exception:
+                sci_value = 0.0
+                sci_cap = 0.0
+            science_experiments.append(
+                ScienceExperiment(
+                    index=idx,
+                    name=exp.name,
+                    title=exp.title,
+                    part_title=exp.part.title,
+                    available=exp.available,
+                    has_data=exp.has_data,
+                    inoperable=exp.inoperable,
+                    rerunnable=exp.rerunnable,
+                    deployed=exp.deployed,
+                    biome=exp.biome,
+                    science_value=sci_value,
+                    science_cap=sci_cap,
+                )
+            )
+    except Exception:
+        science_experiments = []
+
     return VesselState(
         altitude_sea=flight.mean_altitude,
         altitude_surface=flight.surface_altitude,
@@ -239,6 +287,7 @@ def read_vessel_state(conn: object) -> VesselState:
         resource_liquid_fuel_max=vessel.resources.max("LiquidFuel"),
         resource_oxidizer_max=vessel.resources.max("Oxidizer"),
         resource_mono_propellant_max=vessel.resources.max("MonoPropellant"),
+        science_experiments=tuple(science_experiments),
     )
 
 
@@ -377,6 +426,16 @@ def apply_controls(conn: object, controls: VesselCommands) -> None:
         vc.wheel_steering = controls.wheel_steering
     if controls.abort is not None:
         vc.abort = controls.abort
+    # Science experiments
+    if controls.all_science is not None:
+        experiments = vessel.parts.experiments
+        for exp in experiments:
+            _apply_science_action(exp, controls.all_science)
+    if controls.science_commands is not None:
+        experiments = vessel.parts.experiments
+        for cmd in controls.science_commands:
+            if 0 <= cmd.experiment_index < len(experiments):
+                _apply_science_action(experiments[cmd.experiment_index], cmd.action)
 
     # Deployables
     if controls.deployable_solar_panels is not None:

@@ -10,6 +10,8 @@ from ksp_mission_control.control.actions.base import (
     AutopilotConfig,
     AutopilotDirection,
     ReferenceFrame,
+    ScienceAction,
+    ScienceCommand,
     VesselCommands,
     VesselState,
 )
@@ -163,9 +165,50 @@ def _make_mock_conn(
         SimpleNamespace(active=True, has_fuel=False),
         SimpleNamespace(active=False, has_fuel=True),
     ]
+    mock_experiments = [
+        SimpleNamespace(
+            name="temperatureScan",
+            title="2HOT Thermometer",
+            part=SimpleNamespace(title="2HOT Thermometer"),
+            available=True,
+            has_data=False,
+            inoperable=False,
+            rerunnable=True,
+            deployed=False,
+            biome="Shores",
+            science_subject=SimpleNamespace(science=0.0, science_cap=8.0),
+            _ran=False,
+            _reset=False,
+            _dumped=False,
+            _transmitted=False,
+        ),
+        SimpleNamespace(
+            name="mysteryGoo",
+            title="Mystery Goo Observation",
+            part=SimpleNamespace(title="Mystery Goo Containment Unit"),
+            available=True,
+            has_data=True,
+            inoperable=False,
+            rerunnable=False,
+            deployed=False,
+            biome="Shores",
+            science_subject=SimpleNamespace(science=5.0, science_cap=13.0),
+            _ran=False,
+            _reset=False,
+            _dumped=False,
+            _transmitted=False,
+        ),
+    ]
+    for exp in mock_experiments:
+        exp.run = lambda _exp=exp: setattr(_exp, "_ran", True)
+        exp.reset = lambda _exp=exp: setattr(_exp, "_reset", True)
+        exp.dump = lambda _exp=exp: setattr(_exp, "_dumped", True)
+        exp.transmit = lambda _exp=exp: setattr(_exp, "_transmitted", True)
+
     parts = SimpleNamespace(
         all=[_make_mock_part(0), _make_mock_part(1), _make_mock_part(2)],
         engines=mock_engines,
+        experiments=mock_experiments,
     )
 
     resources = SimpleNamespace(
@@ -820,3 +863,118 @@ class TestFilterCommands:
         state = VesselState()
         filtered, applied = filter_commands(commands, state)
         assert len(applied) == 0
+
+    def test_all_science_always_applied(self) -> None:
+        commands = VesselCommands(all_science=ScienceAction.RUN)
+        state = VesselState()
+        filtered, applied = filter_commands(commands, state)
+        assert filtered.all_science == ScienceAction.RUN
+        assert "all_science" in applied
+
+    def test_science_commands_always_applied(self) -> None:
+        cmds = (ScienceCommand(experiment_index=0, action=ScienceAction.RUN),)
+        commands = VesselCommands(science_commands=cmds)
+        state = VesselState()
+        filtered, applied = filter_commands(commands, state)
+        assert filtered.science_commands == cmds
+        assert "science_commands" in applied
+
+
+# ---------------------------------------------------------------------------
+# read_vessel_state tests: science experiments
+# ---------------------------------------------------------------------------
+
+
+class TestReadVesselStateScience:
+    """Tests for science experiment reading in read_vessel_state()."""
+
+    def test_reads_science_experiments(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        assert len(state.science_experiments) == 2
+
+    def test_experiment_fields_populated(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        exp = state.science_experiments[0]
+        assert exp.index == 0
+        assert exp.name == "temperatureScan"
+        assert exp.title == "2HOT Thermometer"
+        assert exp.part_title == "2HOT Thermometer"
+        assert exp.available is True
+        assert exp.has_data is False
+        assert exp.biome == "Shores"
+        assert exp.science_cap == 8.0
+
+    def test_experiment_with_data(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        exp = state.science_experiments[1]
+        assert exp.has_data is True
+        assert exp.science_value == 5.0
+        assert exp.science_cap == 13.0
+
+    def test_empty_experiments_when_none_on_vessel(self) -> None:
+        conn = _make_mock_conn()
+        conn.space_center.active_vessel.parts.experiments = []
+        state = read_vessel_state(conn)
+        assert state.science_experiments == ()
+
+
+# ---------------------------------------------------------------------------
+# apply_controls tests: science commands
+# ---------------------------------------------------------------------------
+
+
+class TestApplyControlsScience:
+    """Tests for science experiment commands in apply_controls()."""
+
+    def test_all_science_run_triggers_available_experiments(self) -> None:
+        conn = _make_mock_conn()
+        commands = VesselCommands(all_science=ScienceAction.RUN)
+        apply_controls(conn, commands)
+        experiments = conn.space_center.active_vessel.parts.experiments
+        # First experiment: available=True, has_data=False -> should run
+        assert experiments[0]._ran is True
+        # Second experiment: has_data=True -> should NOT run
+        assert experiments[1]._ran is False
+
+    def test_all_science_reset_resets_all(self) -> None:
+        conn = _make_mock_conn()
+        commands = VesselCommands(all_science=ScienceAction.RESET)
+        apply_controls(conn, commands)
+        experiments = conn.space_center.active_vessel.parts.experiments
+        assert experiments[0]._reset is True
+        assert experiments[1]._reset is True
+
+    def test_all_science_transmit_transmits_all(self) -> None:
+        conn = _make_mock_conn()
+        commands = VesselCommands(all_science=ScienceAction.TRANSMIT)
+        apply_controls(conn, commands)
+        experiments = conn.space_center.active_vessel.parts.experiments
+        assert experiments[0]._transmitted is True
+        assert experiments[1]._transmitted is True
+
+    def test_science_command_targets_specific_experiment(self) -> None:
+        conn = _make_mock_conn()
+        cmds = (ScienceCommand(experiment_index=1, action=ScienceAction.DUMP),)
+        commands = VesselCommands(science_commands=cmds)
+        apply_controls(conn, commands)
+        experiments = conn.space_center.active_vessel.parts.experiments
+        assert experiments[0]._dumped is False
+        assert experiments[1]._dumped is True
+
+    def test_science_command_out_of_range_ignored(self) -> None:
+        conn = _make_mock_conn()
+        cmds = (ScienceCommand(experiment_index=99, action=ScienceAction.RUN),)
+        commands = VesselCommands(science_commands=cmds)
+        # Should not raise
+        apply_controls(conn, commands)
+
+    def test_science_command_run_guards_available_and_has_data(self) -> None:
+        conn = _make_mock_conn()
+        # Target experiment[1] which has_data=True
+        cmds = (ScienceCommand(experiment_index=1, action=ScienceAction.RUN),)
+        commands = VesselCommands(science_commands=cmds)
+        apply_controls(conn, commands)
+        assert conn.space_center.active_vessel.parts.experiments[1]._ran is False

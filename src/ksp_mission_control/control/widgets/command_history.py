@@ -15,6 +15,8 @@ from ksp_mission_control.control.actions.base import (
     AutopilotConfig,
     AutopilotDirection,
     SASMode,
+    ScienceAction,
+    ScienceCommand,
     SpeedMode,
     VesselCommands,
 )
@@ -278,6 +280,13 @@ def format_field_value(name: str, value: object) -> str:
         return _format_autopilot_config(cast(AutopilotConfig, value))
     if name in ("stage", "abort"):
         return "ACTIVATE" if value else "---"
+    if name == "all_science":
+        return cast(ScienceAction, value).display_name
+    if name == "science_commands":
+        cmds = cast(tuple[ScienceCommand, ...], value)
+        if len(cmds) == 1:
+            return f"{cmds[0].action.display_name} experiment #{cmds[0].experiment_index}"
+        return f"{len(cmds)} experiment commands"
     return str(value)
 
 

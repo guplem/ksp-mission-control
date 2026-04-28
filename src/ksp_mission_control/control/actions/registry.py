@@ -20,6 +20,7 @@ def get_available_actions() -> list[Action]:
     import ksp_mission_control.control.actions.hover.action as hover_module
     import ksp_mission_control.control.actions.land.action as land_module
     import ksp_mission_control.control.actions.launch.action as launch_module
+    import ksp_mission_control.control.actions.run_science.action as run_science_module
     import ksp_mission_control.control.actions.translate.action as translate_module
 
     # 2. Reload to pick up code changes without restarting the app
@@ -28,6 +29,7 @@ def get_available_actions() -> list[Action]:
     importlib.reload(hover_module)
     importlib.reload(land_module)
     importlib.reload(launch_module)
+    importlib.reload(run_science_module)
     importlib.reload(translate_module)
 
     # 3. Instantiate and return
@@ -37,5 +39,6 @@ def get_available_actions() -> list[Action]:
         hover_module.HoverAction(),
         land_module.LandAction(),
         launch_module.LaunchAction(),
+        run_science_module.RunScienceAction(),
         translate_module.TranslateAction(),
     ]

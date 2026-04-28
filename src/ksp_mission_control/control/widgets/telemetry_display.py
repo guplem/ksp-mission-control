@@ -5,14 +5,83 @@ from __future__ import annotations
 import math
 
 from textual.app import ComposeResult
-from textual.containers import Horizontal
+from textual.containers import Container, Horizontal
+from textual.events import Click
+from textual.message import Message
 from textual.widgets import Static
 
-from ksp_mission_control.control.actions.base import VesselState
+from ksp_mission_control.control.actions.base import ScienceExperiment, VesselState
+
+
+class ScienceCardWidget(Static, can_focus=False):
+    """Interactive card for a single science experiment. Clickable with tooltip."""
+
+    class Selected(Message):
+        """Posted when the user clicks a science card."""
+
+        def __init__(self, experiment_index: int) -> None:
+            super().__init__()
+            self.experiment_index = experiment_index
+
+    DEFAULT_CSS = """
+    ScienceCardWidget {
+        width: 1fr;
+        height: 7;
+        padding: 0 1;
+        border: round $warning;
+    }
+
+    ScienceCardWidget.has-data {
+        border: round $success;
+    }
+
+    ScienceCardWidget.inoperable {
+        border: round $error;
+        opacity: 60%;
+    }
+
+    ScienceCardWidget.unavailable {
+        border: round $text-muted;
+    }
+
+    ScienceCardWidget:hover {
+        background: $surface-active;
+    }
+    """
+
+    def __init__(self, experiment: ScienceExperiment) -> None:
+        super().__init__(_science_card_content(experiment))
+        self._experiment = experiment
+        classes = _science_card_classes(experiment)
+        if classes:
+            self.add_class(*classes.split())
+        self.tooltip = _science_tooltip(experiment)
+
+    def update_experiment(self, experiment: ScienceExperiment) -> None:
+        """Update the card with fresh experiment data."""
+        old_classes = _science_card_classes(self._experiment)
+        new_classes = _science_card_classes(experiment)
+        if old_classes:
+            self.remove_class(*old_classes.split())
+        if new_classes:
+            self.add_class(*new_classes.split())
+        self._experiment = experiment
+        self.update(_science_card_content(experiment))
+        self.tooltip = _science_tooltip(experiment)
+
+    def on_click(self, event: Click) -> None:
+        self.post_message(self.Selected(self._experiment.index))
 
 
 class TelemetryDisplayWidget(Static):
     """Displays formatted vessel telemetry in three columns: Flight & Environment, Orbit & Vessel, Controls & Resources."""
+
+    class ScienceExperimentClicked(Message):
+        """Posted when the user clicks a science experiment card."""
+
+        def __init__(self, experiment: ScienceExperiment) -> None:
+            super().__init__()
+            self.experiment = experiment
 
     DEFAULT_CSS = """
     #telemetry-header {
@@ -40,10 +109,24 @@ class TelemetryDisplayWidget(Static):
         width: 1fr;
         padding: 0 1;
     }
+
+    #telemetry-science-header {
+        height: auto;
+        padding: 1 1 0 1;
+    }
+
+    #telemetry-science-grid {
+        height: auto;
+        layout: grid;
+        grid-size: 3;
+        grid-gutter: 1;
+        padding: 0 1;
+    }
     """
 
     def __init__(self, *, id: str | None = None) -> None:  # noqa: A002
         super().__init__(id=id)
+        self._science_experiments: tuple[ScienceExperiment, ...] = ()
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="telemetry-header"):
@@ -53,6 +136,8 @@ class TelemetryDisplayWidget(Static):
             yield Static("Connecting...", id="telemetry-flight", classes="telemetry-column")
             yield Static("", id="telemetry-orbit", classes="telemetry-column")
             yield Static("", id="telemetry-resources", classes="telemetry-column")
+        yield Static("", id="telemetry-science-header")
+        yield Container(id="telemetry-science-grid")
 
     def update_vessel_state(self, state: VesselState) -> None:
         """Format and display the current vessel state across three columns."""
@@ -64,6 +149,40 @@ class TelemetryDisplayWidget(Static):
         self.query_one("#telemetry-flight", Static).update(_format_flight(state))
         self.query_one("#telemetry-orbit", Static).update(_format_orbit(state))
         self.query_one("#telemetry-resources", Static).update(_format_resources(state))
+        self._update_science(state)
+
+    def _update_science(self, state: VesselState) -> None:
+        """Update the science experiments section below the telemetry grid."""
+        experiments = state.science_experiments
+        self._science_experiments = experiments
+        science_header = self.query_one("#telemetry-science-header", Static)
+        grid = self.query_one("#telemetry-science-grid", Container)
+
+        if not experiments:
+            science_header.update("")
+            grid.remove_children()
+            return
+
+        science_header.update("[b]Science Experiments[/b]")
+        existing_cards = list(grid.query(ScienceCardWidget))
+
+        # Reuse existing cards where possible, add/remove as needed
+        for idx, exp in enumerate(experiments):
+            if idx < len(existing_cards):
+                existing_cards[idx].update_experiment(exp)
+            else:
+                grid.mount(ScienceCardWidget(exp))
+
+        # Remove excess cards
+        for card in existing_cards[len(experiments) :]:
+            card.remove()
+
+    def on_science_card_widget_selected(self, event: ScienceCardWidget.Selected) -> None:
+        """Re-post the click as a ScienceExperimentClicked with the full experiment object."""
+        for exp in self._science_experiments:
+            if exp.index == event.experiment_index:
+                self.post_message(self.ScienceExperimentClicked(exp))
+                break
 
     def show_error(self, message: str) -> None:
         """Display an error message in the title bar, keeping stale telemetry visible."""
@@ -240,4 +359,60 @@ def _format_resources(state: VesselState) -> str:
             f"Cargo bays:      {_on_off(state.control_deployable_cargo_bays)}",
             f"Intakes:         {_on_off(state.control_deployable_intakes)}",
         ]
+    )
+
+
+def _science_card_content(exp: ScienceExperiment) -> str:
+    """Format the Rich markup content for a science card."""
+    icon = _science_status_icon(exp)
+    return f"{icon} [b]{exp.title}[/b]\n[dim]{exp.part_title}[/dim]\nSci: {exp.science_value:.1f}/{exp.science_cap:.1f}"
+
+
+def _science_status_icon(exp: ScienceExperiment) -> str:
+    """Return a status indicator character for a science experiment."""
+    if exp.inoperable:
+        return "X"
+    if exp.has_data:
+        return "v"
+    if exp.available:
+        return "o"
+    return "-"
+
+
+def _science_status_label(exp: ScienceExperiment) -> str:
+    """Return a human-readable status label for a science experiment."""
+    if exp.inoperable:
+        return "Inoperable"
+    if exp.has_data:
+        return "Has Data"
+    if exp.available:
+        return "Available"
+    return "Unavailable"
+
+
+def _science_card_classes(exp: ScienceExperiment) -> str:
+    """Return CSS classes for a science card based on experiment state."""
+    if exp.inoperable:
+        return "inoperable"
+    if exp.has_data:
+        return "has-data"
+    if not exp.available:
+        return "unavailable"
+    return ""
+
+
+def _science_tooltip(exp: ScienceExperiment) -> str:
+    """Build a tooltip string explaining the experiment's fields."""
+    rerunnable = "Yes" if exp.rerunnable else "No"
+    return (
+        f"Index: {exp.index}\n"
+        f"Title: {exp.title} (display name)\n"
+        f"Name: {exp.name} (internal experiment ID)\n"
+        f"Part: {exp.part_title} (containing part)\n"
+        f"\n"
+        f"Status: {_science_status_label(exp)}\n"
+        f"Rerunnable: {rerunnable}\n"
+        f"Science: {exp.science_value:.1f}/{exp.science_cap:.1f} (earned/max)\n"
+        f"\n"
+        f"Click to send a science command"
     )
