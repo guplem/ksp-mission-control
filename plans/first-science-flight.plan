@@ -4,8 +4,11 @@
 stage          
 throttle   throttle_level=1.0
 
+# Wait for apoapsis to be reached before running science experiments
+wait_for    apoapsis=True
+
 # Run science experiments at apoapsis
-run_science    wait_for_apoapsis=True
+run_science    
 
 # Trigger the parachutes to deploy at a safe altitude during descent
 parachutes     min_altitude=10_000  stage_for_parachutes=True  wait_for_safe=True

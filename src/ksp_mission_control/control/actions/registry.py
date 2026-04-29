@@ -25,6 +25,7 @@ def get_available_actions() -> list[Action]:
     import ksp_mission_control.control.actions.stage.action as stage_module
     import ksp_mission_control.control.actions.throttle.action as throttle_module
     import ksp_mission_control.control.actions.translate.action as translate_module
+    import ksp_mission_control.control.actions.wait_for.action as wait_for_module
 
     # 2. Reload to pick up code changes without restarting the app
     importlib.reload(parachutes_module)
@@ -37,6 +38,7 @@ def get_available_actions() -> list[Action]:
     importlib.reload(stage_module)
     importlib.reload(throttle_module)
     importlib.reload(translate_module)
+    importlib.reload(wait_for_module)
 
     # 3. Instantiate and return
     return [
@@ -50,4 +52,5 @@ def get_available_actions() -> list[Action]:
         stage_module.StageAction(),
         throttle_module.ThrottleAction(),
         translate_module.TranslateAction(),
+        wait_for_module.WaitForAction(),
     ]
