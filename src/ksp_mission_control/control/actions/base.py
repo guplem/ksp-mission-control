@@ -156,7 +156,6 @@ class ScienceAction(Enum):
 class ActionStatus(Enum):
     """Lifecycle status of an action."""
 
-    PENDING = "pending"
     RUNNING = "running"
     SUCCEEDED = "succeeded"
     FAILED = "failed"

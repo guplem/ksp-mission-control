@@ -29,7 +29,6 @@ _STATUS_VARIABLE: dict[ActionStatus, str] = {
     ActionStatus.RUNNING: "accent",
     ActionStatus.SUCCEEDED: "success",
     ActionStatus.FAILED: "error",
-    ActionStatus.PENDING: "warning",
 }
 
 

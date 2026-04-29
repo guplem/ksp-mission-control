@@ -26,7 +26,6 @@ class TestActionStatus:
     """Tests for the ActionStatus enum."""
 
     def test_has_expected_members(self) -> None:
-        assert ActionStatus.PENDING.value == "pending"
         assert ActionStatus.RUNNING.value == "running"
         assert ActionStatus.SUCCEEDED.value == "succeeded"
         assert ActionStatus.FAILED.value == "failed"
