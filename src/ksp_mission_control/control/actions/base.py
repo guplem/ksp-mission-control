@@ -390,7 +390,7 @@ class State:
     aero_terminal_velocity: float = 0.0
     """Speed at which drag equals gravity, in m/s. 0 in vacuum."""
     g_force: float = 0.0
-    """Current g-force experienced by the vessel. 1.0 on Kerbin's surface at rest."""
+    """Current g-force experienced by the vessel, in g (9.81 m/s^2). 1.0 on Kerbin's surface at rest."""
 
     # --- Orbit ---
     orbit_apoapsis: float = 0.0
