@@ -6,6 +6,7 @@ from ksp_mission_control.control.actions.base import (
     ActionLogger,
     ActionStatus,
     ParachuteInfo,
+    Parts,
     State,
     VesselCommands,
 )
@@ -58,7 +59,7 @@ class TestParachutesActionTick:
 
     def test_fails_when_no_parachutes(self) -> None:
         action = self._make_started_action(min_altitude=None)
-        state = State(altitude_surface=1000.0, parts_parachutes=())
+        state = State(altitude_surface=1000.0, parts=Parts())
         commands = VesselCommands()
         result = action.tick(state, commands, dt=0.5, log=ActionLogger())
         assert result.status == ActionStatus.FAILED
@@ -68,7 +69,7 @@ class TestParachutesActionTick:
         state = State(
             altitude_surface=5000.0,
             stage_current=3,
-            parts_parachutes=(ParachuteInfo(3, "stowed"), ParachuteInfo(3, "stowed")),
+            parts=Parts(parachutes=(ParachuteInfo(3, "stowed"), ParachuteInfo(3, "stowed"))),
         )
         commands = VesselCommands()
         result = action.tick(state, commands, dt=0.5, log=ActionLogger())
@@ -80,7 +81,7 @@ class TestParachutesActionTick:
         state = State(
             altitude_surface=2500.0,
             stage_current=3,
-            parts_parachutes=(ParachuteInfo(3, "stowed"), ParachuteInfo(3, "stowed")),
+            parts=Parts(parachutes=(ParachuteInfo(3, "stowed"), ParachuteInfo(3, "stowed"))),
         )
         commands = VesselCommands()
         result = action.tick(state, commands, dt=0.5, log=ActionLogger())
@@ -92,7 +93,7 @@ class TestParachutesActionTick:
         state = State(
             altitude_surface=50000.0,
             stage_current=3,
-            parts_parachutes=(ParachuteInfo(3, "stowed"),),
+            parts=Parts(parachutes=(ParachuteInfo(3, "stowed"),)),
         )
         commands = VesselCommands()
         result = action.tick(state, commands, dt=0.5, log=ActionLogger())
@@ -107,7 +108,7 @@ class TestParachutesActionTick:
         state = State(
             altitude_surface=1000.0,
             stage_current=5,
-            parts_parachutes=(ParachuteInfo(3, "stowed"), ParachuteInfo(3, "stowed")),
+            parts=Parts(parachutes=(ParachuteInfo(3, "stowed"), ParachuteInfo(3, "stowed"))),
         )
         commands = VesselCommands()
         result = action.tick(state, commands, dt=0.5, log=ActionLogger())
@@ -123,7 +124,7 @@ class TestParachutesActionTick:
         state = State(
             altitude_surface=1000.0,
             stage_current=3,
-            parts_parachutes=(ParachuteInfo(3, "stowed"), ParachuteInfo(3, "stowed")),
+            parts=Parts(parachutes=(ParachuteInfo(3, "stowed"), ParachuteInfo(3, "stowed"))),
         )
         commands = VesselCommands()
         result = action.tick(state, commands, dt=0.5, log=ActionLogger())
@@ -138,7 +139,7 @@ class TestParachutesActionTick:
         state = State(
             altitude_surface=1000.0,
             stage_current=5,
-            parts_parachutes=(ParachuteInfo(3, "stowed"),),
+            parts=Parts(parachutes=(ParachuteInfo(3, "stowed"),)),
         )
         commands = VesselCommands()
         result = action.tick(state, commands, dt=0.5, log=ActionLogger())
@@ -150,7 +151,7 @@ class TestParachutesActionTick:
         state = State(
             altitude_surface=1000.0,
             stage_current=3,
-            parts_parachutes=(ParachuteInfo(3, "stowed", safe_to_deploy=False),),
+            parts=Parts(parachutes=(ParachuteInfo(3, "stowed", safe_to_deploy=False),)),
         )
         commands = VesselCommands()
         result = action.tick(state, commands, dt=0.5, log=ActionLogger())
@@ -162,7 +163,7 @@ class TestParachutesActionTick:
         state = State(
             altitude_surface=1000.0,
             stage_current=3,
-            parts_parachutes=(ParachuteInfo(3, "stowed", safe_to_deploy=True),),
+            parts=Parts(parachutes=(ParachuteInfo(3, "stowed", safe_to_deploy=True),)),
         )
         commands = VesselCommands()
         result = action.tick(state, commands, dt=0.5, log=ActionLogger())
@@ -174,7 +175,7 @@ class TestParachutesActionTick:
         state = State(
             altitude_surface=1000.0,
             stage_current=3,
-            parts_parachutes=(ParachuteInfo(3, "stowed", safe_to_deploy=False),),
+            parts=Parts(parachutes=(ParachuteInfo(3, "stowed", safe_to_deploy=False),)),
         )
         commands = VesselCommands()
         result = action.tick(state, commands, dt=0.5, log=ActionLogger())
@@ -186,9 +187,11 @@ class TestParachutesActionTick:
         state = State(
             altitude_surface=1000.0,
             stage_current=3,
-            parts_parachutes=(
-                ParachuteInfo(3, "stowed", safe_to_deploy=True),
-                ParachuteInfo(3, "stowed", safe_to_deploy=False),
+            parts=Parts(
+                parachutes=(
+                    ParachuteInfo(3, "stowed", safe_to_deploy=True),
+                    ParachuteInfo(3, "stowed", safe_to_deploy=False),
+                )
             ),
         )
         commands = VesselCommands()

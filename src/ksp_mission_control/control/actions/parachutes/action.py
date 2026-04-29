@@ -72,7 +72,7 @@ class ParachutesAction(Action):
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         # Check if parachutes are present
-        if state.parts_parachutes_count() == 0:
+        if state.parts.parachutes_count() == 0:
             return ActionResult(status=ActionStatus.FAILED, message="No parachutes found on the vessel")
 
         # Wait for altitude gate
@@ -83,7 +83,7 @@ class ParachutesAction(Action):
             )
 
         # Stage if needed
-        if state.parts_parachutes_count([state.stage_current]) == 0:
+        if state.parts.parachutes_count([state.stage_current]) == 0:
             if self.stage_for_parachutes:
                 commands.stage = True
                 return ActionResult(status=ActionStatus.RUNNING, message="Staging for parachutes")
@@ -92,7 +92,7 @@ class ParachutesAction(Action):
 
         # Wait for safe deployment conditions
         if self.wait_for_safe:
-            current_stage_chutes = filter_parts(state.parts_parachutes, [state.stage_current])
+            current_stage_chutes = filter_parts(state.parts.parachutes, [state.stage_current])
             all_safe = all(p.safe_to_deploy for p in current_stage_chutes)
             if not all_safe:
                 unsafe_count = sum(1 for p in current_stage_chutes if not p.safe_to_deploy)
@@ -105,7 +105,7 @@ class ParachutesAction(Action):
         commands.deployable_parachutes = True
         return ActionResult(
             status=ActionStatus.SUCCEEDED,
-            message=f"Triggering the deployment of {state.parts_parachutes_count([state.stage_current])} parachutes at {state.altitude_surface:.1f}m",
+            message=f"Triggering the deployment of {state.parts.parachutes_count([state.stage_current])} parachutes at {state.altitude_surface:.1f}m",
         )
 
     def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:

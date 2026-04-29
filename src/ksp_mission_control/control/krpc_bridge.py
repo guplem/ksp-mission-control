@@ -13,6 +13,7 @@ from dataclasses import fields
 from ksp_mission_control.control.actions.base import (
     ParachuteInfo,
     PartInfo,
+    Parts,
     ReferenceFrame,
     SASMode,
     ScienceAction,
@@ -305,6 +306,155 @@ def read_vessel_state(conn: object) -> State:
     except Exception:
         parts_fairings = []
 
+    # Parts: decouplers
+    parts_decouplers: list[PartInfo] = []
+    try:
+        for decoupler in vessel.parts.decouplers:
+            decoupler_state = "decoupled" if decoupler.decoupled else "attached"
+            parts_decouplers.append(PartInfo(stage=decoupler.part.stage, state=decoupler_state, decouple_stage=decoupler.part.decouple_stage))
+    except Exception:
+        parts_decouplers = []
+
+    # Parts: launch clamps
+    parts_launch_clamps: list[PartInfo] = []
+    try:
+        for clamp in vessel.parts.launch_clamps:
+            parts_launch_clamps.append(PartInfo(stage=clamp.part.stage, state="attached", decouple_stage=clamp.part.decouple_stage))
+    except Exception:
+        parts_launch_clamps = []
+
+    # Parts: engines
+    parts_engines: list[PartInfo] = []
+    try:
+        for engine in vessel.parts.engines:
+            if engine.active and not engine.has_fuel:
+                engine_state = "flameout"
+            elif engine.active:
+                engine_state = "active"
+            else:
+                engine_state = "inactive"
+            parts_engines.append(PartInfo(stage=engine.part.stage, state=engine_state, decouple_stage=engine.part.decouple_stage))
+    except Exception:
+        parts_engines = []
+
+    # Parts: RCS thrusters
+    parts_rcs: list[PartInfo] = []
+    try:
+        for thruster in vessel.parts.rcs:
+            rcs_state = "enabled" if thruster.enabled else "disabled"
+            parts_rcs.append(PartInfo(stage=thruster.part.stage, state=rcs_state, decouple_stage=thruster.part.decouple_stage))
+    except Exception:
+        parts_rcs = []
+
+    # Parts: intakes
+    parts_intakes: list[PartInfo] = []
+    try:
+        for intake in vessel.parts.intakes:
+            intake_state = "open" if intake.open else "closed"
+            parts_intakes.append(PartInfo(stage=intake.part.stage, state=intake_state, decouple_stage=intake.part.decouple_stage))
+    except Exception:
+        parts_intakes = []
+
+    # Parts: solar panels
+    parts_solar_panels: list[PartInfo] = []
+    try:
+        for panel in vessel.parts.solar_panels:
+            part = panel.part
+            parts_solar_panels.append(PartInfo(stage=part.stage, state=_parse_part_state(str(panel.state)), decouple_stage=part.decouple_stage))
+    except Exception:
+        parts_solar_panels = []
+
+    # Parts: radiators
+    parts_radiators: list[PartInfo] = []
+    try:
+        for radiator in vessel.parts.radiators:
+            part = radiator.part
+            parts_radiators.append(PartInfo(stage=part.stage, state=_parse_part_state(str(radiator.state)), decouple_stage=part.decouple_stage))
+    except Exception:
+        parts_radiators = []
+
+    # Parts: cargo bays
+    parts_cargo_bays: list[PartInfo] = []
+    try:
+        for bay in vessel.parts.cargo_bays:
+            bay_state = "open" if bay.open else "closed"
+            parts_cargo_bays.append(PartInfo(stage=bay.part.stage, state=bay_state, decouple_stage=bay.part.decouple_stage))
+    except Exception:
+        parts_cargo_bays = []
+
+    # Parts: docking ports
+    parts_docking_ports: list[PartInfo] = []
+    try:
+        for port in vessel.parts.docking_ports:
+            part = port.part
+            parts_docking_ports.append(PartInfo(stage=part.stage, state=_parse_part_state(str(port.state)), decouple_stage=part.decouple_stage))
+    except Exception:
+        parts_docking_ports = []
+
+    # Parts: reaction wheels
+    parts_reaction_wheels: list[PartInfo] = []
+    try:
+        for wheel in vessel.parts.reaction_wheels:
+            rw_state = "active" if wheel.active else "inactive"
+            parts_reaction_wheels.append(PartInfo(stage=wheel.part.stage, state=rw_state, decouple_stage=wheel.part.decouple_stage))
+    except Exception:
+        parts_reaction_wheels = []
+
+    # Parts: sensors
+    parts_sensors: list[PartInfo] = []
+    try:
+        for sensor in vessel.parts.sensors:
+            sensor_state = "active" if sensor.active else "inactive"
+            parts_sensors.append(PartInfo(stage=sensor.part.stage, state=sensor_state, decouple_stage=sensor.part.decouple_stage))
+    except Exception:
+        parts_sensors = []
+
+    # Parts: wheels
+    parts_wheels: list[PartInfo] = []
+    try:
+        for wheel in vessel.parts.wheels:
+            parts_wheels.append(PartInfo(stage=wheel.part.stage, state=_parse_part_state(str(wheel.state)), decouple_stage=wheel.part.decouple_stage))
+    except Exception:
+        parts_wheels = []
+
+    # Parts: lights
+    parts_lights: list[PartInfo] = []
+    try:
+        for light in vessel.parts.lights:
+            light_state = "on" if light.active else "off"
+            parts_lights.append(PartInfo(stage=light.part.stage, state=light_state, decouple_stage=light.part.decouple_stage))
+    except Exception:
+        parts_lights = []
+
+    # Parts: antennas
+    parts_antennas: list[PartInfo] = []
+    try:
+        for antenna in vessel.parts.antennas:
+            part = antenna.part
+            parts_antennas.append(PartInfo(stage=part.stage, state=_parse_part_state(str(antenna.state)), decouple_stage=part.decouple_stage))
+    except Exception:
+        parts_antennas = []
+
+    # Parts: resource converters
+    parts_resource_converters: list[PartInfo] = []
+    try:
+        for converter in vessel.parts.resource_converters:
+            converter_state = "active" if converter.active(index=0) else "inactive"
+            part = converter.part
+            parts_resource_converters.append(PartInfo(stage=part.stage, state=converter_state, decouple_stage=part.decouple_stage))
+    except Exception:
+        parts_resource_converters = []
+
+    # Parts: resource harvesters
+    parts_resource_harvesters: list[PartInfo] = []
+    try:
+        for harvester in vessel.parts.resource_harvesters:
+            harvester_state = "active" if harvester.active else "inactive"
+            part = harvester.part
+            parts_resource_harvesters.append(PartInfo(stage=part.stage, state=harvester_state, decouple_stage=part.decouple_stage))
+    except Exception:
+        parts_resource_harvesters = []
+
     return State(
         altitude_sea=flight.mean_altitude,
         altitude_surface=flight.surface_altitude,
@@ -403,9 +553,27 @@ def read_vessel_state(conn: object) -> State:
         resource_oxidizer_max=vessel.resources.max("Oxidizer"),
         resource_mono_propellant_max=vessel.resources.max("MonoPropellant"),
         science_experiments=tuple(science_experiments),
-        parts_parachutes=tuple(parts_parachutes),
-        parts_legs=tuple(parts_legs),
-        parts_fairings=tuple(parts_fairings),
+        parts=Parts(
+            parachutes=tuple(parts_parachutes),
+            legs=tuple(parts_legs),
+            fairings=tuple(parts_fairings),
+            decouplers=tuple(parts_decouplers),
+            launch_clamps=tuple(parts_launch_clamps),
+            engines=tuple(parts_engines),
+            rcs=tuple(parts_rcs),
+            intakes=tuple(parts_intakes),
+            solar_panels=tuple(parts_solar_panels),
+            radiators=tuple(parts_radiators),
+            cargo_bays=tuple(parts_cargo_bays),
+            docking_ports=tuple(parts_docking_ports),
+            reaction_wheels=tuple(parts_reaction_wheels),
+            sensors=tuple(parts_sensors),
+            wheels=tuple(parts_wheels),
+            lights=tuple(parts_lights),
+            antennas=tuple(parts_antennas),
+            resource_converters=tuple(parts_resource_converters),
+            resource_harvesters=tuple(parts_resource_harvesters),
+        ),
     )
 
 

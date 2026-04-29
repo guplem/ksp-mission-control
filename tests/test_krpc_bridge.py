@@ -162,9 +162,9 @@ def _make_mock_conn(
     vessel_ref = SimpleNamespace()
 
     mock_engines = [
-        SimpleNamespace(active=True, has_fuel=True),
-        SimpleNamespace(active=True, has_fuel=False),
-        SimpleNamespace(active=False, has_fuel=True),
+        SimpleNamespace(active=True, has_fuel=True, part=SimpleNamespace(stage=0, decouple_stage=0)),
+        SimpleNamespace(active=True, has_fuel=False, part=SimpleNamespace(stage=0, decouple_stage=0)),
+        SimpleNamespace(active=False, has_fuel=True, part=SimpleNamespace(stage=0, decouple_stage=0)),
     ]
     mock_experiments = [
         SimpleNamespace(
@@ -248,6 +248,54 @@ def _make_mock_conn(
         SimpleNamespace(jettisoned=False, part=SimpleNamespace(stage=5, decouple_stage=5)),
         SimpleNamespace(jettisoned=True, part=SimpleNamespace(stage=5, decouple_stage=5)),
     ]
+    mock_decouplers = [
+        SimpleNamespace(decoupled=False, part=SimpleNamespace(stage=4, decouple_stage=4)),
+        SimpleNamespace(decoupled=True, part=SimpleNamespace(stage=4, decouple_stage=4)),
+    ]
+    mock_launch_clamps = [
+        SimpleNamespace(part=SimpleNamespace(stage=6, decouple_stage=6)),
+    ]
+    mock_rcs = [
+        SimpleNamespace(enabled=True, part=SimpleNamespace(stage=0, decouple_stage=-1)),
+        SimpleNamespace(enabled=False, part=SimpleNamespace(stage=0, decouple_stage=-1)),
+    ]
+    mock_intakes = [
+        SimpleNamespace(open=True, part=SimpleNamespace(stage=0, decouple_stage=-1)),
+    ]
+    mock_solar_panels = [
+        SimpleNamespace(state="SolarPanelState.extended", part=SimpleNamespace(stage=0, decouple_stage=-1)),
+        SimpleNamespace(state="SolarPanelState.retracted", part=SimpleNamespace(stage=0, decouple_stage=-1)),
+    ]
+    mock_radiators = [
+        SimpleNamespace(state="RadiatorState.extended", part=SimpleNamespace(stage=0, decouple_stage=-1)),
+    ]
+    mock_cargo_bays = [
+        SimpleNamespace(open=False, part=SimpleNamespace(stage=0, decouple_stage=-1)),
+    ]
+    mock_docking_ports = [
+        SimpleNamespace(state="DockingPortState.ready", part=SimpleNamespace(stage=0, decouple_stage=-1)),
+    ]
+    mock_reaction_wheels = [
+        SimpleNamespace(active=True, part=SimpleNamespace(stage=0, decouple_stage=-1)),
+    ]
+    mock_sensors = [
+        SimpleNamespace(active=True, part=SimpleNamespace(stage=0, decouple_stage=-1)),
+    ]
+    mock_wheels = [
+        SimpleNamespace(state="WheelState.deployed", part=SimpleNamespace(stage=0, decouple_stage=-1)),
+    ]
+    mock_lights = [
+        SimpleNamespace(active=False, part=SimpleNamespace(stage=0, decouple_stage=-1)),
+    ]
+    mock_antennas = [
+        SimpleNamespace(state="AntennaState.deployed", part=SimpleNamespace(stage=0, decouple_stage=-1)),
+    ]
+    mock_resource_converters = [
+        SimpleNamespace(active=lambda index: False, part=SimpleNamespace(stage=0, decouple_stage=-1)),
+    ]
+    mock_resource_harvesters = [
+        SimpleNamespace(active=False, part=SimpleNamespace(stage=0, decouple_stage=-1)),
+    ]
 
     parts = SimpleNamespace(
         all=[_make_mock_part(0), _make_mock_part(1), _make_mock_part(2)],
@@ -256,6 +304,21 @@ def _make_mock_conn(
         parachutes=mock_parachutes,
         legs=mock_legs,
         fairings=mock_fairings,
+        decouplers=mock_decouplers,
+        launch_clamps=mock_launch_clamps,
+        rcs=mock_rcs,
+        intakes=mock_intakes,
+        solar_panels=mock_solar_panels,
+        radiators=mock_radiators,
+        cargo_bays=mock_cargo_bays,
+        docking_ports=mock_docking_ports,
+        reaction_wheels=mock_reaction_wheels,
+        sensors=mock_sensors,
+        wheels=mock_wheels,
+        lights=mock_lights,
+        antennas=mock_antennas,
+        resource_converters=mock_resource_converters,
+        resource_harvesters=mock_resource_harvesters,
     )
 
     resources = SimpleNamespace(
@@ -1063,32 +1126,133 @@ class TestReadVesselStateParts:
     def test_reads_parachutes(self) -> None:
         conn = _make_mock_conn()
         state = read_vessel_state(conn)
-        assert len(state.parts_parachutes) == 2
-        assert state.parts_parachutes[0].stage == 3
-        assert state.parts_parachutes[0].decouple_stage == 3
-        assert state.parts_parachutes[0].state == "stowed"
-        assert state.parts_parachutes[0].safe_to_deploy is True
-        assert state.parts_parachutes[0].deploy_semi_min_pressure == 0.04
-        assert state.parts_parachutes[0].deploy_full_altitude == 1000.0
-        assert state.parts_parachutes[1].state == "deployed"
+        assert len(state.parts.parachutes) == 2
+        assert state.parts.parachutes[0].stage == 3
+        assert state.parts.parachutes[0].decouple_stage == 3
+        assert state.parts.parachutes[0].state == "stowed"
+        assert state.parts.parachutes[0].safe_to_deploy is True
+        assert state.parts.parachutes[0].deploy_semi_min_pressure == 0.04
+        assert state.parts.parachutes[0].deploy_full_altitude == 1000.0
+        assert state.parts.parachutes[1].state == "deployed"
 
     def test_reads_legs(self) -> None:
         conn = _make_mock_conn()
         state = read_vessel_state(conn)
-        assert len(state.parts_legs) == 2
-        assert state.parts_legs[0].stage == 1
-        assert state.parts_legs[0].decouple_stage == -1
-        assert state.parts_legs[0].state == "retracted"
-        assert state.parts_legs[1].state == "deployed"
+        assert len(state.parts.legs) == 2
+        assert state.parts.legs[0].stage == 1
+        assert state.parts.legs[0].decouple_stage == -1
+        assert state.parts.legs[0].state == "retracted"
+        assert state.parts.legs[1].state == "deployed"
 
     def test_reads_fairings(self) -> None:
         conn = _make_mock_conn()
         state = read_vessel_state(conn)
-        assert len(state.parts_fairings) == 2
-        assert state.parts_fairings[0].stage == 5
-        assert state.parts_fairings[0].decouple_stage == 5
-        assert state.parts_fairings[0].state == "intact"
-        assert state.parts_fairings[1].state == "jettisoned"
+        assert len(state.parts.fairings) == 2
+        assert state.parts.fairings[0].stage == 5
+        assert state.parts.fairings[0].decouple_stage == 5
+        assert state.parts.fairings[0].state == "intact"
+        assert state.parts.fairings[1].state == "jettisoned"
+
+    def test_reads_engines(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        assert len(state.parts.engines) == 3
+        assert state.parts.engines[0].state == "active"
+        assert state.parts.engines[1].state == "flameout"
+        assert state.parts.engines[2].state == "inactive"
+
+    def test_reads_decouplers(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        assert len(state.parts.decouplers) == 2
+        assert state.parts.decouplers[0].state == "attached"
+        assert state.parts.decouplers[1].state == "decoupled"
+
+    def test_reads_launch_clamps(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        assert len(state.parts.launch_clamps) == 1
+        assert state.parts.launch_clamps[0].state == "attached"
+
+    def test_reads_rcs(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        assert len(state.parts.rcs) == 2
+        assert state.parts.rcs[0].state == "enabled"
+        assert state.parts.rcs[1].state == "disabled"
+
+    def test_reads_intakes(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        assert len(state.parts.intakes) == 1
+        assert state.parts.intakes[0].state == "open"
+
+    def test_reads_solar_panels(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        assert len(state.parts.solar_panels) == 2
+        assert state.parts.solar_panels[0].state == "extended"
+        assert state.parts.solar_panels[1].state == "retracted"
+
+    def test_reads_radiators(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        assert len(state.parts.radiators) == 1
+        assert state.parts.radiators[0].state == "extended"
+
+    def test_reads_cargo_bays(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        assert len(state.parts.cargo_bays) == 1
+        assert state.parts.cargo_bays[0].state == "closed"
+
+    def test_reads_docking_ports(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        assert len(state.parts.docking_ports) == 1
+        assert state.parts.docking_ports[0].state == "ready"
+
+    def test_reads_reaction_wheels(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        assert len(state.parts.reaction_wheels) == 1
+        assert state.parts.reaction_wheels[0].state == "active"
+
+    def test_reads_sensors(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        assert len(state.parts.sensors) == 1
+        assert state.parts.sensors[0].state == "active"
+
+    def test_reads_wheels(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        assert len(state.parts.wheels) == 1
+        assert state.parts.wheels[0].state == "deployed"
+
+    def test_reads_lights(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        assert len(state.parts.lights) == 1
+        assert state.parts.lights[0].state == "off"
+
+    def test_reads_antennas(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        assert len(state.parts.antennas) == 1
+        assert state.parts.antennas[0].state == "deployed"
+
+    def test_reads_resource_converters(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        assert len(state.parts.resource_converters) == 1
+        assert state.parts.resource_converters[0].state == "inactive"
+
+    def test_reads_resource_harvesters(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        assert len(state.parts.resource_harvesters) == 1
+        assert state.parts.resource_harvesters[0].state == "inactive"
 
     def test_empty_parts(self) -> None:
         conn = _make_mock_conn()
@@ -1096,24 +1260,24 @@ class TestReadVesselStateParts:
         conn.space_center.active_vessel.parts.legs = []
         conn.space_center.active_vessel.parts.fairings = []
         state = read_vessel_state(conn)
-        assert state.parts_parachutes == ()
-        assert state.parts_legs == ()
-        assert state.parts_fairings == ()
+        assert state.parts.parachutes == ()
+        assert state.parts.legs == ()
+        assert state.parts.fairings == ()
 
     def test_resilient_to_missing_parachutes_attr(self) -> None:
         conn = _make_mock_conn()
         del conn.space_center.active_vessel.parts.parachutes
         state = read_vessel_state(conn)
-        assert state.parts_parachutes == ()
+        assert state.parts.parachutes == ()
 
     def test_resilient_to_missing_legs_attr(self) -> None:
         conn = _make_mock_conn()
         del conn.space_center.active_vessel.parts.legs
         state = read_vessel_state(conn)
-        assert state.parts_legs == ()
+        assert state.parts.legs == ()
 
     def test_resilient_to_missing_fairings_attr(self) -> None:
         conn = _make_mock_conn()
         del conn.space_center.active_vessel.parts.fairings
         state = read_vessel_state(conn)
-        assert state.parts_fairings == ()
+        assert state.parts.fairings == ()
