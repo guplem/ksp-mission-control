@@ -12,6 +12,7 @@ from ksp_mission_control.control.actions.base import (
     ActionStatus,
     AutopilotConfig,
     AutopilotDirection,
+    ParachuteInfo,
     ParamType,
     PartInfo,
     ReferenceFrame,
@@ -350,15 +351,15 @@ class TestVesselStatePartMethods:
         assert state.parts_parachutes_deployed() == 0
 
     def test_parts_parachutes_count(self) -> None:
-        state = State(parts_parachutes=(PartInfo(0, "stowed"), PartInfo(0, "deployed")))
+        state = State(parts_parachutes=(ParachuteInfo(0, "stowed"), ParachuteInfo(0, "deployed")))
         assert state.parts_parachutes_count() == 2
 
     def test_parts_parachutes_stowed(self) -> None:
         state = State(
             parts_parachutes=(
-                PartInfo(0, "stowed"),
-                PartInfo(0, "armed"),
-                PartInfo(0, "stowed"),
+                ParachuteInfo(0, "stowed"),
+                ParachuteInfo(0, "armed"),
+                ParachuteInfo(0, "stowed"),
             )
         )
         assert state.parts_parachutes_stowed() == 2
@@ -366,9 +367,9 @@ class TestVesselStatePartMethods:
     def test_parts_parachutes_armed(self) -> None:
         state = State(
             parts_parachutes=(
-                PartInfo(0, "armed"),
-                PartInfo(0, "stowed"),
-                PartInfo(0, "armed"),
+                ParachuteInfo(0, "armed"),
+                ParachuteInfo(0, "stowed"),
+                ParachuteInfo(0, "armed"),
             )
         )
         assert state.parts_parachutes_armed() == 2
@@ -376,8 +377,8 @@ class TestVesselStatePartMethods:
     def test_parts_parachutes_semi_deployed(self) -> None:
         state = State(
             parts_parachutes=(
-                PartInfo(0, "semi_deployed"),
-                PartInfo(0, "deployed"),
+                ParachuteInfo(0, "semi_deployed"),
+                ParachuteInfo(0, "deployed"),
             )
         )
         assert state.parts_parachutes_semi_deployed() == 1
@@ -385,9 +386,9 @@ class TestVesselStatePartMethods:
     def test_parts_parachutes_fully_deployed(self) -> None:
         state = State(
             parts_parachutes=(
-                PartInfo(0, "semi_deployed"),
-                PartInfo(0, "deployed"),
-                PartInfo(0, "deployed"),
+                ParachuteInfo(0, "semi_deployed"),
+                ParachuteInfo(0, "deployed"),
+                ParachuteInfo(0, "deployed"),
             )
         )
         assert state.parts_parachutes_fully_deployed() == 2
@@ -395,9 +396,9 @@ class TestVesselStatePartMethods:
     def test_parts_parachutes_deployed_includes_both(self) -> None:
         state = State(
             parts_parachutes=(
-                PartInfo(0, "semi_deployed"),
-                PartInfo(0, "deployed"),
-                PartInfo(0, "stowed"),
+                ParachuteInfo(0, "semi_deployed"),
+                ParachuteInfo(0, "deployed"),
+                ParachuteInfo(0, "stowed"),
             )
         )
         assert state.parts_parachutes_deployed() == 2
@@ -405,8 +406,8 @@ class TestVesselStatePartMethods:
     def test_parts_parachutes_cut(self) -> None:
         state = State(
             parts_parachutes=(
-                PartInfo(0, "cut"),
-                PartInfo(0, "deployed"),
+                ParachuteInfo(0, "cut"),
+                ParachuteInfo(0, "deployed"),
             )
         )
         assert state.parts_parachutes_cut() == 1
@@ -464,9 +465,9 @@ class TestVesselStatePartMethods:
     def test_parachutes_count_filtered_by_stage(self) -> None:
         state = State(
             parts_parachutes=(
-                PartInfo(2, "stowed"),
-                PartInfo(3, "stowed"),
-                PartInfo(2, "armed"),
+                ParachuteInfo(2, "stowed"),
+                ParachuteInfo(3, "stowed"),
+                ParachuteInfo(2, "armed"),
             )
         )
         assert state.parts_parachutes_count([2]) == 2
@@ -476,9 +477,9 @@ class TestVesselStatePartMethods:
     def test_parachutes_stowed_filtered_by_stage(self) -> None:
         state = State(
             parts_parachutes=(
-                PartInfo(2, "stowed"),
-                PartInfo(3, "stowed"),
-                PartInfo(2, "deployed"),
+                ParachuteInfo(2, "stowed"),
+                ParachuteInfo(3, "stowed"),
+                ParachuteInfo(2, "deployed"),
             )
         )
         assert state.parts_parachutes_stowed([2]) == 1
@@ -510,8 +511,8 @@ class TestVesselStatePartMethods:
     def test_empty_stages_returns_all(self) -> None:
         state = State(
             parts_parachutes=(
-                PartInfo(2, "stowed"),
-                PartInfo(3, "stowed"),
+                ParachuteInfo(2, "stowed"),
+                ParachuteInfo(3, "stowed"),
             )
         )
         assert state.parts_parachutes_count() == 2

@@ -11,6 +11,7 @@ import math
 from dataclasses import fields
 
 from ksp_mission_control.control.actions.base import (
+    ParachuteInfo,
     PartInfo,
     ReferenceFrame,
     SASMode,
@@ -96,6 +97,59 @@ def _parse_part_state(raw: str) -> str:
     Returns the lowercase member name (e.g. ``'stowed'``).
     """
     return raw.split(".")[-1] if "." in raw else raw
+
+
+def _read_parachute_state(chute: object, part: object) -> str:
+    """Read the parachute state, falling back to module events on kRPC bug.
+
+    Tries the kRPC ``chute.state`` property first. If that raises (kRPC
+    RealChutes misdetection bug), infers state from ModuleParachute events:
+    - 'Deploy Chute' available -> 'stowed'
+    - 'Arm Chute' available -> 'stowed' (armed variant not distinguishable)
+    - 'Cut Chute' available (no Deploy) -> 'deployed'
+    - neither -> 'cut'
+    """
+    try:
+        return _parse_part_state(str(chute.state))  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    # Fallback: infer from ModuleParachute events
+    try:
+        for module in part.modules:  # type: ignore[attr-defined]
+            if module.name == "ModuleParachute":
+                events: list[str] = list(module.events)
+                if "Deploy Chute" in events:
+                    return "stowed"
+                if "Cut Chute" in events:
+                    return "deployed"
+                return "cut"
+    except Exception:
+        pass
+    return "unknown"
+
+
+def _read_parachute_module_fields(part: object) -> tuple[bool, float, float]:
+    """Read parachute-specific fields from the generic ModuleParachute module.
+
+    Returns (safe_to_deploy, deploy_semi_min_pressure, deploy_full_altitude).
+    Falls back to defaults if the module or fields are not found.
+    """
+    try:
+        for module in part.modules:  # type: ignore[attr-defined]
+            if module.name == "ModuleParachute":
+                safe_str = module.get_field("Safe to deploy?")
+                safe_to_deploy = safe_str.strip().lower() == "safe"
+
+                pressure_str = module.get_field("Min Pressure")
+                deploy_semi_min_pressure = float(pressure_str)
+
+                altitude_str = module.get_field("Altitude")
+                deploy_full_altitude = float(altitude_str)
+
+                return safe_to_deploy, deploy_semi_min_pressure, deploy_full_altitude
+    except Exception:
+        pass
+    return False, 0.04, 1000.0
 
 
 def _apply_science_action(experiment: object, action: ScienceAction) -> None:
@@ -207,10 +261,25 @@ def read_vessel_state(conn: object) -> State:
         science_experiments = []
 
     # Parts: parachutes
-    parts_parachutes: list[PartInfo] = []
+    # kRPC's Parachute wrapper has a bug that misidentifies stock parachutes as
+    # RealChutes, breaking chute.state/deploy_full_altitude/deploy_semi_min_pressure.
+    # We read state and fields from the generic ModuleParachute module instead.
+    parts_parachutes: list[ParachuteInfo] = []
     try:
         for chute in vessel.parts.parachutes:
-            parts_parachutes.append(PartInfo(stage=chute.part.decouple_stage, state=_parse_part_state(str(chute.state))))
+            part = chute.part
+            state = _read_parachute_state(chute, part)
+            safe_to_deploy, deploy_semi_min_pressure, deploy_full_altitude = _read_parachute_module_fields(part)
+            parts_parachutes.append(
+                ParachuteInfo(
+                    stage=part.stage,
+                    state=state,
+                    decouple_stage=part.decouple_stage,
+                    safe_to_deploy=safe_to_deploy,
+                    deploy_semi_min_pressure=deploy_semi_min_pressure,
+                    deploy_full_altitude=deploy_full_altitude,
+                )
+            )
     except Exception:
         parts_parachutes = []
 
@@ -218,7 +287,7 @@ def read_vessel_state(conn: object) -> State:
     parts_legs: list[PartInfo] = []
     try:
         for leg in vessel.parts.legs:
-            parts_legs.append(PartInfo(stage=leg.part.stage, state=_parse_part_state(str(leg.state))))
+            parts_legs.append(PartInfo(stage=leg.part.stage, state=_parse_part_state(str(leg.state)), decouple_stage=leg.part.decouple_stage))
     except Exception:
         parts_legs = []
 
@@ -227,7 +296,7 @@ def read_vessel_state(conn: object) -> State:
     try:
         for fairing in vessel.parts.fairings:
             fairing_state = "jettisoned" if fairing.jettisoned else "intact"
-            parts_fairings.append(PartInfo(stage=fairing.part.decouple_stage, state=fairing_state))
+            parts_fairings.append(PartInfo(stage=fairing.part.stage, state=fairing_state, decouple_stage=fairing.part.decouple_stage))
     except Exception:
         parts_fairings = []
 

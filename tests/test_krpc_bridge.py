@@ -208,17 +208,45 @@ def _make_mock_conn(
         exp.dump = lambda _exp=exp: setattr(_exp, "_dumped", True)
         exp.transmit = lambda _exp=exp: setattr(_exp, "_transmitted", True)
 
+    mock_parachute_module_stowed = SimpleNamespace(
+        name="ModuleParachute",
+        fields=["Safe to deploy?", "Min Pressure", "Altitude"],
+        events=["Deploy Chute"],
+        actions=["Deploy Chute", "Cut Chute"],
+        get_field=lambda field_name: {
+            "Safe to deploy?": "Safe",
+            "Min Pressure": "0.04",
+            "Altitude": "1000",
+        }[field_name],
+    )
+    mock_parachute_module_deployed = SimpleNamespace(
+        name="ModuleParachute",
+        fields=["Safe to deploy?", "Min Pressure", "Altitude"],
+        events=["Cut Chute"],
+        actions=["Deploy Chute", "Cut Chute"],
+        get_field=lambda field_name: {
+            "Safe to deploy?": "Safe",
+            "Min Pressure": "0.04",
+            "Altitude": "1000",
+        }[field_name],
+    )
     mock_parachutes = [
-        SimpleNamespace(state="ParachuteState.stowed", part=SimpleNamespace(decouple_stage=3)),
-        SimpleNamespace(state="ParachuteState.deployed", part=SimpleNamespace(decouple_stage=3)),
+        SimpleNamespace(
+            state="ParachuteState.stowed",
+            part=SimpleNamespace(stage=3, decouple_stage=3, modules=[mock_parachute_module_stowed]),
+        ),
+        SimpleNamespace(
+            state="ParachuteState.deployed",
+            part=SimpleNamespace(stage=3, decouple_stage=3, modules=[mock_parachute_module_deployed]),
+        ),
     ]
     mock_legs = [
-        SimpleNamespace(state="LegState.retracted", part=SimpleNamespace(stage=1)),
-        SimpleNamespace(state="LegState.deployed", part=SimpleNamespace(stage=1)),
+        SimpleNamespace(state="LegState.retracted", part=SimpleNamespace(stage=1, decouple_stage=-1)),
+        SimpleNamespace(state="LegState.deployed", part=SimpleNamespace(stage=1, decouple_stage=-1)),
     ]
     mock_fairings = [
-        SimpleNamespace(jettisoned=False, part=SimpleNamespace(decouple_stage=5)),
-        SimpleNamespace(jettisoned=True, part=SimpleNamespace(decouple_stage=5)),
+        SimpleNamespace(jettisoned=False, part=SimpleNamespace(stage=5, decouple_stage=5)),
+        SimpleNamespace(jettisoned=True, part=SimpleNamespace(stage=5, decouple_stage=5)),
     ]
 
     parts = SimpleNamespace(
@@ -1037,7 +1065,11 @@ class TestReadVesselStateParts:
         state = read_vessel_state(conn)
         assert len(state.parts_parachutes) == 2
         assert state.parts_parachutes[0].stage == 3
+        assert state.parts_parachutes[0].decouple_stage == 3
         assert state.parts_parachutes[0].state == "stowed"
+        assert state.parts_parachutes[0].safe_to_deploy is True
+        assert state.parts_parachutes[0].deploy_semi_min_pressure == 0.04
+        assert state.parts_parachutes[0].deploy_full_altitude == 1000.0
         assert state.parts_parachutes[1].state == "deployed"
 
     def test_reads_legs(self) -> None:
@@ -1045,6 +1077,7 @@ class TestReadVesselStateParts:
         state = read_vessel_state(conn)
         assert len(state.parts_legs) == 2
         assert state.parts_legs[0].stage == 1
+        assert state.parts_legs[0].decouple_stage == -1
         assert state.parts_legs[0].state == "retracted"
         assert state.parts_legs[1].state == "deployed"
 
@@ -1053,6 +1086,7 @@ class TestReadVesselStateParts:
         state = read_vessel_state(conn)
         assert len(state.parts_fairings) == 2
         assert state.parts_fairings[0].stage == 5
+        assert state.parts_fairings[0].decouple_stage == 5
         assert state.parts_fairings[0].state == "intact"
         assert state.parts_fairings[1].state == "jettisoned"
 

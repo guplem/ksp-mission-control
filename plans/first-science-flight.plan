@@ -8,4 +8,4 @@ throttle   throttle_level=1.0
 run_science    wait_for_apoapsis=True
 
 # Trigger the parachutes to deploy at a safe altitude during descent
-parachutes     min_altitude=3_000  stage_for_parachutes=True
+parachutes     min_altitude=10_000  stage_for_parachutes=True  wait_for_safe=True

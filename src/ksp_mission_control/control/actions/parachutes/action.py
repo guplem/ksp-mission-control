@@ -17,6 +17,7 @@ from ksp_mission_control.control.actions.base import (
     ParamType,
     State,
     VesselCommands,
+    filter_parts,
 )
 
 
@@ -36,7 +37,7 @@ class ParachutesAction(Action):
             ),
             required=False,
             param_type=ParamType.FLOAT,
-            default=3_000,
+            default=10_000,
         ),
         ActionParam(
             param_id="stage_for_parachutes",
@@ -50,11 +51,24 @@ class ParachutesAction(Action):
             param_type=ParamType.BOOL,
             default=True,
         ),
+        ActionParam(
+            param_id="wait_for_safe",
+            label="Wait for Safe",
+            description=(
+                "Wait until the game reports it is safe to deploy before triggering. "
+                "Prevents parachute destruction from excessive speed or pressure. "
+                "If false, deploys immediately regardless of safety."
+            ),
+            required=False,
+            param_type=ParamType.BOOL,
+            default=True,
+        ),
     ]
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
         self.min_altitude: float | None = param_values["min_altitude"]
         self.stage_for_parachutes: bool = param_values["stage_for_parachutes"]
+        self.wait_for_safe: bool = param_values["wait_for_safe"]
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         # Check if parachutes are present
@@ -75,6 +89,17 @@ class ParachutesAction(Action):
                 return ActionResult(status=ActionStatus.RUNNING, message="Staging for parachutes")
             else:
                 return ActionResult(status=ActionStatus.FAILED, message="Parachutes are not in the current stage")
+
+        # Wait for safe deployment conditions
+        if self.wait_for_safe:
+            current_stage_chutes = filter_parts(state.parts_parachutes, [state.stage_current])
+            all_safe = all(p.safe_to_deploy for p in current_stage_chutes)
+            if not all_safe:
+                unsafe_count = sum(1 for p in current_stage_chutes if not p.safe_to_deploy)
+                return ActionResult(
+                    status=ActionStatus.RUNNING,
+                    message=f"Waiting for safe deployment conditions ({unsafe_count} chute(s) unsafe)",
+                )
 
         # Deploy
         commands.deployable_parachutes = True
