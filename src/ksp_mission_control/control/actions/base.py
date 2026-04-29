@@ -436,7 +436,7 @@ class State:
     thrust_available: float = 0.0
     """Full-throttle thrust from engines that still have fuel, in Newtons. Excludes flamed-out engines. Does NOT account for throttle."""
     thrust_peak: float = 0.0
-    """Full-throttle thrust from ALL active engines, including flamed-out ones. Does NOT account for throttle or fuel state."""
+    """Full-throttle thrust from ALL active engines, in Newtons. Includes flamed-out ones. Does NOT account for throttle or fuel state."""
     engine_impulse_specific: float = 0.0
     """Current overall specific impulse, in seconds. 0 if no active engines."""
     engine_impulse_specific_vacuum: float = 0.0
