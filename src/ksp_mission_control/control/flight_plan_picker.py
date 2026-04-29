@@ -81,16 +81,18 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
         self._parse_errors: dict[str, str] = {}
 
     def _load_plans(self) -> None:
-        """Scan the plans directory for .plan files."""
+        """Scan the plans directory recursively for .plan files."""
         self._parsed_plans.clear()
         self._parse_errors.clear()
         if not self._plans_dir.is_dir():
             return
-        for plan_file in sorted(self._plans_dir.glob("*.plan")):
+        for plan_file in sorted(self._plans_dir.rglob("*.plan")):
+            relative = plan_file.relative_to(self._plans_dir)
+            display_name = str(relative.with_suffix("")).replace("\\", "/")
             try:
-                self._parsed_plans[plan_file.stem] = parse_flight_plan(plan_file)
+                self._parsed_plans[display_name] = parse_flight_plan(plan_file)
             except ValueError as exc:
-                self._parse_errors[plan_file.stem] = str(exc)
+                self._parse_errors[display_name] = str(exc)
 
     def compose(self) -> ComposeResult:
         with VerticalScroll(id="picker-container"):
@@ -110,14 +112,17 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
         """Rebuild the list view and error display from loaded plans."""
         listview = self.query_one("#picker-listview", ListView)
         listview.clear()
+        self._plan_names: list[str] = []
 
         for name, plan in self._parsed_plans.items():
             step_count = len(plan.steps)
             step_word = "step" if step_count == 1 else "steps"
+            idx = len(self._plan_names)
+            self._plan_names.append(name)
             listview.append(
                 ListItem(
                     Static(f"{name} ({step_count} {step_word})"),
-                    id=f"plan-{name}",
+                    id=f"plan-{idx}",
                 )
             )
 
@@ -139,10 +144,15 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
         item_id = event.item.id
         if item_id is None:
             return
-        plan_name = item_id.removeprefix("plan-")
-        plan = self._parsed_plans.get(plan_name)
-        if plan is not None:
-            self.dismiss(plan)
+        try:
+            idx = int(item_id.removeprefix("plan-"))
+        except ValueError:
+            return
+        if 0 <= idx < len(self._plan_names):
+            plan_name = self._plan_names[idx]
+            plan = self._parsed_plans.get(plan_name)
+            if plan is not None:
+                self.dismiss(plan)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "picker-cancel-btn":

@@ -305,6 +305,8 @@ class ScienceExperiment:
     """Display name (e.g. '2HOT Thermometer')."""
     part_title: str
     """Name of the part containing this experiment."""
+    name_tag: str
+    """User-assigned name tag on the part (empty string if not set)."""
     available: bool
     """Whether the experiment can be run in current conditions."""
     has_data: bool
@@ -318,9 +320,9 @@ class ScienceExperiment:
     biome: str
     """Current biome where the experiment would collect data."""
     science_value: float
-    """Science points already earned from this experiment."""
+    """Potential science value of stored data (before recovery/transmission)."""
     science_cap: float
-    """Maximum science points this experiment can yield."""
+    """Maximum science points obtainable for this experiment and situation."""
 
 
 @dataclass(frozen=True)

@@ -77,7 +77,7 @@ src/ksp_mission_control/
 │   │   │   └── action.py # LandAction (controlled descent PD controller)
 │   │   ├── launch/       # Ascent action
 │   │   │   └── action.py # LaunchAction (gravity turn to target apoapsis)
-│   │   ├── run_science/  # Science experiment activation
+│   │   ├── science/      # Science experiment activation, data transmission, ...
 │   │   │   └── action.py # RunScienceAction (trigger available experiments)
 │   │   ├── translate/    # Translation action
 │   │   │   └── action.py # TranslateAction (RCS translation control)

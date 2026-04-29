@@ -241,12 +241,17 @@ def read_vessel_state(conn: object) -> State:
                 sci_cap = subject.science_cap if subject else 0.0
             except Exception:
                 sci_cap = 0.0
+            try:
+                part_tag = exp.part.tag
+            except (AttributeError, Exception):
+                part_tag = ""
             science_experiments.append(
                 ScienceExperiment(
                     index=idx,
                     name=exp.name,
                     title=exp.title,
                     part_title=exp.part.title,
+                    name_tag=part_tag,
                     available=exp.available,
                     has_data=exp.has_data,
                     inoperable=exp.inoperable,

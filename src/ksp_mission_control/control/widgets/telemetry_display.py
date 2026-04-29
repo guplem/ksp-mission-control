@@ -358,7 +358,8 @@ def _format_resources(state: State) -> str:
 def _science_card_content(exp: ScienceExperiment) -> str:
     """Format the Rich markup content for a science card."""
     icon = _science_status_icon(exp)
-    return f"{icon} [b]{exp.title}[/b]\n[dim]{exp.part_title}[/dim]\nSci: {exp.science_value:.1f}/{exp.science_cap:.1f}"
+    subtitle = exp.name_tag if exp.name_tag else exp.part_title
+    return f"{icon} [b]{exp.title}[/b]\n[dim]{subtitle}[/dim]\nData value: {exp.science_value:.1f}/{exp.science_cap:.1f}"
 
 
 def _science_status_icon(exp: ScienceExperiment) -> str:
@@ -397,15 +398,17 @@ def _science_card_classes(exp: ScienceExperiment) -> str:
 def _science_tooltip(exp: ScienceExperiment) -> str:
     """Build a tooltip string explaining the experiment's fields."""
     rerunnable = "Yes" if exp.rerunnable else "No"
+    tag_line = f"Name tag: {exp.name_tag}\n" if exp.name_tag else ""
     return (
         f"Index: {exp.index}\n"
         f"Title: {exp.title} (display name)\n"
         f"Name: {exp.name} (internal experiment ID)\n"
         f"Part: {exp.part_title} (containing part)\n"
+        f"{tag_line}"
         f"\n"
         f"Status: {_science_status_label(exp)}\n"
         f"Rerunnable: {rerunnable}\n"
-        f"Science: {exp.science_value:.1f}/{exp.science_cap:.1f} (earned/max)\n"
+        f"Data value: {exp.science_value:.1f}/{exp.science_cap:.1f} (stored/max)\n"
         f"\n"
         f"Click to send a science command"
     )

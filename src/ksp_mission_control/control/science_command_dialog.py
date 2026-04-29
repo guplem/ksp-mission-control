@@ -66,8 +66,9 @@ class ScienceCommandDialog(ModalScreen[VesselCommands | None]):
     def compose(self) -> ComposeResult:
         exp = self._experiment
         status = _status_label(exp)
+        subtitle = exp.name_tag if exp.name_tag else exp.part_title
         with Vertical(id="science-cmd-container"):
-            yield Static(f"[b]{exp.title}[/b]\n[dim]{exp.part_title}[/dim]\n{status}  |  Sci: {exp.science_value:.1f}/{exp.science_cap:.1f}")
+            yield Static(f"[b]{exp.title}[/b]\n[dim]{subtitle}[/dim]\n{status}  |  Data value: {exp.science_value:.1f}/{exp.science_cap:.1f}")
             yield Select[str](
                 _ACTION_OPTIONS,
                 prompt="Select action...",

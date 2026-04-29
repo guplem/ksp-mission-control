@@ -21,7 +21,7 @@ def get_available_actions() -> list[Action]:
     import ksp_mission_control.control.actions.land.action as land_module
     import ksp_mission_control.control.actions.launch.action as launch_module
     import ksp_mission_control.control.actions.parachutes.action as parachutes_module
-    import ksp_mission_control.control.actions.run_science.action as run_science_module
+    import ksp_mission_control.control.actions.science.action as science_module
     import ksp_mission_control.control.actions.stage.action as stage_module
     import ksp_mission_control.control.actions.throttle.action as throttle_module
     import ksp_mission_control.control.actions.translate.action as translate_module
@@ -34,7 +34,7 @@ def get_available_actions() -> list[Action]:
     importlib.reload(hover_module)
     importlib.reload(land_module)
     importlib.reload(launch_module)
-    importlib.reload(run_science_module)
+    importlib.reload(science_module)
     importlib.reload(stage_module)
     importlib.reload(throttle_module)
     importlib.reload(translate_module)
@@ -48,7 +48,7 @@ def get_available_actions() -> list[Action]:
         hover_module.HoverAction(),
         land_module.LandAction(),
         launch_module.LaunchAction(),
-        run_science_module.RunScienceAction(),
+        science_module.ExecuteScienceAction(),
         stage_module.StageAction(),
         throttle_module.ThrottleAction(),
         translate_module.TranslateAction(),
