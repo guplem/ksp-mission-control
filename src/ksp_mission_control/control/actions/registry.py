@@ -48,6 +48,6 @@ def get_available_actions() -> list[Action]:
         launch_module.LaunchAction(),
         run_science_module.RunScienceAction(),
         stage_module.StageAction(),
-        throttle_module.SetThrottleAction(),
+        throttle_module.ThrottleAction(),
         translate_module.TranslateAction(),
     ]
