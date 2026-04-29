@@ -1,4 +1,4 @@
-"""SetThrottleAction - set the throttle level for the vessel.
+"""ThrottleAction - set the throttle level for the vessel.
 
 Triggers the specified throttle level.
 """
@@ -19,10 +19,10 @@ from ksp_mission_control.control.actions.base import (
 )
 
 
-class SetThrottleAction(Action):
+class ThrottleAction(Action):
     """Set the throttle level for the vessel."""
 
-    action_id: ClassVar[str] = "set_throttle"
+    action_id: ClassVar[str] = "throttle"
     label: ClassVar[str] = "Set Throttle"
     description: ClassVar[str] = "Set the throttle level for the vessel"
     params: ClassVar[list[ActionParam]] = [

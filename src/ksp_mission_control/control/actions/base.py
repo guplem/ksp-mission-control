@@ -432,9 +432,9 @@ class State:
     mass_dry: float = 0.0
     """Vessel mass without fuel, in kilograms."""
     thrust: float = 0.0
-    """Thrust being produced right now. Accounts for throttle, atmosphere, and fuel. 0 when engines are off."""
+    """Thrust being produced right now, in Newtons. Accounts for throttle, atmosphere, and fuel. 0 when engines are off."""
     thrust_available: float = 0.0
-    """Full-throttle thrust from engines that still have fuel. Excludes flamed-out engines. Does NOT account for throttle."""
+    """Full-throttle thrust from engines that still have fuel, in Newtons. Excludes flamed-out engines. Does NOT account for throttle."""
     thrust_peak: float = 0.0
     """Full-throttle thrust from ALL active engines, including flamed-out ones. Does NOT account for throttle or fuel state."""
     engine_impulse_specific: float = 0.0
