@@ -11,6 +11,7 @@ import math
 from dataclasses import fields
 
 from ksp_mission_control.control.actions.base import (
+    PartInfo,
     ReferenceFrame,
     SASMode,
     ScienceAction,
@@ -86,6 +87,15 @@ def _parse_vessel_situation(raw: str) -> VesselSituation:
     """
     name = raw.split(".")[-1] if "." in raw else raw
     return VesselSituation(name)
+
+
+def _parse_part_state(raw: str) -> str:
+    """Extract the member name from a kRPC part state enum string.
+
+    kRPC ``str(chute.state)`` returns ``'ParachuteState.stowed'``.
+    Returns the lowercase member name (e.g. ``'stowed'``).
+    """
+    return raw.split(".")[-1] if "." in raw else raw
 
 
 def _apply_science_action(experiment: object, action: ScienceAction) -> None:
@@ -196,6 +206,31 @@ def read_vessel_state(conn: object) -> State:
     except Exception:
         science_experiments = []
 
+    # Parts: parachutes
+    parts_parachutes: list[PartInfo] = []
+    try:
+        for chute in vessel.parts.parachutes:
+            parts_parachutes.append(PartInfo(stage=chute.part.decouple_stage, state=_parse_part_state(str(chute.state))))
+    except Exception:
+        parts_parachutes = []
+
+    # Parts: landing legs
+    parts_legs: list[PartInfo] = []
+    try:
+        for leg in vessel.parts.legs:
+            parts_legs.append(PartInfo(stage=leg.part.stage, state=_parse_part_state(str(leg.state))))
+    except Exception:
+        parts_legs = []
+
+    # Parts: fairings
+    parts_fairings: list[PartInfo] = []
+    try:
+        for fairing in vessel.parts.fairings:
+            fairing_state = "jettisoned" if fairing.jettisoned else "intact"
+            parts_fairings.append(PartInfo(stage=fairing.part.decouple_stage, state=fairing_state))
+    except Exception:
+        parts_fairings = []
+
     return State(
         altitude_sea=flight.mean_altitude,
         altitude_surface=flight.surface_altitude,
@@ -294,6 +329,9 @@ def read_vessel_state(conn: object) -> State:
         resource_oxidizer_max=vessel.resources.max("Oxidizer"),
         resource_mono_propellant_max=vessel.resources.max("MonoPropellant"),
         science_experiments=tuple(science_experiments),
+        parts_parachutes=tuple(parts_parachutes),
+        parts_legs=tuple(parts_legs),
+        parts_fairings=tuple(parts_fairings),
     )
 
 

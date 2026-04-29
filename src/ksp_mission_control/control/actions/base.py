@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, ClassVar
@@ -338,6 +339,21 @@ class ScienceCommand:
 
 
 @dataclass(frozen=True)
+class PartInfo:
+    """Immutable snapshot of a single part's stage and state.
+
+    Used for per-part tracking of parachutes, legs, fairings, etc.
+    The ``state`` string matches kRPC enum member names
+    (e.g. ``'stowed'``, ``'deployed'``, ``'jettisoned'``).
+    """
+
+    stage: int
+    """Stage number in the staging sequence."""
+    state: str
+    """Part state as a lowercase string matching kRPC enum values."""
+
+
+@dataclass(frozen=True)
 class State:
     """Immutable snapshot of vessel telemetry.
 
@@ -561,6 +577,14 @@ class State:
     science_experiments: tuple[ScienceExperiment, ...] = ()
     """All science experiments on the vessel, indexed for command targeting."""
 
+    # --- Parts ---
+    parts_parachutes: tuple[PartInfo, ...] = ()
+    """Per-part parachute snapshots (state: stowed/armed/semi_deployed/deployed/cut)."""
+    parts_legs: tuple[PartInfo, ...] = ()
+    """Per-part landing leg snapshots (state: deployed/deploying/retracted/retracting/broken)."""
+    parts_fairings: tuple[PartInfo, ...] = ()
+    """Per-part fairing snapshots (state: intact/jettisoned)."""
+
     # --- Derived properties (computed from raw telemetry) ---
 
     @property
@@ -701,6 +725,64 @@ class State:
     def is_descending(self) -> bool:
         """Whether the vessel is moving downward (negative vertical speed)."""
         return self.speed_vertical < 0.0
+
+    # --- Part aggregate methods ---
+    # All accept an optional ``stages`` filter. When empty (default), all
+    # parts are counted. When provided, only parts in the listed stages.
+
+    def _filter_parts(self, parts: tuple[PartInfo, ...], stages: Sequence[int] = ()) -> tuple[PartInfo, ...]:
+        if not stages:
+            return parts
+        stage_set = frozenset(stages)
+        return tuple(p for p in parts if p.stage in stage_set)
+
+    def parts_parachutes_count(self, stages: Sequence[int] = ()) -> int:
+        """Total number of parachute parts on the vessel."""
+        return len(self._filter_parts(self.parts_parachutes, stages))
+
+    def parts_parachutes_stowed(self, stages: Sequence[int] = ()) -> int:
+        """Number of parachutes in stowed state."""
+        return sum(1 for p in self._filter_parts(self.parts_parachutes, stages) if p.state == "stowed")
+
+    def parts_parachutes_armed(self, stages: Sequence[int] = ()) -> int:
+        """Number of parachutes in armed state."""
+        return sum(1 for p in self._filter_parts(self.parts_parachutes, stages) if p.state == "armed")
+
+    def parts_parachutes_semi_deployed(self, stages: Sequence[int] = ()) -> int:
+        """Number of parachutes in semi-deployed (drogue) state."""
+        return sum(1 for p in self._filter_parts(self.parts_parachutes, stages) if p.state == "semi_deployed")
+
+    def parts_parachutes_fully_deployed(self, stages: Sequence[int] = ()) -> int:
+        """Number of parachutes fully deployed."""
+        return sum(1 for p in self._filter_parts(self.parts_parachutes, stages) if p.state == "deployed")
+
+    def parts_parachutes_deployed(self, stages: Sequence[int] = ()) -> int:
+        """Number of parachutes actively deployed (semi or fully)."""
+        return sum(1 for p in self._filter_parts(self.parts_parachutes, stages) if p.state in ("semi_deployed", "deployed"))
+
+    def parts_parachutes_cut(self, stages: Sequence[int] = ()) -> int:
+        """Number of parachutes that have been cut."""
+        return sum(1 for p in self._filter_parts(self.parts_parachutes, stages) if p.state == "cut")
+
+    def parts_legs_count(self, stages: Sequence[int] = ()) -> int:
+        """Total number of landing leg parts on the vessel."""
+        return len(self._filter_parts(self.parts_legs, stages))
+
+    def parts_legs_deployed(self, stages: Sequence[int] = ()) -> int:
+        """Number of landing legs deployed or deploying."""
+        return sum(1 for p in self._filter_parts(self.parts_legs, stages) if p.state in ("deployed", "deploying"))
+
+    def parts_legs_retracted(self, stages: Sequence[int] = ()) -> int:
+        """Number of landing legs retracted or retracting."""
+        return sum(1 for p in self._filter_parts(self.parts_legs, stages) if p.state in ("retracted", "retracting"))
+
+    def parts_fairings_count(self, stages: Sequence[int] = ()) -> int:
+        """Total number of fairing parts on the vessel."""
+        return len(self._filter_parts(self.parts_fairings, stages))
+
+    def parts_fairings_jettisoned(self, stages: Sequence[int] = ()) -> int:
+        """Number of fairings that have been jettisoned."""
+        return sum(1 for p in self._filter_parts(self.parts_fairings, stages) if p.state == "jettisoned")
 
 
 @dataclass

@@ -13,6 +13,7 @@ from ksp_mission_control.control.actions.base import (
     AutopilotConfig,
     AutopilotDirection,
     ParamType,
+    PartInfo,
     ReferenceFrame,
     SpeedMode,
     State,
@@ -316,6 +317,206 @@ class TestVesselStateDerived:
     def test_resource_fraction_defaults_to_zero(self) -> None:
         state = State()
         assert state.resource_liquid_fuel_fraction == 0.0
+
+
+class TestPartInfo:
+    """Tests for the PartInfo frozen dataclass."""
+
+    def test_construction(self) -> None:
+        part = PartInfo(stage=2, state="stowed")
+        assert part.stage == 2
+        assert part.state == "stowed"
+
+    def test_is_frozen(self) -> None:
+        part = PartInfo(stage=2, state="stowed")
+        with pytest.raises(AttributeError):
+            part.state = "deployed"  # type: ignore[misc]
+
+    def test_equality(self) -> None:
+        a = PartInfo(stage=2, state="stowed")
+        b = PartInfo(stage=2, state="stowed")
+        c = PartInfo(stage=3, state="stowed")
+        assert a == b
+        assert a != c
+
+
+class TestVesselStatePartMethods:
+    """Tests for part aggregate methods on State."""
+
+    def test_parts_parachutes_defaults_empty(self) -> None:
+        state = State()
+        assert state.parts_parachutes == ()
+        assert state.parts_parachutes_count() == 0
+        assert state.parts_parachutes_stowed() == 0
+        assert state.parts_parachutes_deployed() == 0
+
+    def test_parts_parachutes_count(self) -> None:
+        state = State(parts_parachutes=(PartInfo(0, "stowed"), PartInfo(0, "deployed")))
+        assert state.parts_parachutes_count() == 2
+
+    def test_parts_parachutes_stowed(self) -> None:
+        state = State(
+            parts_parachutes=(
+                PartInfo(0, "stowed"),
+                PartInfo(0, "armed"),
+                PartInfo(0, "stowed"),
+            )
+        )
+        assert state.parts_parachutes_stowed() == 2
+
+    def test_parts_parachutes_armed(self) -> None:
+        state = State(
+            parts_parachutes=(
+                PartInfo(0, "armed"),
+                PartInfo(0, "stowed"),
+                PartInfo(0, "armed"),
+            )
+        )
+        assert state.parts_parachutes_armed() == 2
+
+    def test_parts_parachutes_semi_deployed(self) -> None:
+        state = State(
+            parts_parachutes=(
+                PartInfo(0, "semi_deployed"),
+                PartInfo(0, "deployed"),
+            )
+        )
+        assert state.parts_parachutes_semi_deployed() == 1
+
+    def test_parts_parachutes_fully_deployed(self) -> None:
+        state = State(
+            parts_parachutes=(
+                PartInfo(0, "semi_deployed"),
+                PartInfo(0, "deployed"),
+                PartInfo(0, "deployed"),
+            )
+        )
+        assert state.parts_parachutes_fully_deployed() == 2
+
+    def test_parts_parachutes_deployed_includes_both(self) -> None:
+        state = State(
+            parts_parachutes=(
+                PartInfo(0, "semi_deployed"),
+                PartInfo(0, "deployed"),
+                PartInfo(0, "stowed"),
+            )
+        )
+        assert state.parts_parachutes_deployed() == 2
+
+    def test_parts_parachutes_cut(self) -> None:
+        state = State(
+            parts_parachutes=(
+                PartInfo(0, "cut"),
+                PartInfo(0, "deployed"),
+            )
+        )
+        assert state.parts_parachutes_cut() == 1
+
+    def test_parts_legs_defaults_empty(self) -> None:
+        state = State()
+        assert state.parts_legs == ()
+        assert state.parts_legs_count() == 0
+
+    def test_parts_legs_count(self) -> None:
+        state = State(parts_legs=(PartInfo(1, "deployed"), PartInfo(1, "retracted")))
+        assert state.parts_legs_count() == 2
+
+    def test_parts_legs_deployed(self) -> None:
+        state = State(
+            parts_legs=(
+                PartInfo(1, "deployed"),
+                PartInfo(1, "deploying"),
+                PartInfo(1, "retracted"),
+            )
+        )
+        assert state.parts_legs_deployed() == 2
+
+    def test_parts_legs_retracted(self) -> None:
+        state = State(
+            parts_legs=(
+                PartInfo(1, "retracted"),
+                PartInfo(1, "retracting"),
+                PartInfo(1, "deployed"),
+            )
+        )
+        assert state.parts_legs_retracted() == 2
+
+    def test_parts_fairings_defaults_empty(self) -> None:
+        state = State()
+        assert state.parts_fairings == ()
+        assert state.parts_fairings_count() == 0
+
+    def test_parts_fairings_count(self) -> None:
+        state = State(parts_fairings=(PartInfo(5, "intact"), PartInfo(5, "jettisoned")))
+        assert state.parts_fairings_count() == 2
+
+    def test_parts_fairings_jettisoned(self) -> None:
+        state = State(
+            parts_fairings=(
+                PartInfo(5, "jettisoned"),
+                PartInfo(5, "intact"),
+                PartInfo(5, "jettisoned"),
+            )
+        )
+        assert state.parts_fairings_jettisoned() == 2
+
+    # --- Stage filtering ---
+
+    def test_parachutes_count_filtered_by_stage(self) -> None:
+        state = State(
+            parts_parachutes=(
+                PartInfo(2, "stowed"),
+                PartInfo(3, "stowed"),
+                PartInfo(2, "armed"),
+            )
+        )
+        assert state.parts_parachutes_count([2]) == 2
+        assert state.parts_parachutes_count([3]) == 1
+        assert state.parts_parachutes_count([2, 3]) == 3
+
+    def test_parachutes_stowed_filtered_by_stage(self) -> None:
+        state = State(
+            parts_parachutes=(
+                PartInfo(2, "stowed"),
+                PartInfo(3, "stowed"),
+                PartInfo(2, "deployed"),
+            )
+        )
+        assert state.parts_parachutes_stowed([2]) == 1
+        assert state.parts_parachutes_stowed([3]) == 1
+        assert state.parts_parachutes_stowed([2, 3]) == 2
+
+    def test_legs_deployed_filtered_by_stage(self) -> None:
+        state = State(
+            parts_legs=(
+                PartInfo(1, "deployed"),
+                PartInfo(2, "deployed"),
+                PartInfo(1, "retracted"),
+            )
+        )
+        assert state.parts_legs_deployed([1]) == 1
+        assert state.parts_legs_deployed([2]) == 1
+
+    def test_fairings_jettisoned_filtered_by_stage(self) -> None:
+        state = State(
+            parts_fairings=(
+                PartInfo(4, "jettisoned"),
+                PartInfo(5, "intact"),
+                PartInfo(4, "jettisoned"),
+            )
+        )
+        assert state.parts_fairings_jettisoned([4]) == 2
+        assert state.parts_fairings_jettisoned([5]) == 0
+
+    def test_empty_stages_returns_all(self) -> None:
+        state = State(
+            parts_parachutes=(
+                PartInfo(2, "stowed"),
+                PartInfo(3, "stowed"),
+            )
+        )
+        assert state.parts_parachutes_count() == 2
+        assert state.parts_parachutes_count([]) == 2
 
 
 class TestVesselCommands:
