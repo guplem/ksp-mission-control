@@ -75,15 +75,43 @@ class WaitForAction(Action):
             param_type=ParamType.FLOAT,
             default=None,
         ),
+        ActionParam(
+            param_id="apoapsis_above",
+            label="Apoapsis Above",
+            description="Wait until the orbit apoapsis is above this altitude (meters) before proceeding.",
+            required=False,
+            param_type=ParamType.FLOAT,
+            default=None,
+        ),
+        ActionParam(
+            param_id="above_dynamic_pressure",
+            label="Above Dynamic Pressure",
+            description="Wait until dynamic pressure is above this threshold (Pascals) before proceeding.",
+            required=False,
+            param_type=ParamType.FLOAT,
+            default=None,
+        ),
+        ActionParam(
+            param_id="time",
+            label="Time",
+            description="Wait for a specified amount of time (seconds) before proceeding.",
+            required=False,
+            param_type=ParamType.FLOAT,
+            default=None,
+        ),
     ]
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
-        self._apoapsis: bool = bool(param_values["apoapsis"])
-        self._periapsis: bool = bool(param_values["periapsis"])
-        self._above_altitude: float | None = param_values["above_altitude"]
-        self._below_altitude: float | None = param_values["below_altitude"]
-        self._above_available_thrust: float | None = param_values["above_available_thrust"]
-        self._below_available_thrust: float | None = param_values["below_available_thrust"]
+        self._apoapsis: bool = bool(param_values.get("apoapsis", False))
+        self._periapsis: bool = bool(param_values.get("periapsis", False))
+        self._above_altitude: float | None = param_values.get("above_altitude")
+        self._below_altitude: float | None = param_values.get("below_altitude")
+        self._above_available_thrust: float | None = param_values.get("above_available_thrust")
+        self._below_available_thrust: float | None = param_values.get("below_available_thrust")
+        self._apoapsis_above: float | None = param_values.get("apoapsis_above")
+        self._above_dynamic_pressure: float | None = param_values.get("above_dynamic_pressure")
+        self._time: float | None = param_values.get("time")
+        self._start_action_time: float = state.universal_time
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
 
@@ -115,6 +143,24 @@ class WaitForAction(Action):
             return ActionResult(
                 status=ActionStatus.RUNNING,
                 message=(f"Waiting for available thrust < {self._below_available_thrust:.1f}kN (current: {state.thrust_available:.1f}kN)"),
+            )
+
+        if self._apoapsis_above is not None and state.orbit_apoapsis < self._apoapsis_above:
+            return ActionResult(
+                status=ActionStatus.RUNNING,
+                message=(f"Waiting for apoapsis > {self._apoapsis_above:.0f}m (current: {state.orbit_apoapsis:.0f}m)"),
+            )
+
+        if self._above_dynamic_pressure is not None and state.pressure_dynamic < self._above_dynamic_pressure:
+            return ActionResult(
+                status=ActionStatus.RUNNING,
+                message=(f"Waiting for dynamic pressure > {self._above_dynamic_pressure:.1f}Pa (current: {state.pressure_dynamic:.1f}Pa)"),
+            )
+
+        if self._time is not None and (state.universal_time - self._start_action_time) < self._time:
+            return ActionResult(
+                status=ActionStatus.RUNNING,
+                message=(f"Waiting for time > {self._time:.1f}s (elapsed: {state.universal_time - self._start_action_time:.1f}s)"),
             )
 
         return ActionResult(status=ActionStatus.SUCCEEDED, message="All conditions met. Wait finished.")
