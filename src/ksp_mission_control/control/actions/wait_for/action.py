@@ -102,15 +102,22 @@ class WaitForAction(Action):
     ]
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
-        self._apoapsis: bool = bool(param_values.get("apoapsis", False))
-        self._periapsis: bool = bool(param_values.get("periapsis", False))
-        self._above_altitude: float | None = param_values.get("above_altitude")
-        self._below_altitude: float | None = param_values.get("below_altitude")
-        self._above_available_thrust: float | None = param_values.get("above_available_thrust")
-        self._below_available_thrust: float | None = param_values.get("below_available_thrust")
-        self._apoapsis_above: float | None = param_values.get("apoapsis_above")
-        self._above_dynamic_pressure: float | None = param_values.get("above_dynamic_pressure")
-        self._time: float | None = param_values.get("time")
+        self._apoapsis: bool = bool(param_values["apoapsis"])
+        self._periapsis: bool = bool(param_values["periapsis"])
+        raw_above_altitude = param_values["above_altitude"]
+        self._above_altitude: float | None = float(raw_above_altitude) if raw_above_altitude is not None else None
+        raw_below_altitude = param_values["below_altitude"]
+        self._below_altitude: float | None = float(raw_below_altitude) if raw_below_altitude is not None else None
+        raw_above_thrust = param_values["above_available_thrust"]
+        self._above_available_thrust: float | None = float(raw_above_thrust) if raw_above_thrust is not None else None
+        raw_below_thrust = param_values["below_available_thrust"]
+        self._below_available_thrust: float | None = float(raw_below_thrust) if raw_below_thrust is not None else None
+        raw_apoapsis_above = param_values["apoapsis_above"]
+        self._apoapsis_above: float | None = float(raw_apoapsis_above) if raw_apoapsis_above is not None else None
+        raw_above_dynamic_pressure = param_values["above_dynamic_pressure"]
+        self._above_dynamic_pressure: float | None = float(raw_above_dynamic_pressure) if raw_above_dynamic_pressure is not None else None
+        raw_time = param_values["time"]
+        self._time: float | None = float(raw_time) if raw_time is not None else None
         self._start_action_time: float = state.universal_time
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:

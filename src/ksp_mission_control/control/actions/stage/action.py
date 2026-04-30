@@ -37,7 +37,7 @@ class StageAction(Action):
     ]
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
-        self._wait_for_no_thrust: bool = bool(param_values.get("wait_for_no_thrust", False))
+        self._wait_for_no_thrust: bool = bool(param_values["wait_for_no_thrust"])
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         if state.stage_current <= 0:

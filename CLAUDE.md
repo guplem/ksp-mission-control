@@ -252,6 +252,7 @@ Format: `adr/NNNN-short-title.md` with Context, Decision, Consequences sections.
 | [0006](adr/0006-action-execution-system.md) | Tick-based action execution system | Adding actions, changing runner, or modifying the control loop |
 | [0007](adr/0007-screen-session-pattern.md) | Screen + session/runner separation of concerns | Adding new screens or refactoring screen logic |
 | [0008](adr/0008-vessel-state-naming-convention.md) | State/VesselCommands field naming convention | Adding or renaming fields on State or VesselCommands |
+| [0009](adr/0009-action-lifecycle-contract.md) | Action lifecycle contract (start/tick/stop) | Adding new actions or modifying existing action lifecycle methods |
 
 When to create a new ADR: any decision involving trade-offs between alternatives, especially around dependencies, architecture boundaries, or data flow.
 

@@ -121,7 +121,7 @@ class ControllabilityTestAction(Action):
         roll_offset = float(param_values["roll_offset"])
         pitch_offset = float(param_values["pitch_offset"])
         heading_offset = float(param_values["heading_offset"])
-        self.hold_duration = float(param_values["hold_duration"])
+        self._hold_duration = float(param_values["hold_duration"])
         self._tolerance: float = float(param_values["tolerance"])
 
         # Capture initial orientation as baseline.
@@ -253,7 +253,7 @@ class ControllabilityTestAction(Action):
                 log.info(
                     f"[{self._step_index + 1}/{len(self._steps)}] "
                     f"Reached target for '{step.label}' ({err_summary}) "
-                    f"-- starting {self.hold_duration:.1f}s hold"
+                    f"-- starting {self._hold_duration:.1f}s hold"
                 )
         else:
             # Holding at target -- accumulating time within tolerance.
@@ -261,7 +261,7 @@ class ControllabilityTestAction(Action):
                 self._hold_time += dt
                 log.debug(
                     f"[{self._step_index + 1}/{len(self._steps)}] HOLD: {step.label} | "
-                    f"hold {self._hold_time:.1f}/{self.hold_duration:.1f}s | "
+                    f"hold {self._hold_time:.1f}/{self._hold_duration:.1f}s | "
                     f"{err_summary} | {euler_summary}"
                 )
             else:
@@ -272,10 +272,10 @@ class ControllabilityTestAction(Action):
                 )
                 self._hold_time = 0.0
 
-            if self._hold_time >= self.hold_duration:
+            if self._hold_time >= self._hold_duration:
                 log.info(
                     f"[{self._step_index + 1}/{len(self._steps)}] "
-                    f"PASSED: '{step.label}' held for {self.hold_duration:.1f}s "
+                    f"PASSED: '{step.label}' held for {self._hold_duration:.1f}s "
                     f"within {self._tolerance:.1f} deg"
                 )
                 self._step_index += 1

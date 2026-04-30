@@ -19,7 +19,7 @@ class TestThrottleLevel:
     def test_sets_throttle_to_specified_level(self) -> None:
         action = ThrottleAction()
         state = State(thrust_available=100.0)
-        action.start(state, {"throttle_level": 0.5})
+        action.start(state, {"throttle_level": 0.5, "twr": None})
         commands = VesselCommands()
         result = action.tick(state, commands, 0.5, ActionLogger())
         assert result.status == ActionStatus.SUCCEEDED
@@ -28,7 +28,7 @@ class TestThrottleLevel:
     def test_fails_when_no_thrust_available(self) -> None:
         action = ThrottleAction()
         state = State(thrust_available=0.0)
-        action.start(state, {"throttle_level": 1.0})
+        action.start(state, {"throttle_level": 1.0, "twr": None})
         commands = VesselCommands()
         result = action.tick(state, commands, 0.5, ActionLogger())
         assert result.status == ActionStatus.FAILED
@@ -45,7 +45,7 @@ class TestTwr:
             body_gravity=9.81,
             thrust_available=2.0 * 1000.0 * 9.81,  # max_twr = 2.0
         )
-        action.start(state, {"twr": 1.0})
+        action.start(state, {"throttle_level": None, "twr": 1.0})
         commands = VesselCommands()
         result = action.tick(state, commands, 0.5, ActionLogger())
         assert result.status == ActionStatus.SUCCEEDED
@@ -60,7 +60,7 @@ class TestTwr:
             body_gravity=9.81,
             thrust_available=1.0 * 1000.0 * 9.81,  # max_twr = 1.0
         )
-        action.start(state, {"twr": 2.0})
+        action.start(state, {"throttle_level": None, "twr": 2.0})
         commands = VesselCommands()
         result = action.tick(state, commands, 0.5, ActionLogger())
         assert result.status == ActionStatus.SUCCEEDED
@@ -74,7 +74,7 @@ class TestTwr:
             body_gravity=9.81,
             thrust_available=2.0 * 1000.0 * 9.81,
         )
-        action.start(state, {"twr": 0.0})
+        action.start(state, {"throttle_level": None, "twr": 0.0})
         commands = VesselCommands()
         result = action.tick(state, commands, 0.5, ActionLogger())
         assert result.status == ActionStatus.SUCCEEDED
@@ -83,7 +83,7 @@ class TestTwr:
     def test_fails_when_no_thrust_available(self) -> None:
         action = ThrottleAction()
         state = State(thrust_available=0.0, mass=1000.0, body_gravity=9.81)
-        action.start(state, {"twr": 1.0})
+        action.start(state, {"throttle_level": None, "twr": 1.0})
         commands = VesselCommands()
         result = action.tick(state, commands, 0.5, ActionLogger())
         assert result.status == ActionStatus.FAILED
@@ -92,10 +92,16 @@ class TestTwr:
         """If vessel has no weight (e.g. zero mass), can't compute TWR."""
         action = ThrottleAction()
         state = State(thrust_available=100.0, mass=0.0, body_gravity=9.81)
-        action.start(state, {"twr": 1.0})
+        action.start(state, {"throttle_level": None, "twr": 1.0})
         commands = VesselCommands()
         result = action.tick(state, commands, 0.5, ActionLogger())
         assert result.status == ActionStatus.FAILED
+
+    def test_raises_when_negative_twr(self) -> None:
+        action = ThrottleAction()
+        state = State(thrust_available=100.0)
+        with pytest.raises(ValueError, match="non-negative"):
+            action.start(state, {"throttle_level": None, "twr": -1.0})
 
 
 class TestMutualExclusion:
@@ -111,4 +117,4 @@ class TestMutualExclusion:
         action = ThrottleAction()
         state = State(thrust_available=100.0)
         with pytest.raises(ValueError, match="Either"):
-            action.start(state, {})
+            action.start(state, {"throttle_level": None, "twr": None})

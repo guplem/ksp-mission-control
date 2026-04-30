@@ -65,20 +65,26 @@ class ExecuteScienceAction(Action):
     ]
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
-        self._science_index: int | None = param_values["science_index"]
-        self._science_count: int | None = param_values["science_count"]
+        raw_index = param_values["science_index"]
+        self._science_index: int | None = int(raw_index) if raw_index is not None else None
+        raw_count = param_values["science_count"]
+        self._science_count: int | None = int(raw_count) if raw_count is not None else None
         raw_action: str | None = param_values["action"]
-        self._action: ScienceAction | None = ScienceAction(raw_action) if raw_action is not None else None
+        if raw_action is not None:
+            try:
+                self._action: ScienceAction | None = ScienceAction(raw_action)
+            except ValueError:
+                valid = ", ".join(a.value for a in ScienceAction)
+                raise ValueError(f"Unknown science action '{raw_action}'. Valid: {valid}") from None
+        else:
+            self._action = None
         self._name_tag: str | None = param_values["name-tag"]
+
+        if self._science_count is not None and self._science_count > 1 and self._science_index is not None:
+            raise ValueError("Cannot specify both science_index and science_count > 1")
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         action = self._action if self._action is not None else ScienceAction.RUN
-
-        if self._science_count is not None and self._science_count > 1 and self._science_index is not None:
-            return ActionResult(
-                status=ActionStatus.FAILED,
-                message="Cannot specify both science_index and science_count parameters if science_count > 1",
-            )
 
         # Filter by name tag: find experiments whose part has the matching tag
         if self._name_tag is not None:

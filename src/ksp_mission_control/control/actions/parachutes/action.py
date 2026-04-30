@@ -66,9 +66,10 @@ class ParachutesAction(Action):
     ]
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
-        self.min_altitude: float | None = param_values["min_altitude"]
-        self.stage_for_parachutes: bool = param_values["stage_for_parachutes"]
-        self.wait_for_safe: bool = param_values["wait_for_safe"]
+        raw_min_altitude = param_values["min_altitude"]
+        self._min_altitude: float | None = float(raw_min_altitude) if raw_min_altitude is not None else None
+        self._stage_for_parachutes: bool = bool(param_values["stage_for_parachutes"])
+        self._wait_for_safe: bool = bool(param_values["wait_for_safe"])
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         # Check if parachutes are present
@@ -76,22 +77,22 @@ class ParachutesAction(Action):
             return ActionResult(status=ActionStatus.FAILED, message="No parachutes found on the vessel")
 
         # Wait for altitude gate
-        if self.min_altitude is not None and state.altitude_surface > self.min_altitude:
+        if self._min_altitude is not None and state.altitude_surface > self._min_altitude:
             return ActionResult(
                 status=ActionStatus.RUNNING,
-                message=(f"Waiting for altitude <= {self.min_altitude:.0f}m (current: {state.altitude_surface:.1f}m)"),
+                message=(f"Waiting for altitude <= {self._min_altitude:.0f}m (current: {state.altitude_surface:.1f}m)"),
             )
 
         # Stage if needed
         if state.parts.parachutes_count([state.stage_current]) == 0:
-            if self.stage_for_parachutes:
+            if self._stage_for_parachutes:
                 commands.stage = True
                 return ActionResult(status=ActionStatus.RUNNING, message="Staging for parachutes")
             else:
                 return ActionResult(status=ActionStatus.FAILED, message="Parachutes are not in the current stage")
 
         # Wait for safe deployment conditions
-        if self.wait_for_safe:
+        if self._wait_for_safe:
             current_stage_chutes = filter_parts(state.parts.parachutes, [state.stage_current])
             all_safe = all(p.safe_to_deploy for p in current_stage_chutes)
             if not all_safe:
