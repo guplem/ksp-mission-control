@@ -38,7 +38,11 @@ class SasAction(Action):
     ]
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
-        self._sas_mode: SASMode = SASMode(param_values["mode"])
+        try:
+            self._sas_mode: SASMode = SASMode(param_values["mode"])
+        except ValueError:
+            valid = ", ".join(m.value for m in SASMode)
+            raise ValueError(f"Unknown SAS mode '{param_values['mode']}'. Valid modes: {valid}") from None
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         commands.sas = True

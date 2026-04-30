@@ -47,12 +47,14 @@ class ThrottleAction(Action):
     ]
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
-        self._throttle_level: float = float(param_values["throttle_level"])
-        self._twr: float = float(param_values["twr"])
+        raw_throttle = param_values.get("throttle_level")
+        raw_twr = param_values.get("twr")
+        self._throttle_level: float | None = float(raw_throttle) if raw_throttle is not None else None
+        self._twr: float | None = float(raw_twr) if raw_twr is not None else None
 
-        if self._throttle_level and self._twr:
+        if self._throttle_level is not None and self._twr is not None:
             raise ValueError("throttle_level and twr are mutually exclusive; set only one")
-        if not self._throttle_level and not self._twr:
+        if self._throttle_level is None and self._twr is None:
             raise ValueError("Either throttle_level or twr must be set")
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
@@ -67,8 +69,8 @@ class ThrottleAction(Action):
             return ActionResult(status=ActionStatus.SUCCEEDED, message=f"Throttle level set to {self._throttle_level}")
 
         # TWR mode: throttle = (target_twr * weight) / thrust_available
-        if self._twr <= 0:
-            return ActionResult(status=ActionStatus.FAILED, message="Invalid TWR: must be greater than 0")
+        if self._twr < 0:
+            return ActionResult(status=ActionStatus.FAILED, message="Invalid TWR: must be non-negative")
 
         if state.weight <= 0.0:
             return ActionResult(status=ActionStatus.FAILED, message="Cannot compute TWR: vessel has no weight")

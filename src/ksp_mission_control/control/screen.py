@@ -19,6 +19,7 @@ from ksp_mission_control.control.action_picker import ActionPicker
 from ksp_mission_control.control.actions.base import (
     Action,
     LogEntry,
+    LogLevel,
     State,
     VesselCommands,
     VesselSituation,
@@ -173,12 +174,22 @@ class ControlScreen(Screen[None]):
                 self._session.continue_plan()
             except ValueError as exc:
                 self.notify(str(exc), severity="error")
+                self._log_error(str(exc))
         else:
             self._session.abort_plan()
             self.query_one("#control-panel", ControlPanelWidget).update_running(None)
 
     def _show_error(self, message: str) -> None:
-        self.query_one("#telemetry-display", TelemetryDisplayWidget).show_error(message)
+        self._log_error(message)
+
+    def _log_error(self, message: str) -> None:
+        """Append an error entry to the log registry so it persists for debugging."""
+        last_met = self._tick_history[-1].met if self._tick_history else 0.0
+        self.query_one("#log-registry", LogRegistryWidget).append_logs(
+            [LogEntry(level=LogLevel.ERROR, message=message)],
+            met=last_met,
+            tick_id=self._tick_counter,
+        )
 
     def on_command_history_widget_tick_changed(self, event: CommandHistoryWidget.TickChanged) -> None:
         """Highlight logs matching the previewed command, or clear highlighting."""
@@ -227,6 +238,7 @@ class ControlScreen(Screen[None]):
             self._session.start_plan(plan)
         except ValueError as exc:
             self.notify(str(exc), severity="error")
+            self._log_error(str(exc))
 
     def _handle_manual_command(self, commands: VesselCommands | None) -> None:
         """Queue the manual command for the next poll tick."""
@@ -249,6 +261,7 @@ class ControlScreen(Screen[None]):
             self._session.start_action(action, params)
         except ValueError as exc:
             self.notify(str(exc), severity="error")
+            self._log_error(str(exc))
 
     def action_cancel(self) -> None:
         """Cancel the currently running action or flight plan."""

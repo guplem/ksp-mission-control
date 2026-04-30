@@ -89,10 +89,6 @@ class TelemetryDisplayWidget(Static):
         padding: 0 0 1 0;
     }
 
-    #telemetry-header.error #telemetry-title {
-        color: $error;
-    }
-
     #telemetry-title {
         width: 1fr;
     }
@@ -141,10 +137,6 @@ class TelemetryDisplayWidget(Static):
 
     def update_vessel_state(self, state: State) -> None:
         """Format and display the current vessel state across three columns."""
-        header = self.query_one("#telemetry-header", Horizontal)
-        if header.has_class("error"):
-            header.remove_class("error")
-            self.query_one("#telemetry-title", Static).update("[b]Telemetry[/b]")
         self.query_one("#telemetry-ut", Static).update(f"UT: {_format_time(state.universal_time)} ")
         self.query_one("#telemetry-flight", Static).update(_format_flight(state))
         self.query_one("#telemetry-orbit", Static).update(_format_orbit(state))
@@ -183,12 +175,6 @@ class TelemetryDisplayWidget(Static):
             if exp.index == event.experiment_index:
                 self.post_message(self.ScienceExperimentClicked(exp))
                 break
-
-    def show_error(self, message: str) -> None:
-        """Display an error message in the title bar, keeping stale telemetry visible."""
-        header = self.query_one("#telemetry-header", Horizontal)
-        self.query_one("#telemetry-title", Static).update(message)
-        header.add_class("error")
 
 
 def _format_altitude(meters: float) -> str:
