@@ -191,6 +191,14 @@ class ControlScreen(Screen[None]):
             tick_id=self._tick_counter,
         )
 
+    def on_log_registry_widget_log_line_clicked(self, event: LogRegistryWidget.LogLineClicked) -> None:
+        """Navigate command history to the tick of the clicked log line."""
+        log_registry = self.query_one("#log-registry", LogRegistryWidget)
+        log_registry.set_following(False)
+        log_registry.highlight_tick(event.tick_id)
+        command_history = self.query_one("#command-history", CommandHistoryWidget)
+        command_history.jump_to_tick(event.tick_id)
+
     def on_command_history_widget_tick_changed(self, event: CommandHistoryWidget.TickChanged) -> None:
         """Highlight logs matching the previewed command, or clear highlighting."""
         console = self.query_one("#log-registry", LogRegistryWidget)

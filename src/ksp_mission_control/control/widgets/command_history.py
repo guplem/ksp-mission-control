@@ -158,6 +158,25 @@ class CommandHistoryWidget(VerticalScroll, can_focus=True):
         elif event.button.id == "cmd-last":
             self._jump(len(self._history) - 1)
 
+    def jump_to_tick(self, tick_id: int) -> None:
+        """Jump to the command record matching the given tick ID.
+
+        Always breaks out of following mode since this is triggered by
+        explicit user interaction (e.g. clicking a log entry).  If the
+        exact tick has no command record, following is still stopped so
+        the next poll tick does not undo the user's selection.
+        """
+        self._following = False
+        for index, record in enumerate(self._history):
+            if record.tick_id == tick_id:
+                self._index = index
+                self._render_current()
+                self.post_message(self.TickChanged(tick_id, following=False))
+                return
+        # No command record for this tick; update nav buttons to reflect
+        # that following stopped (the "last" button becomes enabled).
+        self._render_current()
+
     def _navigate(self, delta: int) -> None:
         new_index = self._index + delta
         if 0 <= new_index < len(self._history):
