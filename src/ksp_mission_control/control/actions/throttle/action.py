@@ -56,6 +56,9 @@ class ThrottleAction(Action):
             raise ValueError("Either throttle_level or twr must be set")
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
+        if self._twr is None and self._throttle_level is None:
+            return ActionResult(status=ActionStatus.FAILED, message="Invalid throttle action: neither throttle_level nor twr is set")
+
         if state.thrust_available <= 0:
             return ActionResult(status=ActionStatus.FAILED, message="Cannot set throttle: no thrust available")
 
@@ -64,12 +67,13 @@ class ThrottleAction(Action):
             return ActionResult(status=ActionStatus.SUCCEEDED, message=f"Throttle level set to {self._throttle_level}")
 
         # TWR mode: throttle = (target_twr * weight) / thrust_available
-        assert self._twr is not None
-        weight = state.weight
-        if weight <= 0.0:
+        if self._twr <= 0:
+            return ActionResult(status=ActionStatus.FAILED, message="Invalid TWR: must be greater than 0")
+
+        if state.weight <= 0.0:
             return ActionResult(status=ActionStatus.FAILED, message="Cannot compute TWR: vessel has no weight")
 
-        throttle = max(0.0, min(1.0, (self._twr * weight) / state.thrust_available))
+        throttle = max(0.0, min(1.0, (self._twr * state.weight) / state.thrust_available))
         commands.throttle = throttle
         return ActionResult(status=ActionStatus.SUCCEEDED, message=f"Throttle set to {throttle:.3f} for TWR {self._twr}")
 
