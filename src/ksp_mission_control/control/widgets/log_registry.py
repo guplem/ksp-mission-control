@@ -15,17 +15,17 @@ from ksp_mission_control.control.formatting import format_met, resolve_theme_col
 
 _LEVEL_COLOR: dict[LogLevel, str] = {
     # Action lifecycle
-    LogLevel.ACTION_START: "accent",
+    LogLevel.ACTION_START: "primary",
     LogLevel.ACTION_RUNNING: "foreground-darken-2",
     LogLevel.ACTION_SUCCEEDED: "success",
     LogLevel.ACTION_FAILED: "error",
-    LogLevel.ACTION_END: "accent",
+    LogLevel.ACTION_END: "foreground-darken-2",
     # Plan lifecycle
-    LogLevel.PLAN_START: "accent",
-    LogLevel.PLAN_END: "accent",
+    LogLevel.PLAN_START: "primary",
+    LogLevel.PLAN_END: "foreground-darken-2",
     # Action logs
     LogLevel.LOG_DEBUG: "foreground-darken-2",
-    LogLevel.LOG_INFO: "success",
+    LogLevel.LOG_INFO: "foreground",
     LogLevel.LOG_WARN: "warning",
     LogLevel.LOG_ERROR: "error",
     # System
@@ -33,6 +33,7 @@ _LEVEL_COLOR: dict[LogLevel, str] = {
     LogLevel.PYTHON_ERROR: "error",
     LogLevel.PYTHON_WARNING: "warning",
 }
+
 
 _FILTER_CATEGORIES: dict[str, set[LogLevel]] = {
     "Action": {
@@ -125,7 +126,9 @@ class LogRegistryWidget(Static):
 
     #log-registry-log ListItem {
         height: auto;
-        padding: 0;
+        padding: 0 0 0 1;
+        margin-bottom: 1;
+        border-left: solid $surface-lighten-2;
     }
 
     #log-registry-log ListItem Static {
@@ -238,9 +241,20 @@ class LogRegistryWidget(Static):
         lines: list[tuple[LogEntry, float]],
         colors: dict[LogLevel, str],
     ) -> str:
-        """Build Rich markup for a group of log entries belonging to one tick."""
-        formatted = [self._format_entry(entry, met, colors) for entry, met in lines]
-        return "\n".join(formatted)
+        """Build Rich markup for a group of log entries belonging to one tick.
+
+        Inserts an empty line between different actions within the same
+        tick (detected by action_id/plan_step change).
+        """
+        parts: list[str] = []
+        prev_action_key: tuple[str | None, int | None] | None = None
+        for entry, met in lines:
+            action_key = (entry.action_id, entry.plan_step)
+            if prev_action_key is not None and action_key != prev_action_key:
+                parts.append("")
+            prev_action_key = action_key
+            parts.append(self._format_entry(entry, met, colors))
+        return "\n".join(parts)
 
     def _rerender_log(self) -> None:
         """Clear and rewrite the entire log with current filter and highlight settings."""
