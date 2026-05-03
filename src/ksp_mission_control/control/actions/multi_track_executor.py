@@ -108,6 +108,7 @@ class MultiTrackExecutor:
 
     def __init__(self) -> None:
         self._tracks: list[tuple[str, PlanExecutor]] = []
+        self._root_plan_name: str | None = None
 
     def start_action(
         self,
@@ -134,9 +135,12 @@ class MultiTrackExecutor:
         and no parallel sub-plans are loaded.
         """
         self._tracks.clear()
-        root_executor = PlanExecutor()
-        root_executor.start_plan(plan, state, actions=actions)
-        self._tracks.append((plan.name, root_executor))
+        self._root_plan_name = plan.name
+
+        if plan.steps:
+            root_executor = PlanExecutor()
+            root_executor.start_plan(plan, state, actions=actions)
+            self._tracks.append((plan.name, root_executor))
 
         if actions is None and plans_dir is not None:
             self._load_parallel_plans(plan, state, plans_dir, depth=0)

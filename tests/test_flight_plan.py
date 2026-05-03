@@ -98,10 +98,22 @@ class TestParseFlightPlan:
         with pytest.raises(ValueError, match="Unknown parameter"):
             parse_flight_plan(plan_file)
 
-    def test_invalid_param_format_raises(self, tmp_path: Path) -> None:
+    def test_bare_boolean_flag(self, tmp_path: Path) -> None:
+        plan_file = tmp_path / "bare_flag.plan"
+        plan_file.write_text("hover  land_at_end\n")
+        plan = parse_flight_plan(plan_file)
+        assert plan.steps[0].param_values["land_at_end"] is True
+
+    def test_bare_non_boolean_param_raises(self, tmp_path: Path) -> None:
+        plan_file = tmp_path / "bad_bare.plan"
+        plan_file.write_text("hover  target_altitude\n")
+        with pytest.raises(ValueError, match="requires a value"):
+            parse_flight_plan(plan_file)
+
+    def test_unknown_bare_param_raises(self, tmp_path: Path) -> None:
         plan_file = tmp_path / "bad_format.plan"
         plan_file.write_text("hover  notakeyvalue\n")
-        with pytest.raises(ValueError, match="Expected key=value"):
+        with pytest.raises(ValueError, match="Unknown parameter"):
             parse_flight_plan(plan_file)
 
     def test_empty_plan_raises(self, tmp_path: Path) -> None:
@@ -158,8 +170,15 @@ class TestParseParallelDirective:
         with pytest.raises(ValueError, match="@parallel requires a file path"):
             parse_flight_plan(plan_file)
 
-    def test_plan_with_only_parallel_no_steps_raises(self, tmp_path: Path) -> None:
+    def test_plan_with_only_parallel_is_valid(self, tmp_path: Path) -> None:
         plan_file = tmp_path / "only_parallel.plan"
         plan_file.write_text("@parallel science/collect.plan\n")
+        plan = parse_flight_plan(plan_file)
+        assert plan.steps == ()
+        assert plan.parallel_plans == ("science/collect.plan",)
+
+    def test_plan_with_no_steps_and_no_parallel_raises(self, tmp_path: Path) -> None:
+        plan_file = tmp_path / "truly_empty.plan"
+        plan_file.write_text("# Just comments\n")
         with pytest.raises(ValueError, match="has no steps"):
             parse_flight_plan(plan_file)

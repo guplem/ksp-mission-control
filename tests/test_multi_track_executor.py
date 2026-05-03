@@ -518,6 +518,30 @@ class TestMultiTrackRecursiveLoading:
         snap = executor.snapshot()
         assert snap.tracks[1].track_name == "collect"
 
+    def test_meta_plan_with_only_parallel_no_steps(self, tmp_path: Path) -> None:
+        """A plan with only @parallel directives and no steps should work."""
+        sub_a = tmp_path / "a.plan"
+        sub_a.write_text("hover\n")
+        sub_b = tmp_path / "b.plan"
+        sub_b.write_text("hover\n")
+
+        main = tmp_path / "meta.plan"
+        main.write_text("@parallel a.plan\n@parallel b.plan\n")
+
+        from ksp_mission_control.control.actions.flight_plan import parse_flight_plan
+
+        plan = parse_flight_plan(main)
+
+        executor = MultiTrackExecutor()
+        executor.start_plan(plan, State(), plans_dir=tmp_path)
+
+        # Root has no steps, so only the two sub-plans become tracks
+        assert executor.track_count == 2
+        snap = executor.snapshot()
+        assert snap.tracks[0].track_name == "a"
+        assert snap.tracks[1].track_name == "b"
+        assert snap.is_multi_track is True
+
     def test_all_tracks_tick_together(self, tmp_path: Path) -> None:
         sub_plan = tmp_path / "sub.plan"
         sub_plan.write_text("hover\n")

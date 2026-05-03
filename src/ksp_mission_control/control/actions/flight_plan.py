@@ -70,7 +70,19 @@ def _parse_line_params(tokens: list[str], action: Action) -> dict[str, Any]:
 
     for token in tokens:
         if "=" not in token:
-            raise ValueError(f"Invalid parameter format {token!r} for action {action.action_id!r}. Expected key=value")
+            # Bare token (no =): treat as a boolean flag set to True
+            key = token
+            if key not in param_lookup:
+                available = list(param_lookup.keys())
+                raise ValueError(f"Unknown parameter {key!r} for action {action.action_id!r}. Available: {available}")
+            param = param_lookup[key]
+            if param.param_type != ParamType.BOOL:
+                raise ValueError(
+                    f"Parameter {key!r} for action {action.action_id!r} requires a value (key=value). "
+                    f"Bare flags are only supported for boolean parameters."
+                )
+            result[key] = True
+            continue
         key, raw_value = token.split("=", 1)
         if key not in param_lookup:
             available = list(param_lookup.keys())
@@ -116,7 +128,7 @@ def parse_flight_plan(path: Path) -> FlightPlan:
 
         steps.append(FlightPlanStep(action_id=action_id, param_values=param_values))
 
-    if not steps:
+    if not steps and not parallel_plans:
         raise ValueError(f"Flight plan {path.name} has no steps")
 
     plan_name = path.stem
