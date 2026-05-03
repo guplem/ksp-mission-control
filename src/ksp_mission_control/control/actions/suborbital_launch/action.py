@@ -71,10 +71,14 @@ class SuborbitalLaunchAction(Action):
             if self._auto_stage:
                 if state.parts.engines_inactive() > 0:
                     commands.stage = True
+                    return ActionResult(
+                        status=ActionStatus.RUNNING,
+                        message=f"Staging to next stage. {state.parts.engines_inactive()} inactive engines still in the vessel.",  # noqa: E501
+                    )
                 else:
                     return ActionResult(
                         status=ActionStatus.FAILED,
-                        message=f"No thrust available. Current apoapsis is {state.orbit_apoapsis:.1f}m, target altitude is {self._target_altitude:.1f}m",
+                        message=f"No thrust available. Current apoapsis is {state.orbit_apoapsis:.1f}m, target altitude is {self._target_altitude:.1f}m",  # noqa: E501
                     )
             else:
                 return ActionResult(
@@ -85,12 +89,12 @@ class SuborbitalLaunchAction(Action):
         # Throttle control
         if state.orbit_apoapsis < self._target_altitude:
             min_twr = 1.5
-            min_throttle = min_twr * state.weight / state.thrust_available
+            min_throttle = min_twr * state.weight / (state.thrust_available if state.thrust_available > 0 else 1.0)
             max_dynamic_pressure = 40_000  # Pa
-            # If with 0Pa of dynamic pressure we would have 100% throttle, how much should we have with the current dynamic pressure?
+            # Scale throttle down as dynamic pressure increases to reduce drag losses.
             dynamic_pressure_factor = max(0.0, 1.0 - state.pressure_dynamic / max_dynamic_pressure)
-            throttle = max(min_throttle, dynamic_pressure_factor)  # Ensure we have enough throttle
-            commands.throttle = min(throttle, 1.0)  # Cap at 100% throttle
+            throttle = max(min_throttle, dynamic_pressure_factor)
+            commands.throttle = min(throttle, 1.0)
             return ActionResult(
                 status=ActionStatus.RUNNING,
                 message=f"Ascending: current apoapsis {state.orbit_apoapsis:.1f}m / target {self._target_altitude:.1f}m",
