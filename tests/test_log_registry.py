@@ -7,7 +7,11 @@ from textual.app import App, ComposeResult
 from textual.widgets import ListView, Static, Switch
 
 from ksp_mission_control.control.actions.base import LogEntry, LogLevel
-from ksp_mission_control.control.widgets.log_registry import LogRegistryWidget, _switch_id
+from ksp_mission_control.control.widgets.log_registry import (
+    _FILTER_CATEGORIES,
+    LogRegistryWidget,
+    _switch_id,
+)
 
 
 class LogRegistryApp(App[None]):
@@ -39,13 +43,13 @@ def _make_logs(*levels: LogLevel) -> list[LogEntry]:
 
 
 class TestFilterSwitchesExist:
-    """Verify that compose produces a Switch per LogLevel, all enabled."""
+    """Verify that compose produces a Switch per category, all enabled."""
 
     @pytest.mark.asyncio
-    async def test_one_switch_per_level(self) -> None:
+    async def test_one_switch_per_category(self) -> None:
         async with LogRegistryApp().run_test(size=(120, 40)) as pilot:
-            for level in LogLevel:
-                switch = pilot.app.query_one(f"#{_switch_id(level)}", Switch)
+            for category in _FILTER_CATEGORIES:
+                switch = pilot.app.query_one(f"#{_switch_id(category)}", Switch)
                 assert switch.value is True
 
 
@@ -57,7 +61,7 @@ class TestTickGrouping:
         async with LogRegistryApp().run_test(size=(120, 40)) as pilot:
             widget = pilot.app.query_one("#log-registry", LogRegistryWidget)
             widget.append_logs(
-                _make_logs(LogLevel.DEBUG, LogLevel.INFO, LogLevel.WARN, LogLevel.ERROR),
+                _make_logs(LogLevel.LOG_DEBUG, LogLevel.LOG_INFO, LogLevel.LOG_WARN, LogLevel.LOG_ERROR),
                 met=10.0,
                 tick_id=1,
             )
@@ -71,8 +75,8 @@ class TestTickGrouping:
     async def test_different_ticks_produce_separate_items(self) -> None:
         async with LogRegistryApp().run_test(size=(120, 40)) as pilot:
             widget = pilot.app.query_one("#log-registry", LogRegistryWidget)
-            widget.append_logs(_make_logs(LogLevel.INFO), met=1.0, tick_id=1)
-            widget.append_logs(_make_logs(LogLevel.WARN), met=2.0, tick_id=2)
+            widget.append_logs(_make_logs(LogLevel.LOG_INFO), met=1.0, tick_id=1)
+            widget.append_logs(_make_logs(LogLevel.LOG_WARN), met=2.0, tick_id=2)
             await pilot.pause()
             assert _item_count(pilot.app) == 2
 
@@ -80,8 +84,8 @@ class TestTickGrouping:
     async def test_second_append_same_tick_updates_existing_item(self) -> None:
         async with LogRegistryApp().run_test(size=(120, 40)) as pilot:
             widget = pilot.app.query_one("#log-registry", LogRegistryWidget)
-            widget.append_logs(_make_logs(LogLevel.INFO), met=5.0, tick_id=3)
-            widget.append_logs(_make_logs(LogLevel.ERROR), met=5.0, tick_id=3)
+            widget.append_logs(_make_logs(LogLevel.LOG_INFO), met=5.0, tick_id=3)
+            widget.append_logs(_make_logs(LogLevel.LOG_ERROR), met=5.0, tick_id=3)
             await pilot.pause()
             assert _item_count(pilot.app) == 1
             text = _item_text(pilot.app, 0)
@@ -96,46 +100,43 @@ class TestAppendLogsRespectFilter:
     async def test_all_levels_shown_by_default(self) -> None:
         async with LogRegistryApp().run_test(size=(120, 40)) as pilot:
             widget = pilot.app.query_one("#log-registry", LogRegistryWidget)
-            widget.append_logs(
-                _make_logs(LogLevel.DEBUG, LogLevel.INFO, LogLevel.WARN, LogLevel.ERROR),
-                met=10.0,
-                tick_id=1,
-            )
+            logs = _make_logs(LogLevel.LOG_DEBUG, LogLevel.LOG_INFO, LogLevel.LOG_WARN, LogLevel.LOG_ERROR)
+            widget.append_logs(logs, met=10.0, tick_id=1)
             await pilot.pause()
             assert _item_count(pilot.app) == 1
             text = _item_text(pilot.app, 0)
-            for level in LogLevel:
-                assert level.value in text
+            for log_entry in logs:
+                assert log_entry.level.value in text
 
     @pytest.mark.asyncio
-    async def test_disabled_level_not_shown(self) -> None:
+    async def test_disabled_category_not_shown(self) -> None:
         async with LogRegistryApp().run_test(size=(120, 40)) as pilot:
-            # Disable DEBUG
-            switch = pilot.app.query_one(f"#{_switch_id(LogLevel.DEBUG)}", Switch)
+            # Disable Log category (hides LOG_DEBUG, LOG_INFO, LOG_WARN, LOG_ERROR)
+            switch = pilot.app.query_one(f"#{_switch_id('Log')}", Switch)
             switch.value = False
             await pilot.pause()
 
             widget = pilot.app.query_one("#log-registry", LogRegistryWidget)
             widget.append_logs(
-                _make_logs(LogLevel.DEBUG, LogLevel.INFO),
+                _make_logs(LogLevel.LOG_DEBUG, LogLevel.ACTION_START),
                 met=10.0,
                 tick_id=1,
             )
             await pilot.pause()
             assert _item_count(pilot.app) == 1
             text = _item_text(pilot.app, 0)
-            assert "DEBUG" not in text
-            assert "INFO" in text
+            assert "LOG_DEBUG" not in text
+            assert "ACTION_START" in text
 
     @pytest.mark.asyncio
     async def test_all_entries_filtered_produces_no_item(self) -> None:
         async with LogRegistryApp().run_test(size=(120, 40)) as pilot:
-            switch = pilot.app.query_one(f"#{_switch_id(LogLevel.DEBUG)}", Switch)
+            switch = pilot.app.query_one(f"#{_switch_id('Log')}", Switch)
             switch.value = False
             await pilot.pause()
 
             widget = pilot.app.query_one("#log-registry", LogRegistryWidget)
-            widget.append_logs(_make_logs(LogLevel.DEBUG), met=10.0, tick_id=1)
+            widget.append_logs(_make_logs(LogLevel.LOG_DEBUG), met=10.0, tick_id=1)
             await pilot.pause()
             assert _item_count(pilot.app) == 0
 
@@ -144,53 +145,53 @@ class TestToggleRerendersHistory:
     """Toggling a filter re-renders the full log history."""
 
     @pytest.mark.asyncio
-    async def test_toggle_off_hides_level_from_group(self) -> None:
+    async def test_toggle_off_hides_category_from_group(self) -> None:
         async with LogRegistryApp().run_test(size=(120, 40)) as pilot:
             widget = pilot.app.query_one("#log-registry", LogRegistryWidget)
             widget.append_logs(
-                _make_logs(LogLevel.DEBUG, LogLevel.INFO),
+                _make_logs(LogLevel.LOG_INFO, LogLevel.ACTION_START),
                 met=5.0,
                 tick_id=1,
             )
             await pilot.pause()
             assert _item_count(pilot.app) == 1
 
-            # Disable DEBUG
-            switch = pilot.app.query_one(f"#{_switch_id(LogLevel.DEBUG)}", Switch)
+            # Disable Log category
+            switch = pilot.app.query_one(f"#{_switch_id('Log')}", Switch)
             switch.value = False
             await pilot.pause()
 
             assert _item_count(pilot.app) == 1
             text = _item_text(pilot.app, 0)
-            assert "DEBUG" not in text
-            assert "INFO" in text
+            assert "LOG_INFO" not in text
+            assert "ACTION_START" in text
 
     @pytest.mark.asyncio
     async def test_toggle_on_restores_entries(self) -> None:
         async with LogRegistryApp().run_test(size=(120, 40)) as pilot:
             widget = pilot.app.query_one("#log-registry", LogRegistryWidget)
 
-            # Disable WARN, then add logs
-            switch = pilot.app.query_one(f"#{_switch_id(LogLevel.WARN)}", Switch)
+            # Disable Log category, then add logs
+            switch = pilot.app.query_one(f"#{_switch_id('Log')}", Switch)
             switch.value = False
             await pilot.pause()
 
             widget.append_logs(
-                _make_logs(LogLevel.WARN, LogLevel.ERROR),
+                _make_logs(LogLevel.LOG_WARN, LogLevel.ACTION_START),
                 met=20.0,
                 tick_id=2,
             )
             await pilot.pause()
             assert _item_count(pilot.app) == 1
-            assert "WARN" not in _item_text(pilot.app, 0)
+            assert "LOG_WARN" not in _item_text(pilot.app, 0)
 
-            # Re-enable WARN
+            # Re-enable Log category
             switch.value = True
             await pilot.pause()
             assert _item_count(pilot.app) == 1
             text = _item_text(pilot.app, 0)
-            assert "WARN" in text
-            assert "ERROR" in text
+            assert "LOG_WARN" in text
+            assert "ACTION_START" in text
 
 
 class TestEmptyLogsIgnored:

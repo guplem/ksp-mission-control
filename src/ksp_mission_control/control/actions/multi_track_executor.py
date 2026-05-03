@@ -86,7 +86,7 @@ def _merge_commands(
             if prev_track != source_track:
                 warnings.append(
                     LogEntry(
-                        level=LogLevel.WARN,
+                        level=LogLevel.PYTHON_WARNING,
                         message=(
                             f"Command conflict on '{field.name}': "
                             f"set by '{prev_track}' ({prev_value}) "
@@ -184,15 +184,14 @@ class MultiTrackExecutor:
                 warnings=warnings,
             )
             if is_multi and result.logs:
-                runner_snap = executor.snapshot().runner
-                action_label = runner_snap.action_label
                 for log_entry in result.logs:
                     all_logs.append(
                         LogEntry(
                             level=log_entry.level,
                             message=log_entry.message,
                             track_name=track_name,
-                            action_label=action_label,
+                            action_id=log_entry.action_id,
+                            plan_step=log_entry.plan_step,
                         )
                     )
             else:

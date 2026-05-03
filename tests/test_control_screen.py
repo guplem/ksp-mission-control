@@ -75,8 +75,8 @@ class TestFormatTickHistory:
             action_label="Hover",
             action_status=ActionStatus.RUNNING,
             logs=[
-                LogEntry(level=LogLevel.INFO, message="Holding altitude"),
-                LogEntry(level=LogLevel.DEBUG, message="PD output: 0.75"),
+                LogEntry(level=LogLevel.LOG_INFO, message="Holding altitude"),
+                LogEntry(level=LogLevel.LOG_DEBUG, message="PD output: 0.75"),
             ],
             commands=commands,
             applied_fields=frozenset({"throttle"}),
@@ -91,9 +91,9 @@ class TestFormatTickHistory:
         # Logs
         logs = tick_el.findall("logs/log")
         assert len(logs) == 2
-        assert logs[0].get("level") == "INFO"
+        assert logs[0].get("level") == "LOG_INFO"
         assert logs[0].text == "Holding altitude"
-        assert logs[1].get("level") == "DEBUG"
+        assert logs[1].get("level") == "LOG_DEBUG"
         assert logs[1].text == "PD output: 0.75"
 
         # Sent commands
@@ -113,7 +113,7 @@ class TestFormatTickHistory:
             state=_DEFAULT_STATE,
             action_label="Hover",
             action_status=ActionStatus.RUNNING,
-            logs=[LogEntry(level=LogLevel.INFO, message="Start")],
+            logs=[LogEntry(level=LogLevel.LOG_INFO, message="Start")],
             commands=VesselCommands(throttle=0.5),
             applied_fields=frozenset({"throttle"}),
         )
@@ -123,7 +123,7 @@ class TestFormatTickHistory:
             state=_DEFAULT_STATE,
             action_label="Hover",
             action_status=ActionStatus.RUNNING,
-            logs=[LogEntry(level=LogLevel.INFO, message="Holding")],
+            logs=[LogEntry(level=LogLevel.LOG_INFO, message="Holding")],
             commands=VesselCommands(throttle=0.6),
             applied_fields=frozenset({"throttle"}),
         )
@@ -163,7 +163,7 @@ class TestFormatTickHistory:
             state=_DEFAULT_STATE,
             action_label="Land",
             action_status=ActionStatus.SUCCEEDED,
-            logs=[LogEntry(level=LogLevel.INFO, message="\u25c0 Finished: Land (succeeded)")],
+            logs=[LogEntry(level=LogLevel.LOG_INFO, message="\u25c0 Finished: Land (succeeded)")],
             commands=VesselCommands(),
             applied_fields=frozenset(),
         )
@@ -180,7 +180,7 @@ class TestFormatTickHistory:
             state=_DEFAULT_STATE,
             action_label="Hover",
             action_status=ActionStatus.RUNNING,
-            logs=[LogEntry(level=LogLevel.INFO, message="test")],
+            logs=[LogEntry(level=LogLevel.LOG_INFO, message="test")],
             commands=VesselCommands(),
             applied_fields=frozenset(),
         )

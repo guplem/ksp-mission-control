@@ -196,7 +196,7 @@ class ControlSession:
             if overridden:
                 step_result.logs.append(
                     LogEntry(
-                        level=LogLevel.INFO,
+                        level=LogLevel.COMMAND,
                         message=f"Manual command: {', '.join(overridden)}",
                     )
                 )

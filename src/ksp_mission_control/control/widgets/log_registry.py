@@ -1,4 +1,4 @@
-"""LogRegistryWidget - scrollable log of action debug messages."""
+"""LogRegistryWidget - scrollable log of mission control messages."""
 
 from __future__ import annotations
 
@@ -13,18 +13,60 @@ from textual.widgets import ListItem, ListView, Static, Switch
 from ksp_mission_control.control.actions.base import LogEntry, LogLevel
 from ksp_mission_control.control.formatting import format_met, resolve_theme_colors
 
-_LEVEL_VARIABLE: dict[LogLevel, str] = {
-    LogLevel.DEBUG: "foreground-darken-2",
-    LogLevel.INFO: "success",
-    LogLevel.WARN: "warning",
-    LogLevel.ERROR: "error",
+_LEVEL_COLOR: dict[LogLevel, str] = {
+    # Action lifecycle
+    LogLevel.ACTION_START: "accent",
+    LogLevel.ACTION_RUNNING: "foreground-darken-2",
+    LogLevel.ACTION_SUCCEEDED: "success",
+    LogLevel.ACTION_FAILED: "error",
+    LogLevel.ACTION_END: "accent",
+    # Plan lifecycle
+    LogLevel.PLAN_START: "accent",
+    LogLevel.PLAN_END: "accent",
+    # Action logs
+    LogLevel.LOG_DEBUG: "foreground-darken-2",
+    LogLevel.LOG_INFO: "success",
+    LogLevel.LOG_WARN: "warning",
+    LogLevel.LOG_ERROR: "error",
+    # System
+    LogLevel.COMMAND: "warning",
+    LogLevel.PYTHON_ERROR: "error",
+    LogLevel.PYTHON_WARNING: "warning",
+}
+
+_FILTER_CATEGORIES: dict[str, set[LogLevel]] = {
+    "Action": {
+        LogLevel.ACTION_START,
+        LogLevel.ACTION_RUNNING,
+        LogLevel.ACTION_SUCCEEDED,
+        LogLevel.ACTION_FAILED,
+        LogLevel.ACTION_END,
+    },
+    "Plan": {
+        LogLevel.PLAN_START,
+        LogLevel.PLAN_END,
+    },
+    "Log": {
+        LogLevel.LOG_DEBUG,
+        LogLevel.LOG_INFO,
+        LogLevel.LOG_WARN,
+        LogLevel.LOG_ERROR,
+    },
+    "System": {
+        LogLevel.COMMAND,
+        LogLevel.PYTHON_ERROR,
+        LogLevel.PYTHON_WARNING,
+    },
 }
 
 _SWITCH_ID_PREFIX = "filter-"
 
+_TAG_WIDTH = 16
+"""Fixed width for the level tag column so messages align."""
 
-def _switch_id(level: LogLevel) -> str:
-    return f"{_SWITCH_ID_PREFIX}{level.value.lower()}"
+
+def _switch_id(category: str) -> str:
+    return f"{_SWITCH_ID_PREFIX}{category.lower()}"
 
 
 @dataclass(frozen=True)
@@ -37,7 +79,7 @@ class _TimestampedLog:
 
 
 class LogRegistryWidget(Static):
-    """Displays a scrolling log of debug messages emitted by actions.
+    """Displays a scrolling log of mission control messages.
 
     Log entries are grouped by tick: all entries from the same tick appear as a
     single list item so that hovering or selecting highlights the whole tick.
@@ -105,9 +147,9 @@ class LogRegistryWidget(Static):
     def compose(self) -> ComposeResult:
         with Horizontal(id="log-registry-header"):
             yield Static("[b]Log Registry[/b]", id="log-registry-title")
-            for level in LogLevel:
-                yield Static(level.value, classes="filter-label")
-                yield Switch(value=True, id=_switch_id(level))
+            for category in _FILTER_CATEGORIES:
+                yield Static(category, classes="filter-label")
+                yield Switch(value=True, id=_switch_id(category))
         yield ListView(id="log-registry-log")
 
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
@@ -117,25 +159,24 @@ class LogRegistryWidget(Static):
             self.post_message(self.LogLineClicked(self._visible_tick_ids[item_index]))
 
     def on_switch_changed(self, event: Switch.Changed) -> None:
-        """Re-render the log when a level filter is toggled."""
+        """Re-render the log when a category filter is toggled."""
         switch_id = event.switch.id or ""
         if not switch_id.startswith(_SWITCH_ID_PREFIX):
             return
-        level_name = switch_id[len(_SWITCH_ID_PREFIX) :].upper()
-        try:
-            level = LogLevel(level_name)
-        except ValueError:
-            return
-        if event.value:
-            self._enabled_levels.add(level)
-        else:
-            self._enabled_levels.discard(level)
-        self._rerender_log()
+        category_name = switch_id[len(_SWITCH_ID_PREFIX) :]
+        for cat_name, levels in _FILTER_CATEGORIES.items():
+            if cat_name.lower() == category_name:
+                if event.value:
+                    self._enabled_levels.update(levels)
+                else:
+                    self._enabled_levels -= levels
+                self._rerender_log()
+                return
 
     def _resolve_colors(self) -> dict[LogLevel, str]:
         """Resolve theme CSS variables to hex colors, cached after first call."""
         if self._level_colors is None:
-            self._level_colors = resolve_theme_colors(self.app, _LEVEL_VARIABLE)
+            self._level_colors = resolve_theme_colors(self.app, _LEVEL_COLOR)
         return self._level_colors
 
     def set_following(self, following: bool) -> None:
@@ -157,15 +198,14 @@ class LogRegistryWidget(Static):
             return
 
         colors = self._resolve_colors()
-        dimmed = tick_id != self._highlighted_tick
-        markup = self._build_tick_markup(filtered_lines, colors, dimmed)
+        markup = self._build_tick_markup(filtered_lines, colors)
         list_view = self.query_one("#log-registry-log", ListView)
 
         # If the last item is the same tick, replace it with the combined version.
         if self._visible_tick_ids and self._visible_tick_ids[-1] == tick_id:
             list_view.children[-1].remove()
             all_lines = self._collect_tick_lines(tick_id)
-            markup = self._build_tick_markup(all_lines, colors, dimmed)
+            markup = self._build_tick_markup(all_lines, colors)
             list_view.append(ListItem(Static(markup, markup=True)))
         else:
             list_view.append(ListItem(Static(markup, markup=True)))
@@ -175,26 +215,10 @@ class LogRegistryWidget(Static):
             list_view.scroll_end(animate=False)
 
     def highlight_tick(self, tick_id: int) -> None:
-        """Highlight logs from the given tick, dimming all others.
-
-        Only updates the two affected items (old highlight and new highlight)
-        rather than rebuilding the entire list.
-        """
+        """Scroll to the given tick's log entries."""
         if tick_id == self._highlighted_tick:
             return
-        previous_tick = self._highlighted_tick
         self._highlighted_tick = tick_id
-        colors = self._resolve_colors()
-        list_view = self.query_one("#log-registry-log", ListView)
-        items = list_view.children
-
-        for index, visible_tick_id in enumerate(self._visible_tick_ids):
-            if visible_tick_id in (previous_tick, tick_id):
-                lines = self._collect_tick_lines(visible_tick_id)
-                if lines:
-                    dimmed = visible_tick_id != tick_id
-                    markup = self._build_tick_markup(lines, colors, dimmed)
-                    items[index].query_one(Static).update(markup)
 
         if not self._following:
             self._scroll_to_highlighted_tick()
@@ -213,12 +237,10 @@ class LogRegistryWidget(Static):
         self,
         lines: list[tuple[LogEntry, float]],
         colors: dict[LogLevel, str],
-        dimmed: bool,
     ) -> str:
         """Build Rich markup for a group of log entries belonging to one tick."""
         formatted = [self._format_entry(entry, met, colors) for entry, met in lines]
-        combined = "\n".join(formatted)
-        return f"[dim]{combined}[/dim]" if dimmed else combined
+        return "\n".join(formatted)
 
     def _rerender_log(self) -> None:
         """Clear and rewrite the entire log with current filter and highlight settings."""
@@ -226,13 +248,11 @@ class LogRegistryWidget(Static):
         list_view = self.query_one("#log-registry-log", ListView)
         list_view.clear()
         self._visible_tick_ids.clear()
-        highlight = self._highlighted_tick
 
         filtered = [s for s in self._all_logs if s.entry.level in self._enabled_levels]
         for tick_id, group in groupby(filtered, key=lambda s: s.tick_id):
             entries = [(s.entry, s.met) for s in group]
-            dimmed = tick_id != highlight
-            markup = self._build_tick_markup(entries, colors, dimmed)
+            markup = self._build_tick_markup(entries, colors)
             list_view.append(ListItem(Static(markup, markup=True)))
             self._visible_tick_ids.append(tick_id)
 
@@ -250,16 +270,19 @@ class LogRegistryWidget(Static):
     def _format_entry(entry: LogEntry, met: float, colors: dict[LogLevel, str]) -> str:
         """Format a single log entry as Rich markup.
 
-        When the entry has track/action context (multi-track mode), the
-        track name and action label are shown as a prefix.
+        Context (MET, level tag, plan name, action id, step number) is
+        always dim. The message is always fully readable.
         """
         met_str = format_met(met)
         color = colors[entry.level]
-        tag = f"[{color}]{entry.level.value:>5}[/{color}]"
-        prefix = ""
+        tag = f"[{color}]{entry.level.value:>{_TAG_WIDTH}}[/{color}]"
+
+        context_parts: list[str] = []
         if entry.track_name is not None:
-            parts = [f"[i]{entry.track_name}[/i]"]
-            if entry.action_label is not None:
-                parts.append(f"[i]{entry.action_label}[/i]")
-            prefix = f"[dim]{' / '.join(parts)}[/dim] "
-        return f"[dim]{met_str}[/dim] {tag} {prefix} {entry.message}"
+            context_parts.append(entry.track_name)
+        if entry.action_id is not None:
+            step_suffix = f":{entry.plan_step}" if entry.plan_step is not None else ""
+            context_parts.append(f"{entry.action_id}{step_suffix}")
+
+        context = f" [dim]{' / '.join(context_parts)}[/dim]" if context_parts else ""
+        return f"[dim]{met_str}[/dim] {tag}{context}  {entry.message}"

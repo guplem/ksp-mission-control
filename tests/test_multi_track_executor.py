@@ -164,7 +164,7 @@ class TestMergeCommands:
 
         assert target.throttle == 0.8
         assert len(warnings) == 1
-        assert warnings[0].level == LogLevel.WARN
+        assert warnings[0].level == LogLevel.PYTHON_WARNING
         assert "throttle" in warnings[0].message
         assert "track-a" in warnings[0].message
         assert "track-b" in warnings[0].message
@@ -353,7 +353,7 @@ class TestMultiTrackExecutorParallel:
         result = executor.step(state, dt=0.5)
         assert result.commands.throttle == 0.9
 
-        warn_logs = [log for log in result.logs if log.level == LogLevel.WARN]
+        warn_logs = [log for log in result.logs if log.level == LogLevel.PYTHON_WARNING]
         assert len(warn_logs) == 1
         assert "throttle" in warn_logs[0].message
         assert "plan-a" in warn_logs[0].message

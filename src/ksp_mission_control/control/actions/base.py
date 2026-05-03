@@ -18,12 +18,36 @@ _STANDARD_GRAVITY = 9.80665  # m/s^2, used in Tsiolkovsky rocket equation
 
 
 class LogLevel(Enum):
-    """Severity level for action debug log entries."""
+    """Semantic log level for mission control log entries.
 
-    DEBUG = "DEBUG"
-    INFO = "INFO"
-    WARN = "WARN"
-    ERROR = "ERROR"
+    Grouped into categories:
+    - Action lifecycle: ACTION_START, ACTION_RUNNING, ACTION_SUCCEEDED, ACTION_FAILED, ACTION_END
+    - Plan lifecycle: PLAN_START, PLAN_END
+    - Action logs: LOG_DEBUG, LOG_INFO, LOG_WARN, LOG_ERROR
+    - System: COMMAND, PYTHON_ERROR, PYTHON_WARNING
+    """
+
+    # Action lifecycle (emitted by the runner automatically)
+    ACTION_START = "ACTION_START"
+    ACTION_RUNNING = "ACTION_RUNNING"
+    ACTION_SUCCEEDED = "ACTION_SUCCEEDED"
+    ACTION_FAILED = "ACTION_FAILED"
+    ACTION_END = "ACTION_END"
+
+    # Plan lifecycle (emitted by the plan executor)
+    PLAN_START = "PLAN_START"
+    PLAN_END = "PLAN_END"
+
+    # Action debug/diagnostic logs (emitted by actions via ActionLogger)
+    LOG_DEBUG = "LOG_DEBUG"
+    LOG_INFO = "LOG_INFO"
+    LOG_WARN = "LOG_WARN"
+    LOG_ERROR = "LOG_ERROR"
+
+    # System logs
+    COMMAND = "COMMAND"
+    PYTHON_ERROR = "PYTHON_ERROR"
+    PYTHON_WARNING = "PYTHON_WARNING"
 
 
 @dataclass(frozen=True)
@@ -33,7 +57,9 @@ class LogEntry:
     level: LogLevel
     message: str
     track_name: str | None = None
-    action_label: str | None = None
+    action_id: str | None = None
+    plan_step: int | None = None
+    """1-based step number within the plan, matching the .plan file line."""
 
 
 class ActionLogger:
@@ -47,16 +73,16 @@ class ActionLogger:
         self.entries: list[LogEntry] = []
 
     def debug(self, message: str) -> None:
-        self.entries.append(LogEntry(level=LogLevel.DEBUG, message=message))
+        self.entries.append(LogEntry(level=LogLevel.LOG_DEBUG, message=message))
 
     def info(self, message: str) -> None:
-        self.entries.append(LogEntry(level=LogLevel.INFO, message=message))
+        self.entries.append(LogEntry(level=LogLevel.LOG_INFO, message=message))
 
     def warn(self, message: str) -> None:
-        self.entries.append(LogEntry(level=LogLevel.WARN, message=message))
+        self.entries.append(LogEntry(level=LogLevel.LOG_WARN, message=message))
 
     def error(self, message: str) -> None:
-        self.entries.append(LogEntry(level=LogLevel.ERROR, message=message))
+        self.entries.append(LogEntry(level=LogLevel.LOG_ERROR, message=message))
 
 
 class SpeedMode(Enum):
@@ -1020,4 +1046,4 @@ class Action(ABC):
         cleanup. *state* is the last known vessel telemetry so actions can
         make informed cleanup decisions.
         """
-        log.info(f"{self.label} stopped")
+        log.debug(f"{self.label} stopped")

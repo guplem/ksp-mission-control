@@ -14,6 +14,7 @@ from ksp_mission_control.control.actions.base import (
     ActionLogger,
     ActionStatus,
     LogEntry,
+    LogLevel,
     State,
     VesselCommands,
 )
@@ -79,8 +80,9 @@ class ActionRunner:
         commands = VesselCommands()
         log = ActionLogger()
         if self._action is not None:
-            log.info(f"Aborted: {self._action.label}")
+            log.entries.append(LogEntry(level=LogLevel.ACTION_FAILED, message=f"Aborted: {self._action.label}"))
             self._action.stop(self._last_state, commands, log)
+            log.entries.append(LogEntry(level=LogLevel.ACTION_END, message=f"{self._action.label}"))
             self._action = None
             self._status = None
             self._message = ""
@@ -102,7 +104,7 @@ class ActionRunner:
             return StepResult(commands=commands, logs=log.entries)
 
         if self._emit_started:
-            log.info(f"Started: {self._action.label}")
+            log.entries.append(LogEntry(level=LogLevel.ACTION_START, message=self._action.label))
             self._emit_started = False
 
         result = self._action.tick(vessel_state, commands, dt, log)
@@ -110,16 +112,24 @@ class ActionRunner:
         self._message = result.message
 
         finished_status: ActionStatus | None = None
-        if result.status in (ActionStatus.SUCCEEDED, ActionStatus.FAILED):
+        if result.status == ActionStatus.SUCCEEDED:
             finished_status = result.status
-            label = self._action.label
-            if result.status == ActionStatus.FAILED and result.message:
-                log.error(f"{label}: {result.message}")
-            log.info(f"\u25c0 Finished: {label} ({result.status.value})")
+            log.entries.append(LogEntry(level=LogLevel.ACTION_SUCCEEDED, message=result.message or self._action.label))
             self._action.stop(vessel_state, commands, log)
+            log.entries.append(LogEntry(level=LogLevel.ACTION_END, message=self._action.label))
             self._action = None
             self._status = None
             self._message = ""
+        elif result.status == ActionStatus.FAILED:
+            finished_status = result.status
+            log.entries.append(LogEntry(level=LogLevel.ACTION_FAILED, message=result.message or self._action.label))
+            self._action.stop(vessel_state, commands, log)
+            log.entries.append(LogEntry(level=LogLevel.ACTION_END, message=self._action.label))
+            self._action = None
+            self._status = None
+            self._message = ""
+        elif result.message:
+            log.entries.append(LogEntry(level=LogLevel.ACTION_RUNNING, message=result.message))
 
         return StepResult(commands=commands, logs=log.entries, finished_status=finished_status)
 

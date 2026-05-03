@@ -11,7 +11,13 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from ksp_mission_control.control.actions.base import Action, ActionStatus, State
+from ksp_mission_control.control.actions.base import (
+    Action,
+    ActionStatus,
+    LogEntry,
+    LogLevel,
+    State,
+)
 from ksp_mission_control.control.actions.flight_plan import FlightPlan
 from ksp_mission_control.control.actions.registry import get_available_actions
 from ksp_mission_control.control.actions.runner import (
@@ -58,6 +64,7 @@ class PlanExecutor:
         self._step_index: int = 0
         self._step_statuses: list[StepStatus] = []
         self._paused_on_failure: bool = False
+        self._emit_plan_started: bool = False
 
     def start_action(
         self,
@@ -94,6 +101,7 @@ class PlanExecutor:
         self._step_index = 0
         self._step_statuses = [StepStatus.PENDING] * len(plan.steps)
         self._paused_on_failure = False
+        self._emit_plan_started = True
 
         self._step_statuses[0] = StepStatus.RUNNING
         self._runner.start_action(self._step_actions[0], state, plan.steps[0].param_values)
@@ -102,6 +110,25 @@ class PlanExecutor:
         """Tick the runner. If a plan is active, handle step transitions."""
         had_action = self._runner.snapshot().action_id is not None
         result = self._runner.step(vessel_state, dt)
+
+        if self._plan is not None and self._emit_plan_started:
+            self._emit_plan_started = False
+            result.logs.insert(0, LogEntry(level=LogLevel.PLAN_START, message=self._plan.name))
+
+        # Annotate all runner logs with action_id and plan step
+        if self._plan is not None and result.logs:
+            action_id = self._plan.steps[self._step_index].action_id if self._step_index < len(self._plan.steps) else None
+            plan_step = self._step_index + 1
+            result.logs[:] = [
+                LogEntry(
+                    level=entry.level,
+                    message=entry.message,
+                    track_name=entry.track_name,
+                    action_id=action_id or entry.action_id,
+                    plan_step=plan_step if entry.plan_step is None else entry.plan_step,
+                )
+                for entry in result.logs
+            ]
 
         if self._plan is None or self._paused_on_failure:
             return result
@@ -123,8 +150,8 @@ class PlanExecutor:
                         self._plan.steps[self._step_index].param_values,
                     )
                 else:
-                    # Plan complete - keep snapshot visible until next action/plan
-                    pass
+                    # Plan complete
+                    result.logs.append(LogEntry(level=LogLevel.PLAN_END, message=self._plan.name))
             else:
                 # Action failed - pause for user decision
                 self._step_statuses[self._step_index] = StepStatus.FAILED
@@ -134,7 +161,10 @@ class PlanExecutor:
 
     def abort(self) -> StepResult:
         """Abort the current action and cancel any remaining plan."""
+        plan_name = self._plan.name if self._plan is not None else None
         result = self._runner.abort()
+        if plan_name is not None:
+            result.logs.append(LogEntry(level=LogLevel.PLAN_END, message=plan_name))
         self._clear_plan()
         return result
 

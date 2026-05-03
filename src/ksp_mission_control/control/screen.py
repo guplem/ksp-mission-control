@@ -203,7 +203,7 @@ class ControlScreen(Screen[None]):
         """Append an error entry to the log registry so it persists for debugging."""
         last_met = self._tick_history[-1].met if self._tick_history else 0.0
         self.query_one("#log-registry", LogRegistryWidget).append_logs(
-            [LogEntry(level=LogLevel.ERROR, message=message)],
+            [LogEntry(level=LogLevel.PYTHON_ERROR, message=message)],
             met=last_met,
             tick_id=self._tick_counter,
         )
