@@ -300,4 +300,13 @@ class LogRegistryWidget(Static):
             context_parts.append(f"{entry.action_id}{step_suffix}")
 
         context = f" [dim]{' / '.join(context_parts)}[/dim]" if context_parts else ""
-        return f"{met_col} {tag}{context}  {entry.message}"
+
+        # Pad continuation lines of multi-line messages to align with the first line.
+        message = entry.message
+        if "\n" in message:
+            # +1 for the space between met and tag, +2 for the gap before the message
+            pad = " " * (len(met_str) + 1 + _TAG_WIDTH + 2)
+            lines = message.split("\n")
+            message = lines[0] + "\n" + "\n".join(pad + line for line in lines[1:])
+
+        return f"{met_col} {tag}{context}  {message}"

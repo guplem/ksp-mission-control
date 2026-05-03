@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import contextlib
 import threading
+import traceback
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
@@ -43,6 +44,27 @@ _KRPC_CALL_TIMEOUT = 10.0
 
 _RECONNECT_INTERVAL = 3.0
 """Seconds to wait before retrying after a connection loss."""
+
+
+def _format_short_traceback(tb_lines: list[str]) -> str:
+    """Extract the last 3 file-reference lines from a formatted traceback.
+
+    Produces a compact multi-line string like:
+        at krpc_bridge.py:42 in read_vessel_state
+        at session.py:189 in _poll_tick
+    """
+    frames: list[str] = []
+    for line in tb_lines:
+        stripped = line.strip()
+        if stripped.startswith("File "):
+            # Format: File "path", line N, in func
+            parts = stripped.split(", ")
+            if len(parts) >= 3:
+                file_part = parts[0].split('"')[1].split("/")[-1].split("\\")[-1]
+                line_part = parts[1].replace("line ", "")
+                func_part = parts[2].replace("in ", "")
+                frames.append(f"  at {file_part}:{line_part} in {func_part}")
+    return "\n".join(frames[-3:])
 
 
 def _merge_manual_command(commands: VesselCommands, manual: VesselCommands) -> list[str]:
@@ -162,7 +184,9 @@ class ControlSession:
                             self._on_error("No active vessel found")
                     except Exception as exc:
                         if not self._stop_event.is_set():
-                            self._on_error(f"Error reading data: {exc}")
+                            tb_lines = traceback.format_exception(exc)
+                            short_tb = _format_short_traceback(tb_lines)
+                            self._on_error(f"{type(exc).__name__}: {exc}\n{short_tb}")
                     self._stop_event.wait(0.5)
             finally:
                 # wait=False: don't block on a hung kRPC thread; just abandon it
