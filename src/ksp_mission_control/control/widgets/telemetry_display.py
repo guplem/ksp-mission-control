@@ -11,6 +11,7 @@ from textual.message import Message
 from textual.widgets import Static
 
 from ksp_mission_control.control.actions.base import ScienceExperiment, State
+from ksp_mission_control.control.formatting import format_met
 
 
 class ScienceCardWidget(Static, can_focus=False):
@@ -123,6 +124,7 @@ class TelemetryDisplayWidget(Static):
     def __init__(self, *, id: str | None = None) -> None:  # noqa: A002
         super().__init__(id=id)
         self._science_experiments: tuple[ScienceExperiment, ...] = ()
+        self._frozen: bool = False
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="telemetry-header"):
@@ -136,7 +138,28 @@ class TelemetryDisplayWidget(Static):
         yield Container(id="telemetry-science-grid")
 
     def update_vessel_state(self, state: State) -> None:
-        """Format and display the current vessel state across three columns."""
+        """Format and display the current vessel state across three columns.
+
+        Ignored while the widget is frozen (showing historical data).
+        """
+        if self._frozen:
+            return
+        self._render_state(state)
+        self.query_one("#telemetry-title", Static).update("[b]Telemetry[/b]")
+
+    def show_historical_state(self, state: State, met: float) -> None:
+        """Display a historical state snapshot and freeze live updates."""
+        self._frozen = True
+        self._render_state(state)
+        self.query_one("#telemetry-title", Static).update(f"[b]Telemetry[/b]  [dim italic]{format_met(met)} (historical)[/dim italic]")
+
+    def resume_live(self) -> None:
+        """Unfreeze and resume accepting live state updates."""
+        self._frozen = False
+        self.query_one("#telemetry-title", Static).update("[b]Telemetry[/b]")
+
+    def _render_state(self, state: State) -> None:
+        """Render a State snapshot into the three telemetry columns."""
         self.query_one("#telemetry-ut", Static).update(f"UT: {_format_time(state.universal_time)} ")
         self.query_one("#telemetry-flight", Static).update(_format_flight(state))
         self.query_one("#telemetry-orbit", Static).update(_format_orbit(state))

@@ -112,5 +112,4 @@ class ExecuteScienceAction(Action):
         available_count = sum(1 for e in state.science_experiments if e.available and not e.has_data)
         return ActionResult(status=ActionStatus.SUCCEEDED, message=f"All ({available_count}) science experiments activated")
 
-    def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
-        super().stop(state, commands, log)
+    # def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:

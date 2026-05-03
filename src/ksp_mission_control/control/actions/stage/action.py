@@ -55,5 +55,4 @@ class StageAction(Action):
         commands.stage = True
         return ActionResult(status=ActionStatus.SUCCEEDED, message=f"Vessel staged. Current stage: {state.stage_current + 1}")
 
-    def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
-        super().stop(state, commands, log)
+    # def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:

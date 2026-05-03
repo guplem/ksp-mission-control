@@ -242,7 +242,6 @@ class LaunchAction(Action):
         return ActionResult(status=ActionStatus.RUNNING)
 
     def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
-        super().stop(state, commands, log)
         # Cut engines and disengage autopilot on stop/abort.
         commands.autopilot = False
         commands.sas = False

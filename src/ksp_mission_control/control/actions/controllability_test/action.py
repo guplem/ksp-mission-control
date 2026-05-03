@@ -290,6 +290,5 @@ class ControllabilityTestAction(Action):
         return ActionResult(status=ActionStatus.RUNNING)
 
     def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
-        super().stop(state, commands, log)
         commands.autopilot = False
         commands.throttle = 0.0

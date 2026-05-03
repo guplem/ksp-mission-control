@@ -1039,6 +1039,7 @@ class Action(ABC):
         and return an ActionResult indicating lifecycle status.
         """
 
+    @abstractmethod
     def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
         """Clean up on abort or completion.
 
@@ -1046,4 +1047,3 @@ class Action(ABC):
         cleanup. *state* is the last known vessel telemetry so actions can
         make informed cleanup decisions.
         """
-        log.debug(f"{self.label} stopped")

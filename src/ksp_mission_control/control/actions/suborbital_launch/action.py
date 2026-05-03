@@ -92,4 +92,4 @@ class SuborbitalLaunchAction(Action):
         return ActionResult(status=ActionStatus.SUCCEEDED, message=f"Target apoapsis set: {state.orbit_apoapsis:.1f}m")
 
     def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
-        super().stop(state, commands, log)
+        commands.throttle = 0.0

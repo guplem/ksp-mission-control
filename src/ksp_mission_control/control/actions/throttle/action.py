@@ -77,5 +77,4 @@ class ThrottleAction(Action):
         commands.throttle = throttle
         return ActionResult(status=ActionStatus.SUCCEEDED, message=f"Throttle set to {throttle:.3f} for TWR {self._twr}")
 
-    def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
-        super().stop(state, commands, log)
+    # def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:

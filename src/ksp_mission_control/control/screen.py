@@ -83,6 +83,7 @@ class ControlScreen(Screen[None]):
         self._view_mode: ViewMode = ViewMode.SPLIT
         self._showing_failure_dialog: bool = False
         self._tick_history: list[TickRecord] = []
+        self._tick_index: dict[int, TickRecord] = {}
         self._tick_counter: int = 0
 
     def compose(self) -> ComposeResult:
@@ -126,20 +127,21 @@ class ControlScreen(Screen[None]):
     ) -> None:
         """Update telemetry, control panel, command history, and log registry."""
         self._tick_counter += 1
-        self._tick_history.append(
-            TickRecord(
-                tick_number=self._tick_counter,
-                met=state.met,
-                state=state,
-                action_label=runner_state.action_label,
-                action_status=runner_state.status,
-                logs=list(logs),
-                commands=commands,
-                applied_fields=applied_fields,
-            )
+        record = TickRecord(
+            tick_number=self._tick_counter,
+            met=state.met,
+            state=state,
+            action_label=runner_state.action_label,
+            action_status=runner_state.status,
+            logs=list(logs),
+            commands=commands,
+            applied_fields=applied_fields,
         )
+        self._tick_history.append(record)
+        self._tick_index[self._tick_counter] = record
         if len(self._tick_history) > _MAX_TICK_HISTORY:
-            self._tick_history.pop(0)
+            dropped = self._tick_history.pop(0)
+            self._tick_index.pop(dropped.tick_number, None)
 
         plan_snap = multi_snap.primary
         self.query_one("#telemetry-display", TelemetryDisplayWidget).update_vessel_state(state)
@@ -215,12 +217,25 @@ class ControlScreen(Screen[None]):
         log_registry.highlight_tick(event.tick_id)
         command_history = self.query_one("#command-history", CommandHistoryWidget)
         command_history.jump_to_tick(event.tick_id)
+        self._show_historical_telemetry(event.tick_id)
 
     def on_command_history_widget_tick_changed(self, event: CommandHistoryWidget.TickChanged) -> None:
         """Highlight logs matching the previewed command, or clear highlighting."""
         console = self.query_one("#log-registry", LogRegistryWidget)
         console.set_following(event.following)
         console.highlight_tick(event.tick_id)
+        telemetry = self.query_one("#telemetry-display", TelemetryDisplayWidget)
+        if event.following:
+            telemetry.resume_live()
+        else:
+            self._show_historical_telemetry(event.tick_id)
+
+    def _show_historical_telemetry(self, tick_id: int) -> None:
+        """Update the telemetry display with the state snapshot from *tick_id*."""
+        record = self._tick_index.get(tick_id)
+        if record is None:
+            return
+        self.query_one("#telemetry-display", TelemetryDisplayWidget).show_historical_state(record.state, record.met)
 
     def on_control_panel_widget_run_action_requested(self, event: ControlPanelWidget.RunActionRequested) -> None:
         """Open the action picker dialog."""
