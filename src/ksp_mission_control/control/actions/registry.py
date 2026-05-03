@@ -15,6 +15,7 @@ def get_available_actions() -> list[Action]:
     """
 
     # 1. Import
+    import ksp_mission_control.control.actions.autopilot.action as autopilot_module
     import ksp_mission_control.control.actions.controllability_test.action as controllability_test_module
     import ksp_mission_control.control.actions.hold_attitude.action as hold_attitude_module
     import ksp_mission_control.control.actions.hover.action as hover_module
@@ -29,6 +30,7 @@ def get_available_actions() -> list[Action]:
     import ksp_mission_control.control.actions.wait_for.action as wait_for_module
 
     # 2. Reload to pick up code changes without restarting the app
+    importlib.reload(autopilot_module)
     importlib.reload(parachutes_module)
     importlib.reload(controllability_test_module)
     importlib.reload(hold_attitude_module)
@@ -44,6 +46,7 @@ def get_available_actions() -> list[Action]:
 
     # 3. Instantiate and return
     return [
+        autopilot_module.AutopilotAction(),
         parachutes_module.ParachutesAction(),
         controllability_test_module.ControllabilityTestAction(),
         hold_attitude_module.HoldAttitudeAction(),
