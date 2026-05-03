@@ -131,6 +131,11 @@ class LogRegistryWidget(Static):
         border-left: solid $surface-lighten-2;
     }
 
+    #log-registry-log ListItem.--highlight {
+        background: $surface-lighten-1;
+        border-left: solid $primary;
+    }
+
     #log-registry-log ListItem Static {
         height: auto;
         padding: 0;
@@ -218,13 +223,8 @@ class LogRegistryWidget(Static):
             list_view.scroll_end(animate=False)
 
     def highlight_tick(self, tick_id: int) -> None:
-        """Scroll to the given tick's log entries."""
-        if tick_id == self._highlighted_tick:
-            return
+        """Mark a tick as highlighted (no scroll)."""
         self._highlighted_tick = tick_id
-
-        if not self._following:
-            self._scroll_to_highlighted_tick()
 
     def _format_filtered_lines(self, logs: list[LogEntry], met: float) -> list[tuple[LogEntry, float]]:
         """Return (entry, met) pairs for entries passing the level filter."""
@@ -248,12 +248,14 @@ class LogRegistryWidget(Static):
         """
         parts: list[str] = []
         prev_action_key: tuple[str | None, int | None] | None = None
+        first = True
         for entry, met in lines:
             action_key = (entry.action_id, entry.plan_step)
             if prev_action_key is not None and action_key != prev_action_key:
                 parts.append("")
             prev_action_key = action_key
-            parts.append(self._format_entry(entry, met, colors))
+            parts.append(self._format_entry(entry, met, colors, show_met=first))
+            first = False
         return "\n".join(parts)
 
     def _rerender_log(self) -> None:
@@ -270,24 +272,16 @@ class LogRegistryWidget(Static):
             list_view.append(ListItem(Static(markup, markup=True)))
             self._visible_tick_ids.append(tick_id)
 
-    def _scroll_to_highlighted_tick(self) -> None:
-        """Scroll the log to the item belonging to the highlighted tick."""
-        if self._highlighted_tick is None:
-            return
-        for index, tick_id in enumerate(self._visible_tick_ids):
-            if tick_id == self._highlighted_tick:
-                list_view = self.query_one("#log-registry-log", ListView)
-                list_view.scroll_to(y=index, animate=False)
-                return
-
     @staticmethod
-    def _format_entry(entry: LogEntry, met: float, colors: dict[LogLevel, str]) -> str:
+    def _format_entry(entry: LogEntry, met: float, colors: dict[LogLevel, str], *, show_met: bool = True) -> str:
         """Format a single log entry as Rich markup.
 
         Context (MET, level tag, plan name, action id, step number) is
-        always dim. The message is always fully readable.
+        always dim. The message is always fully readable. MET is only
+        shown on the first line of each tick group.
         """
         met_str = format_met(met)
+        met_col = f"[dim]{met_str}[/dim]" if show_met else " " * len(met_str)
         color = colors[entry.level]
         tag = f"[{color}]{entry.level.value:>{_TAG_WIDTH}}[/{color}]"
 
@@ -299,4 +293,4 @@ class LogRegistryWidget(Static):
             context_parts.append(f"{entry.action_id}{step_suffix}")
 
         context = f" [dim]{' / '.join(context_parts)}[/dim]" if context_parts else ""
-        return f"[dim]{met_str}[/dim] {tag}{context}  {entry.message}"
+        return f"{met_col} {tag}{context}  {entry.message}"
