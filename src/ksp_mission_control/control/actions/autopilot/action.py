@@ -86,5 +86,5 @@ class AutopilotAction(Action):
             message=f"Autopilot engaged: {', '.join(parts)}",
         )
 
-    # def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
-    #     super().stop(state, commands, log)
+    def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
+        pass

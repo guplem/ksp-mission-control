@@ -49,4 +49,5 @@ class SasAction(Action):
         commands.sas_mode = self._sas_mode
         return ActionResult(status=ActionStatus.SUCCEEDED, message=f"SAS mode set to {self._sas_mode.display_name}")
 
-    # def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
+    def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
+        pass

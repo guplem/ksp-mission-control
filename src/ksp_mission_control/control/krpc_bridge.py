@@ -197,18 +197,32 @@ def read_vessel_state(conn: object) -> State:
     ap_target_roll = ap.target_roll
     # Autopilot error properties raise when the autopilot is not engaged.
     # We use this to infer the engaged state since kRPC has no 'engaged' property.
+    # Detect engagement from ap.error alone, then read per-axis errors
+    # independently. Individual axis errors can raise even when engaged
+    # (e.g. roll_error when target_roll is NaN / roll targeting disabled).
     try:
         ap_error: float | None = ap.error
-        ap_pitch_error: float | None = ap.pitch_error
-        ap_heading_error: float | None = ap.heading_error
-        ap_roll_error: float | None = ap.roll_error
         ap_engaged = True
     except Exception:
         ap_error = None
+        ap_engaged = False
+    if ap_engaged:
+        try:
+            ap_pitch_error: float | None = ap.pitch_error
+        except Exception:
+            ap_pitch_error = None
+        try:
+            ap_heading_error: float | None = ap.heading_error
+        except Exception:
+            ap_heading_error = None
+        try:
+            ap_roll_error: float | None = ap.roll_error
+        except Exception:
+            ap_roll_error = None
+    else:
         ap_pitch_error = None
         ap_heading_error = None
         ap_roll_error = None
-        ap_engaged = False
     # navball.speed_mode may not be available in all kRPC versions.
     try:
         speed_mode_raw = str(conn.space_center.navball.speed_mode)  # type: ignore[attr-defined]

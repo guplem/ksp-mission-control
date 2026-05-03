@@ -84,7 +84,13 @@ class SuborbitalLaunchAction(Action):
 
         # Throttle control
         if state.orbit_apoapsis < self._target_altitude:
-            commands.throttle = 1.0  # Full throttle until we reach the target altitude
+            min_twr = 1.5
+            min_throttle = min_twr * state.weight / state.thrust_available
+            max_dynamic_pressure = 40_000  # Pa
+            # If with 0Pa of dynamic pressure we would have 100% throttle, how much should we have with the current dynamic pressure?
+            dynamic_pressure_factor = max(0.0, 1.0 - state.pressure_dynamic / max_dynamic_pressure)
+            throttle = max(min_throttle, dynamic_pressure_factor)  # Ensure we have enough throttle
+            commands.throttle = min(throttle, 1.0)  # Cap at 100% throttle
             return ActionResult(
                 status=ActionStatus.RUNNING,
                 message=f"Ascending: current apoapsis {state.orbit_apoapsis:.1f}m / target {self._target_altitude:.1f}m",

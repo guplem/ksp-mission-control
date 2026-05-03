@@ -1041,9 +1041,4 @@ class Action(ABC):
 
     @abstractmethod
     def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
-        """Clean up on abort or completion.
-
-        Default implementation logs the stop. Subclasses override for custom
-        cleanup. *state* is the last known vessel telemetry so actions can
-        make informed cleanup decisions.
-        """
+        """Executed on abort or after completion."""

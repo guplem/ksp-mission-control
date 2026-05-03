@@ -109,4 +109,5 @@ class ParachutesAction(Action):
             message=f"Triggering the deployment of {state.parts.parachutes_count([state.stage_current])} parachutes at {state.altitude_surface:.1f}m",
         )
 
-    # def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
+    def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
+        pass

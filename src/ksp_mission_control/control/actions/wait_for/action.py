@@ -172,4 +172,5 @@ class WaitForAction(Action):
 
         return ActionResult(status=ActionStatus.SUCCEEDED, message="All conditions met. Wait finished.")
 
-    # def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
+    def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
+        pass

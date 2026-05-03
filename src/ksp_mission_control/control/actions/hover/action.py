@@ -162,4 +162,5 @@ class HoverAction(Action):
 
         return ActionResult(status=ActionStatus.RUNNING)
 
-    # def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
+    def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
+        pass

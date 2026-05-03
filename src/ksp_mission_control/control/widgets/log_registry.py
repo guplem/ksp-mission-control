@@ -197,6 +197,8 @@ class LogRegistryWidget(Static):
         self._following = following
         list_view = self.query_one("#log-registry-log", ListView)
         if following:
+            self._highlighted_tick = None
+            list_view.index = None
             list_view.scroll_end(animate=False)
 
     def append_logs(self, logs: list[LogEntry], *, met: float, tick_id: int) -> None:
