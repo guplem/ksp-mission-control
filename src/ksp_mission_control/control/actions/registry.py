@@ -1,62 +1,37 @@
-"""Action registry - factory for available actions."""
+"""Action registry - auto-discovers actions from subdirectories."""
 
 from __future__ import annotations
 
 import importlib
+from inspect import isclass
+from pathlib import Path
 
 from ksp_mission_control.control.actions.base import Action
+
+_ACTIONS_DIR = Path(__file__).parent
 
 
 def get_available_actions() -> list[Action]:
     """Return the list of all available actions.
 
-    Reloads action modules from disk each call so code changes
-    take effect without restarting the app.
+    Scans each subdirectory of the actions package for an ``action.py`` module,
+    reloads it (so code changes take effect without restarting the app), and
+    instantiates any Action subclass found.
     """
+    actions: list[Action] = []
 
-    # 1. Import
-    import ksp_mission_control.control.actions.autopilot.action as autopilot_module
-    import ksp_mission_control.control.actions.controllability_test.action as controllability_test_module
-    import ksp_mission_control.control.actions.hold_attitude.action as hold_attitude_module
-    import ksp_mission_control.control.actions.hover.action as hover_module
-    import ksp_mission_control.control.actions.land.action as land_module
-    import ksp_mission_control.control.actions.launch.action as launch_module
-    import ksp_mission_control.control.actions.parachutes.action as parachutes_module
-    import ksp_mission_control.control.actions.sas.action as sas_module
-    import ksp_mission_control.control.actions.science.action as science_module
-    import ksp_mission_control.control.actions.stage.action as stage_module
-    import ksp_mission_control.control.actions.throttle.action as throttle_module
-    import ksp_mission_control.control.actions.translate.action as translate_module
-    import ksp_mission_control.control.actions.wait_for.action as wait_for_module
+    for subfolder in sorted(_ACTIONS_DIR.iterdir()):
+        action_file = subfolder / "action.py"
+        if not action_file.is_file():
+            continue
 
-    # 2. Reload to pick up code changes without restarting the app
-    importlib.reload(autopilot_module)
-    importlib.reload(parachutes_module)
-    importlib.reload(controllability_test_module)
-    importlib.reload(hold_attitude_module)
-    importlib.reload(hover_module)
-    importlib.reload(land_module)
-    importlib.reload(launch_module)
-    importlib.reload(sas_module)
-    importlib.reload(science_module)
-    importlib.reload(stage_module)
-    importlib.reload(throttle_module)
-    importlib.reload(translate_module)
-    importlib.reload(wait_for_module)
+        module_name = f"ksp_mission_control.control.actions.{subfolder.name}.action"
+        module = importlib.import_module(module_name)
+        importlib.reload(module)
 
-    # 3. Instantiate and return
-    return [
-        autopilot_module.AutopilotAction(),
-        parachutes_module.ParachutesAction(),
-        controllability_test_module.ControllabilityTestAction(),
-        hold_attitude_module.HoldAttitudeAction(),
-        hover_module.HoverAction(),
-        land_module.LandAction(),
-        launch_module.LaunchAction(),
-        sas_module.SasAction(),
-        science_module.ExecuteScienceAction(),
-        stage_module.StageAction(),
-        throttle_module.ThrottleAction(),
-        translate_module.TranslateAction(),
-        wait_for_module.WaitForAction(),
-    ]
+        for attr_name in dir(module):
+            attr = getattr(module, attr_name)
+            if isclass(attr) and issubclass(attr, Action) and attr is not Action:
+                actions.append(attr())
+
+    return actions
