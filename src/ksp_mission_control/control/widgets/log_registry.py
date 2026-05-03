@@ -131,8 +131,13 @@ class LogRegistryWidget(Static):
         border-left: solid $surface-lighten-2;
     }
 
-    #log-registry-log ListItem.--highlight {
-        background: $surface-lighten-1;
+    #log-registry-log ListItem.-highlight {
+        background: $block-hover-background;
+        border-left: solid $primary;
+    }
+
+    #log-registry-log:focus ListItem.-highlight {
+        background: $block-hover-background;
         border-left: solid $primary;
     }
 
