@@ -539,6 +539,73 @@ class TestPartsAggregateMethods:
         assert parts.parachutes_count() == 2
         assert parts.parachutes_count([]) == 2
 
+    # --- Engine aggregates ---
+
+    def test_engines_count(self) -> None:
+        parts = Parts(
+            engines=(
+                PartInfo(1, "active"),
+                PartInfo(2, "inactive"),
+                PartInfo(3, "flameout"),
+            )
+        )
+        assert parts.engines_count() == 3
+
+    def test_engines_active(self) -> None:
+        parts = Parts(
+            engines=(
+                PartInfo(1, "active"),
+                PartInfo(2, "active"),
+                PartInfo(3, "inactive"),
+                PartInfo(4, "flameout"),
+            )
+        )
+        assert parts.engines_active() == 2
+
+    def test_engines_inactive(self) -> None:
+        parts = Parts(
+            engines=(
+                PartInfo(1, "active"),
+                PartInfo(2, "inactive"),
+                PartInfo(3, "inactive"),
+            )
+        )
+        assert parts.engines_inactive() == 2
+
+    def test_engines_flameout(self) -> None:
+        parts = Parts(
+            engines=(
+                PartInfo(1, "active"),
+                PartInfo(2, "flameout"),
+                PartInfo(3, "flameout"),
+            )
+        )
+        assert parts.engines_flameout() == 2
+
+    def test_engines_active_filtered_by_stage(self) -> None:
+        parts = Parts(
+            engines=(
+                PartInfo(1, "active"),
+                PartInfo(2, "active"),
+                PartInfo(1, "flameout"),
+            )
+        )
+        assert parts.engines_active([1]) == 1
+        assert parts.engines_active([2]) == 1
+        assert parts.engines_active([1, 2]) == 2
+
+    def test_engines_inactive_filtered_by_stage(self) -> None:
+        parts = Parts(
+            engines=(
+                PartInfo(3, "inactive"),
+                PartInfo(4, "inactive"),
+                PartInfo(3, "active"),
+            )
+        )
+        assert parts.engines_inactive([3]) == 1
+        assert parts.engines_inactive([4]) == 1
+        assert parts.engines_inactive([5]) == 0
+
 
 class TestVesselCommands:
     """Tests for the VesselCommands mutable command buffer."""

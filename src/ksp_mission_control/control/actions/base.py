@@ -490,6 +490,24 @@ class Parts:
         """Number of fairings that have been discarded (no longer on the vessel)."""
         return sum(1 for p in filter_parts(self.fairings, stages) if p.state == "jettisoned")
 
+    # --- Engine aggregates ---
+
+    def engines_count(self, stages: Sequence[int] = ()) -> int:
+        """Total number of engine parts. Optionally filter by staging sequence."""
+        return len(filter_parts(self.engines, stages))
+
+    def engines_active(self, stages: Sequence[int] = ()) -> int:
+        """Number of engines currently firing and producing thrust."""
+        return sum(1 for e in filter_parts(self.engines, stages) if e.state == "active")
+
+    def engines_inactive(self, stages: Sequence[int] = ()) -> int:
+        """Number of engines not yet activated (available in future stages)."""
+        return sum(1 for e in filter_parts(self.engines, stages) if e.state == "inactive")
+
+    def engines_flameout(self, stages: Sequence[int] = ()) -> int:
+        """Number of active engines that have run out of fuel."""
+        return sum(1 for e in filter_parts(self.engines, stages) if e.state == "flameout")
+
 
 @dataclass(frozen=True)
 class State:
