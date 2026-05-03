@@ -248,8 +248,18 @@ class LogRegistryWidget(Static):
 
     @staticmethod
     def _format_entry(entry: LogEntry, met: float, colors: dict[LogLevel, str]) -> str:
-        """Format a single log entry as Rich markup."""
+        """Format a single log entry as Rich markup.
+
+        When the entry has track/action context (multi-track mode), the
+        track name and action label are shown as a prefix.
+        """
         met_str = format_met(met)
         color = colors[entry.level]
         tag = f"[{color}]{entry.level.value:>5}[/{color}]"
-        return f"[dim]{met_str}[/dim] {tag}  {entry.message}"
+        prefix = ""
+        if entry.track_name is not None:
+            parts = [f"[i]{entry.track_name}[/i]"]
+            if entry.action_label is not None:
+                parts.append(f"[i]{entry.action_label}[/i]")
+            prefix = f"[dim]{' / '.join(parts)}[/dim] "
+        return f"[dim]{met_str}[/dim] {tag} {prefix} {entry.message}"

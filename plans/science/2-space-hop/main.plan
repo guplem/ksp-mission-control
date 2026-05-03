@@ -1,0 +1,4 @@
+# Space hop with science collection
+
+@parallel science/2-space-hop/vessel_control.plan
+@parallel science/2-space-hop/science_control.plan

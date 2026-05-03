@@ -1,0 +1,12 @@
+# Space hop with parallel science collection
+# Flight track handles ascent and landing while the science track
+# independently waits for conditions and collects experiments.
+
+# Flight sequence
+suborbital_launch   auto_stage
+
+# Aerobrake and deploy chutes
+autopilot   target_pitch=90  target_heading=90
+wait_for   above_dynamic_pressure=500
+throttle   throttle_level=0.1
+parachutes     min_altitude=10_000  stage_for_parachutes=True  wait_for_safe=True

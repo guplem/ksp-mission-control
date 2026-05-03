@@ -121,3 +121,45 @@ class TestParseFlightPlan:
         plan_file.write_text("hover\n# comment\nbad_action\n")
         with pytest.raises(ValueError, match="Line 3"):
             parse_flight_plan(plan_file)
+
+
+class TestParseParallelDirective:
+    """Tests for @parallel directive parsing in .plan files."""
+
+    def test_parallel_directive_parsed(self, tmp_path: Path) -> None:
+        plan_file = tmp_path / "with_parallel.plan"
+        plan_file.write_text("@parallel science/collect.plan\nhover\n")
+        plan = parse_flight_plan(plan_file)
+        assert plan.parallel_plans == ("science/collect.plan",)
+        assert len(plan.steps) == 1
+
+    def test_multiple_parallel_directives(self, tmp_path: Path) -> None:
+        plan_file = tmp_path / "multi_parallel.plan"
+        plan_file.write_text("@parallel science/collect.plan\n@parallel comms/relay.plan\nhover\n")
+        plan = parse_flight_plan(plan_file)
+        assert plan.parallel_plans == ("science/collect.plan", "comms/relay.plan")
+
+    def test_parallel_with_steps_and_comments(self, tmp_path: Path) -> None:
+        plan_file = tmp_path / "mixed.plan"
+        plan_file.write_text("# Main flight plan\n@parallel science/hop.plan\n\nhover  target_altitude=100\nland\n")
+        plan = parse_flight_plan(plan_file)
+        assert plan.parallel_plans == ("science/hop.plan",)
+        assert len(plan.steps) == 2
+
+    def test_no_parallel_defaults_to_empty(self, tmp_path: Path) -> None:
+        plan_file = tmp_path / "no_parallel.plan"
+        plan_file.write_text("hover\n")
+        plan = parse_flight_plan(plan_file)
+        assert plan.parallel_plans == ()
+
+    def test_parallel_empty_path_raises(self, tmp_path: Path) -> None:
+        plan_file = tmp_path / "bad_parallel.plan"
+        plan_file.write_text("@parallel \nhover\n")
+        with pytest.raises(ValueError, match="@parallel requires a file path"):
+            parse_flight_plan(plan_file)
+
+    def test_plan_with_only_parallel_no_steps_raises(self, tmp_path: Path) -> None:
+        plan_file = tmp_path / "only_parallel.plan"
+        plan_file.write_text("@parallel science/collect.plan\n")
+        with pytest.raises(ValueError, match="has no steps"):
+            parse_flight_plan(plan_file)

@@ -32,6 +32,8 @@ class LogEntry:
 
     level: LogLevel
     message: str
+    track_name: str | None = None
+    action_label: str | None = None
 
 
 class ActionLogger:

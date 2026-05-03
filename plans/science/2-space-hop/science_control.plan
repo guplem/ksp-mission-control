@@ -1,0 +1,15 @@
+# Science track for a space hop mission
+# Runs alongside the flight track to collect science at key moments
+
+# Collect science during ascent above 1,000m
+wait_for       above_altitude=1_000
+science    name-tag=T1
+science    name-tag=T2
+science    name-tag=T3
+
+# Transmit before losing the stage
+science    action=transmit
+
+# Collect all remaining science at apoapsis
+wait_for    apoapsis=True
+science

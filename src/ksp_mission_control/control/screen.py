@@ -25,14 +25,14 @@ from ksp_mission_control.control.actions.base import (
     VesselSituation,
 )
 from ksp_mission_control.control.actions.flight_plan import FlightPlan
-from ksp_mission_control.control.actions.plan_executor import PlanSnapshot
+from ksp_mission_control.control.actions.multi_track_executor import MultiTrackSnapshot
 from ksp_mission_control.control.actions.runner import RunnerSnapshot
 from ksp_mission_control.control.confirm_exit_dialog import ConfirmExitDialog
 from ksp_mission_control.control.flight_plan_picker import FlightPlanPicker
 from ksp_mission_control.control.formatting import format_met
 from ksp_mission_control.control.manual_command_dialog import ManualCommandDialog
 from ksp_mission_control.control.param_input_modal import ParamInputModal
-from ksp_mission_control.control.plan_failure_dialog import PlanFailureDialog
+from ksp_mission_control.control.plan_failure_dialog import FailureAction, PlanFailureDialog
 from ksp_mission_control.control.science_command_dialog import ScienceCommandDialog
 from ksp_mission_control.control.session import ControlSession
 from ksp_mission_control.control.tick_record import TickRecord
@@ -101,8 +101,8 @@ class ControlScreen(Screen[None]):
 
         config_manager = cast(MissionControlApp, self.app).config_manager
         self._session = ControlSession(
-            on_update=lambda state, snapshot, commands, applied_fields, logs, plan_snap: self.app.call_from_thread(
-                self._update_ui, state, snapshot, commands, applied_fields, logs, plan_snap
+            on_update=lambda state, snapshot, commands, applied_fields, logs, multi_snap: self.app.call_from_thread(
+                self._update_ui, state, snapshot, commands, applied_fields, logs, multi_snap
             ),
             on_error=lambda message: self.app.call_from_thread(self._show_error, message),
             config_manager=config_manager,
@@ -122,7 +122,7 @@ class ControlScreen(Screen[None]):
         commands: VesselCommands,
         applied_fields: frozenset[str],
         logs: list[LogEntry],
-        plan_snap: PlanSnapshot,
+        multi_snap: MultiTrackSnapshot,
     ) -> None:
         """Update telemetry, control panel, command history, and log registry."""
         self._tick_counter += 1
@@ -141,10 +141,11 @@ class ControlScreen(Screen[None]):
         if len(self._tick_history) > _MAX_TICK_HISTORY:
             self._tick_history.pop(0)
 
+        plan_snap = multi_snap.primary
         self.query_one("#telemetry-display", TelemetryDisplayWidget).update_vessel_state(state)
         control_panel = self.query_one("#control-panel", ControlPanelWidget)
         control_panel.update_running(runner_state.action_id)
-        control_panel.update_plan(plan_snap)
+        control_panel.update_plan(plan_snap, multi_snap=multi_snap)
         self.query_one("#command-history", CommandHistoryWidget).record_commands(
             commands,
             applied_fields=applied_fields,
@@ -156,26 +157,42 @@ class ControlScreen(Screen[None]):
         )
         self.query_one("#log-registry", LogRegistryWidget).append_logs(logs, met=state.met, tick_id=self._tick_counter)
 
-        # Show failure dialog if plan is paused on failure
+        # Show failure dialog if any track is paused on failure
         if self._session is not None and self._session.paused_on_failure and not self._showing_failure_dialog:
             self._showing_failure_dialog = True
+            paused = self._session.paused_tracks()
+            paused_track = paused[0] if paused else None
+            failed_snap = plan_snap
+            if paused_track is not None:
+                for track in multi_snap.tracks:
+                    if track.track_name == paused_track:
+                        failed_snap = track.plan_snapshot
+                        break
             self.app.push_screen(
-                PlanFailureDialog(plan_snap),
+                PlanFailureDialog(
+                    failed_snap,
+                    track_name=paused_track,
+                    is_multi_track=multi_snap.is_multi_track,
+                ),
                 callback=self._handle_failure_dialog,
             )
 
-    def _handle_failure_dialog(self, continue_plan: bool | None) -> None:
+    def _handle_failure_dialog(self, action: FailureAction | None) -> None:
         """Handle the result of the failure confirmation dialog."""
         self._showing_failure_dialog = False
-        if self._session is None:
+        if self._session is None or action is None:
             return
-        if continue_plan:
+        if action == FailureAction.CONTINUE:
             try:
                 self._session.continue_plan()
             except ValueError as exc:
                 self.notify(str(exc), severity="error")
                 self._log_error(str(exc))
-        else:
+        elif action == FailureAction.ABORT_TRACK:
+            paused = self._session.paused_tracks()
+            if paused:
+                self._session.abort_track(paused[0])
+        elif action == FailureAction.ABORT_ALL:
             self._session.abort_plan()
             self.query_one("#control-panel", ControlPanelWidget).update_running(None)
 
@@ -243,7 +260,8 @@ class ControlScreen(Screen[None]):
         if plan is None or self._session is None:
             return
         try:
-            self._session.start_plan(plan)
+            plans_dir = Path.cwd() / "plans"
+            self._session.start_plan(plan, plans_dir=plans_dir)
         except ValueError as exc:
             self.notify(str(exc), severity="error")
             self._log_error(str(exc))

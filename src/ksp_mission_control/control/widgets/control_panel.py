@@ -12,6 +12,7 @@ from textual.css.query import NoMatches
 from textual.message import Message
 from textual.widgets import Button, Static
 
+from ksp_mission_control.control.actions.multi_track_executor import MultiTrackSnapshot
 from ksp_mission_control.control.actions.plan_executor import PlanSnapshot, StepStatus
 from ksp_mission_control.control.actions.registry import get_available_actions
 from ksp_mission_control.control.formatting import resolve_theme_colors
@@ -68,6 +69,7 @@ class ControlPanelWidget(Static):
         self._running_action_id: str | None = None
         self._plan_active: bool = False
         self._last_plan_snapshot: PlanSnapshot | None = None
+        self._last_multi_snapshot: MultiTrackSnapshot | None = None
         self._status_colors: dict[StepStatus, str] | None = None
 
     def compose(self) -> ComposeResult:
@@ -121,13 +123,19 @@ class ControlPanelWidget(Static):
             status_content.display = False
             title.update("[b]Control[/b]")
 
-    def update_plan(self, plan_snap: PlanSnapshot) -> None:
+    def update_plan(self, plan_snap: PlanSnapshot, multi_snap: MultiTrackSnapshot | None = None) -> None:
         """Update the plan step display based on the current plan snapshot.
 
-        Switches between idle mode and plan mode as needed.
+        When *multi_snap* has multiple tracks, renders each track as a
+        labeled section. For single-track plans, renders identically to
+        the previous behavior (no section headers).
         """
+        self._last_multi_snapshot = multi_snap
         if plan_snap.plan_name is not None:
-            self._show_plan_mode(plan_snap)
+            if multi_snap is not None and multi_snap.is_multi_track:
+                self._show_multi_track_mode(multi_snap)
+            else:
+                self._show_plan_mode(plan_snap)
         elif self._plan_active:
             self._show_idle_mode()
 
@@ -195,6 +203,58 @@ class ControlPanelWidget(Static):
             lines.append(f"{status_part}  {name_part}")
 
         plan_content.update("\n".join(lines))
+
+    def _show_multi_track_mode(self, multi_snap: MultiTrackSnapshot) -> None:
+        """Render multiple tracks, each as a labeled section with step lines."""
+        try:
+            plan_content = self.query_one("#plan-steps-content", Static)
+            status_content = self.query_one("#action-status-content", Static)
+            title = self.query_one("#control-panel-title", Static)
+        except NoMatches:
+            return
+
+        if not self._plan_active:
+            status_content.display = False
+            plan_content.display = True
+            self._plan_active = True
+            self._update_button_visibility()
+
+        primary = multi_snap.primary
+        if primary == self._last_plan_snapshot and multi_snap == self._last_multi_snapshot:
+            return
+        self._last_plan_snapshot = primary
+
+        colors = self._resolve_status_colors()
+        action_lookup = {a.action_id: a for a in get_available_actions()}
+        all_lines: list[str] = []
+
+        primary_name = primary.plan_name or "plan"
+        title.update(f"[b]Flight Plan: {primary_name}[/b]")
+
+        for track_snap in multi_snap.tracks:
+            plan = track_snap.plan_snapshot
+            if plan.plan_name is None:
+                continue
+            all_lines.append(f"\n[b dim]\\[{track_snap.track_name}][/b dim]")
+            for index, step_status in enumerate(plan.step_statuses):
+                action_id = plan.step_action_ids[index]
+                action_entry = action_lookup.get(action_id)
+                label_text = action_entry.label if action_entry else action_id
+                color = colors[step_status]
+                status_tag = _STATUS_LABELS[step_status]
+                step_number = index + 1
+                status_part = f"[{color}]{status_tag:>7}[/{color}]"
+
+                if step_status == StepStatus.RUNNING:
+                    name_part = f"[bold]Step {step_number}: {label_text}[/bold]"
+                elif step_status == StepStatus.PENDING:
+                    name_part = f"[dim]Step {step_number}: {label_text}[/dim]"
+                else:
+                    name_part = f"Step {step_number}: {label_text}"
+
+                all_lines.append(f"{status_part}  {name_part}")
+
+        plan_content.update("\n".join(all_lines).lstrip("\n"))
 
     def _show_idle_mode(self) -> None:
         """Switch back to idle mode (no plan, no action)."""

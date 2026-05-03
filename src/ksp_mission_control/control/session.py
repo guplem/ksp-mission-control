@@ -12,6 +12,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from dataclasses import fields as dataclass_fields
+from pathlib import Path
 from typing import Any
 
 from ksp_mission_control.config import ConfigManager
@@ -23,7 +24,11 @@ from ksp_mission_control.control.actions.base import (
     VesselCommands,
 )
 from ksp_mission_control.control.actions.flight_plan import FlightPlan
-from ksp_mission_control.control.actions.plan_executor import PlanExecutor, PlanSnapshot
+from ksp_mission_control.control.actions.multi_track_executor import (
+    MultiTrackExecutor,
+    MultiTrackSnapshot,
+)
+from ksp_mission_control.control.actions.plan_executor import PlanSnapshot
 from ksp_mission_control.control.actions.runner import RunnerSnapshot, StepResult
 from ksp_mission_control.control.krpc_bridge import (
     NoActiveVesselError,
@@ -71,7 +76,7 @@ class ControlSession:
                 VesselCommands,
                 frozenset[str],
                 list[LogEntry],
-                PlanSnapshot,
+                MultiTrackSnapshot,
             ],
             None,
         ],
@@ -82,7 +87,7 @@ class ControlSession:
         self._on_error = on_error
         self._config_manager = config_manager
         self._conn: object | None = None
-        self._executor = PlanExecutor()
+        self._executor = MultiTrackExecutor()
         self._stop_event = threading.Event()
         self._last_state: State = State()
         self._pending_manual_command: VesselCommands | None = None
@@ -133,13 +138,14 @@ class ControlSession:
                             timeout=_KRPC_CALL_TIMEOUT,
                         )
                         if not self._stop_event.is_set():
+                            multi_snap = self._executor.snapshot()
                             self._on_update(
                                 vessel_state,
-                                self._executor.snapshot().runner,
+                                multi_snap.primary.runner,
                                 step_result.commands,
                                 applied_fields,
                                 step_result.logs,
-                                self._executor.snapshot(),
+                                multi_snap,
                             )
                     # Connection dead: break to outer loop for reconnect
                     except FutureTimeout:
@@ -203,9 +209,9 @@ class ControlSession:
         """Begin executing a single action. Raises ValueError on invalid params."""
         self._executor.start_action(action, self._last_state, params)
 
-    def start_plan(self, plan: FlightPlan) -> None:
+    def start_plan(self, plan: FlightPlan, plans_dir: Path | None = None) -> None:
         """Begin executing a flight plan. Raises ValueError on invalid plan."""
-        self._executor.start_plan(plan, self._last_state)
+        self._executor.start_plan(plan, self._last_state, plans_dir=plans_dir)
 
     def continue_plan(self) -> None:
         """Continue a paused plan (skip failed step). Raises ValueError if not paused."""
@@ -235,10 +241,21 @@ class ControlSession:
             with contextlib.suppress(Exception):
                 apply_controls(self._conn, result.commands)
 
+    def abort_track(self, track_name: str) -> None:
+        """Abort a single track by name."""
+        result = self._executor.abort_track(track_name)
+        if self._conn is not None:
+            with contextlib.suppress(Exception):
+                apply_controls(self._conn, result.commands)
+
     @property
     def paused_on_failure(self) -> bool:
-        """Whether the plan executor is paused waiting for user decision."""
+        """Whether any track is paused waiting for user decision."""
         return self._executor.paused_on_failure
+
+    def paused_tracks(self) -> list[str]:
+        """Return names of all tracks that are paused on failure."""
+        return self._executor.paused_tracks()
 
     def _wait_for_reconnect(self) -> None:
         """Wait before retrying. Returns early if shutdown is requested."""
@@ -247,7 +264,7 @@ class ControlSession:
     def shutdown(self) -> None:
         """Stop the poll loop, abort any running action, and close the connection."""
         self._stop_event.set()
-        if self._executor.snapshot().runner.action_id is not None:
+        if self._executor.snapshot().primary.runner.action_id is not None:
             self.abort()
         conn = self._conn
         self._conn = None
@@ -257,8 +274,12 @@ class ControlSession:
 
     def snapshot(self) -> RunnerSnapshot:
         """Return an immutable snapshot of the current runner state."""
-        return self._executor.snapshot().runner
+        return self._executor.snapshot().primary.runner
 
     def plan_snapshot(self) -> PlanSnapshot:
         """Return an immutable snapshot of the current plan state."""
+        return self._executor.snapshot().primary
+
+    def multi_track_snapshot(self) -> MultiTrackSnapshot:
+        """Return an immutable snapshot of all tracks."""
         return self._executor.snapshot()

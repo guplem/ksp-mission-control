@@ -49,7 +49,7 @@ src/ksp_mission_control/
 ├── style.tcss            # App-level global styles
 ├── control/              # Control room feature
 │   ├── screen.py         # ControlScreen (thin UI glue, delegates to session) (ADR 0007)
-│   ├── session.py        # ControlSession (poll loop, connection, PlanExecutor) (ADR 0007)
+│   ├── session.py        # ControlSession (poll loop, connection, MultiTrackExecutor) (ADR 0007)
 │   ├── style.tcss        # Control-screen grid layout (4x2: telemetry, control, log registry, history)
 │   ├── formatting.py     # Shared formatting: format_met(), resolve_theme_colors()
 │   ├── krpc_bridge.py    # kRPC I/O: read/write + filter_commands() + NoActiveVesselError
@@ -65,7 +65,8 @@ src/ksp_mission_control/
 │   │   ├── base.py       # Action ABC, State, VesselCommands, ActionParam, ActionLogger, ScienceExperiment, ScienceCommand, enums
 │   │   ├── runner.py     # ActionRunner (step-based executor), StepResult
 │   │   ├── plan_executor.py # PlanExecutor (wraps ActionRunner, chains plan steps)
-│   │   ├── flight_plan.py   # FlightPlan, FlightPlanStep, parse_flight_plan()
+│   │   ├── multi_track_executor.py # MultiTrackExecutor (parallel plan tracks, command merging)
+│   │   ├── flight_plan.py   # FlightPlan, FlightPlanStep, parse_flight_plan(), @parallel directive
 │   │   ├── registry.py   # get_available_actions() factory
 │   │   ├── controllability_test/ # Diagnostic attitude control verification
 │   │   │   └── action.py # ControllabilityTestAction (tests roll/pitch/heading axes)
@@ -166,22 +167,26 @@ Groups: `altitude_`, `speed_`, `pressure_`, `aero_`, `orbit_`, `body_`, `positio
 ### Data flow
 
 ```
-kRPC --read--> krpc_bridge --> State --> PlanExecutor.step() --> VesselCommands
-                                                      |
-                                              ActionRunner.step()
-                                              (single action tick)
-                                                      |
-                                              filter_commands(commands, state)
-                                                    |              |
-                                              applied_fields   filtered commands
-                                                    |              |
-                                                    |       krpc_bridge --write--> kRPC
-                                                    |
-                                  ControlSession (owns connection + executor + poll loop)
-                                      |                                      |
-                                  on_update callback                    on_error callback
-                                      |                                      |
-                                  ControlScreen (UI glue: call_from_thread -> widgets)
+kRPC --read--> krpc_bridge --> State --> MultiTrackExecutor.step() --> VesselCommands
+                                                |
+                                      for each track:
+                                        PlanExecutor.step()
+                                          ActionRunner.step()
+                                            action.tick()
+                                                |
+                                      _merge_commands() (field-level, conflict warnings)
+                                                |
+                                      filter_commands(merged, state)
+                                            |              |
+                                      applied_fields   filtered commands
+                                            |              |
+                                            |       krpc_bridge --write--> kRPC
+                                            |
+                          ControlSession (owns connection + executor + poll loop)
+                              |                                      |
+                          on_update callback                    on_error callback
+                              |                                      |
+                          ControlScreen (UI glue: call_from_thread -> widgets)
 ```
 
 - **Read path**: `krpc_bridge.read_vessel_state()` reads kRPC telemetry into a pure `State` dataclass.
@@ -202,6 +207,7 @@ kRPC --read--> krpc_bridge --> State --> PlanExecutor.step() --> VesselCommands
 - **Theme color resolution**: Widgets that need theme colors in Rich markup (where CSS variables aren't available) use `resolve_theme_colors(app, mapping)` from `formatting.py`. Results are cached after first call.
 - **CSS theming**: Keep static layout and visual styling in `.tcss`. Use Python style updates only for runtime-dependent values (state, measurements, animations, temporary overrides).
 - **Flight plan execution**: `PlanExecutor` wraps `ActionRunner` and manages step-to-step transitions. It detects action completion by comparing runner snapshots before/after `step()` and checking logs for "succeeded"/"failed". On success, it auto-starts the next step. On failure, it pauses and sets `paused_on_failure` for the UI to show a dialog. Plans are stored as `.plan` text files in the `plans/` directory.
+- **Parallel plan execution**: `MultiTrackExecutor` manages multiple `PlanExecutor` instances (one per track). Plans can include `@parallel path/to/sub.plan` directives to spawn parallel tracks. Nesting is recursive (sub-plans can have their own `@parallel`). Each tick, all tracks are stepped sequentially and their `VesselCommands` merged field-by-field (last-write-wins). Conflicts (two tracks setting the same field) produce a WARN-level log. Science commands concatenate rather than overwrite. Track-level failure isolation: one track failing does not stop others. The UI shows per-track step sections and offers Continue/Abort Track/Abort All on failure.
 
 ### Textual UI composition and styling rules (ADR 0001)
 

@@ -28,10 +28,15 @@ class FlightPlanStep:
 
 @dataclass(frozen=True)
 class FlightPlan:
-    """Ordered sequence of action steps to execute."""
+    """Ordered sequence of action steps to execute.
+
+    ``parallel_plans`` lists relative paths to .plan files that should
+    run as parallel tracks alongside this plan's sequential steps.
+    """
 
     name: str
     steps: tuple[FlightPlanStep, ...]
+    parallel_plans: tuple[str, ...] = ()
 
 
 def _parse_param_value(raw: str, param_type: ParamType) -> float | bool | str:
@@ -79,15 +84,26 @@ def _parse_line_params(tokens: list[str], action: Action) -> dict[str, Any]:
 def parse_flight_plan(path: Path) -> FlightPlan:
     """Parse a .plan file into a FlightPlan.
 
+    Lines starting with ``@parallel <path>`` declare sub-plans to run
+    as parallel tracks. Paths are relative to the ``plans/`` directory.
+
     Raises ValueError on unknown actions, invalid params, or empty plans.
     """
     actions = get_available_actions()
     steps: list[FlightPlanStep] = []
+    parallel_plans: list[str] = []
 
     text = path.read_text(encoding="utf-8")
     for line_number, raw_line in enumerate(text.splitlines(), start=1):
         line = raw_line.strip()
         if not line or line.startswith("#"):
+            continue
+
+        if line == "@parallel" or line.startswith("@parallel "):
+            parallel_path = line[len("@parallel") :].strip()
+            if not parallel_path:
+                raise ValueError(f"Line {line_number}: @parallel requires a file path")
+            parallel_plans.append(parallel_path)
             continue
 
         tokens = line.split()
@@ -104,4 +120,8 @@ def parse_flight_plan(path: Path) -> FlightPlan:
         raise ValueError(f"Flight plan {path.name} has no steps")
 
     plan_name = path.stem
-    return FlightPlan(name=plan_name, steps=tuple(steps))
+    return FlightPlan(
+        name=plan_name,
+        steps=tuple(steps),
+        parallel_plans=tuple(parallel_plans),
+    )

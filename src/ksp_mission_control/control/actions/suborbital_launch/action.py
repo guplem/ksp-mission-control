@@ -24,7 +24,7 @@ from ksp_mission_control.control.actions.base import (
 class SuborbitalLaunchAction(Action):
     """Perform a suborbital launch to a target altitude."""
 
-    action_id: ClassVar[str] = "suborbitallaunch"
+    action_id: ClassVar[str] = "suborbital_launch"
     label: ClassVar[str] = "Suborbital Launch"
     description: ClassVar[str] = "Perform a suborbital launch to a target altitude"
     params: ClassVar[list[ActionParam]] = [
