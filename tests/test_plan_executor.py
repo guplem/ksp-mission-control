@@ -179,7 +179,7 @@ class TestPlanExecutorPlan:
         snap = executor.snapshot()
         assert snap.plan_name is None
 
-    def test_plan_pauses_on_failure(self) -> None:
+    def test_auto_continues_on_failure(self) -> None:
         executor = PlanExecutor()
         plan, actions = _make_plan(2)
         state = State()
@@ -188,40 +188,24 @@ class TestPlanExecutorPlan:
         actions[0].set_return_status(ActionStatus.FAILED)
         executor.step(state, dt=0.5)
 
-        assert executor.paused_on_failure is True
         snap = executor.snapshot()
         assert snap.step_statuses[0] == StepStatus.FAILED
-        assert snap.step_statuses[1] == StepStatus.PENDING
-
-    def test_continue_after_failure(self) -> None:
-        executor = PlanExecutor()
-        plan, actions = _make_plan(2)
-        state = State()
-        executor.start_plan(plan, state, actions=actions)
-
-        actions[0].set_return_status(ActionStatus.FAILED)
-        executor.step(state, dt=0.5)
-        assert executor.paused_on_failure is True
-
-        executor.continue_plan(state)
-        assert executor.paused_on_failure is False
-        snap = executor.snapshot()
-        assert snap.current_step_index == 1
         assert snap.step_statuses[1] == StepStatus.RUNNING
+        assert snap.current_step_index == 1
 
-    def test_abort_plan_after_failure(self) -> None:
+    def test_last_step_failure_ends_plan(self) -> None:
         executor = PlanExecutor()
-        plan, actions = _make_plan(2)
+        plan, actions = _make_plan(1)
         state = State()
         executor.start_plan(plan, state, actions=actions)
 
         actions[0].set_return_status(ActionStatus.FAILED)
-        executor.step(state, dt=0.5)
+        result = executor.step(state, dt=0.5)
 
-        executor.abort_plan()
-        assert executor.paused_on_failure is False
-        snap = executor.snapshot()
-        assert snap.plan_name is None
+        from ksp_mission_control.control.actions.base import LogLevel
+
+        plan_end_logs = [log for log in result.logs if log.level == LogLevel.PLAN_END]
+        assert len(plan_end_logs) == 1
 
     def test_abort_cancels_remaining_steps(self) -> None:
         executor = PlanExecutor()
@@ -235,39 +219,6 @@ class TestPlanExecutorPlan:
         snap = executor.snapshot()
         assert snap.plan_name is None
         assert snap.total_steps == 0
-
-    def test_paused_plan_does_not_advance(self) -> None:
-        executor = PlanExecutor()
-        plan, actions = _make_plan(2)
-        state = State()
-        executor.start_plan(plan, state, actions=actions)
-
-        actions[0].set_return_status(ActionStatus.FAILED)
-        executor.step(state, dt=0.5)
-
-        for _ in range(5):
-            executor.step(state, dt=0.5)
-
-        snap = executor.snapshot()
-        assert snap.current_step_index == 0
-        assert executor.paused_on_failure is True
-
-    def test_continue_raises_when_no_paused_plan(self) -> None:
-        executor = PlanExecutor()
-        with pytest.raises(ValueError, match="No paused plan"):
-            executor.continue_plan(State())
-
-    def test_continue_raises_when_no_more_steps(self) -> None:
-        executor = PlanExecutor()
-        plan, actions = _make_plan(1)
-        state = State()
-        executor.start_plan(plan, state, actions=actions)
-
-        actions[0].set_return_status(ActionStatus.FAILED)
-        executor.step(state, dt=0.5)
-
-        with pytest.raises(ValueError, match="No more steps"):
-            executor.continue_plan(state)
 
     def test_empty_plan_raises(self) -> None:
         executor = PlanExecutor()

@@ -257,7 +257,7 @@ class TestMultiTrackExecutorSinglePlan:
         assert snap.primary.step_statuses[0] == StepStatus.SUCCEEDED
         assert snap.primary.step_statuses[1] == StepStatus.RUNNING
 
-    def test_plan_pauses_on_failure(self) -> None:
+    def test_auto_continues_on_failure(self) -> None:
         executor = MultiTrackExecutor()
         plan, actions = _make_plan(num_steps=2)
         state = State()
@@ -266,20 +266,9 @@ class TestMultiTrackExecutorSinglePlan:
         actions[0].set_return_status(ActionStatus.FAILED)
         executor.step(state, dt=0.5)
 
-        assert executor.paused_on_failure is True
-
-    def test_continue_after_failure(self) -> None:
-        executor = MultiTrackExecutor()
-        plan, actions = _make_plan(num_steps=2)
-        state = State()
-        executor.start_plan(plan, state, actions=actions)
-
-        actions[0].set_return_status(ActionStatus.FAILED)
-        executor.step(state, dt=0.5)
-        executor.continue_plan(state)
-
-        assert executor.paused_on_failure is False
         snap = executor.snapshot()
+        assert snap.primary.step_statuses[0] == StepStatus.FAILED
+        assert snap.primary.step_statuses[1] == StepStatus.RUNNING
         assert snap.primary.current_step_index == 1
 
     def test_abort_plan(self) -> None:
@@ -287,7 +276,7 @@ class TestMultiTrackExecutorSinglePlan:
         plan, actions = _make_plan(num_steps=2)
         state = State()
         executor.start_plan(plan, state, actions=actions)
-        executor.abort_plan()
+        executor.abort()
         snap = executor.snapshot()
         assert snap.tracks == ()
 
@@ -374,12 +363,9 @@ class TestMultiTrackExecutorParallel:
         executor_b.start_plan(plan_b, state, actions=actions_b)
         executor._tracks.append(("science", executor_b))
 
-        # Fail science track
+        # Fail science track - it auto-continues (no pause)
         actions_b[0].set_return_status(ActionStatus.FAILED)
         executor.step(state, dt=0.5)
-
-        assert executor.paused_on_failure is True
-        assert executor.paused_tracks() == ["science"]
 
         # Flight track should still be running
         snap = executor.snapshot()
@@ -408,41 +394,6 @@ class TestMultiTrackExecutorParallel:
         executor = MultiTrackExecutor()
         with pytest.raises(ValueError, match="Unknown track"):
             executor.abort_track("nonexistent")
-
-    def test_continue_track_resumes_paused(self) -> None:
-        executor = MultiTrackExecutor()
-        plan, actions = _make_plan(name="test", num_steps=2)
-        state = State()
-        executor.start_plan(plan, state, actions=actions)
-
-        actions[0].set_return_status(ActionStatus.FAILED)
-        executor.step(state, dt=0.5)
-        assert executor.paused_on_failure is True
-
-        executor.continue_track("test", state)
-        assert executor.paused_on_failure is False
-
-    def test_continue_track_raises_for_unknown(self) -> None:
-        executor = MultiTrackExecutor()
-        with pytest.raises(ValueError, match="Unknown track"):
-            executor.continue_track("nonexistent", State())
-
-    def test_continue_plan_continues_first_paused_track(self) -> None:
-        executor = MultiTrackExecutor()
-        plan, actions = _make_plan(name="test", num_steps=2)
-        state = State()
-        executor.start_plan(plan, state, actions=actions)
-
-        actions[0].set_return_status(ActionStatus.FAILED)
-        executor.step(state, dt=0.5)
-
-        executor.continue_plan(state)
-        assert executor.paused_on_failure is False
-
-    def test_continue_plan_raises_when_none_paused(self) -> None:
-        executor = MultiTrackExecutor()
-        with pytest.raises(ValueError, match="No paused plan"):
-            executor.continue_plan(State())
 
 
 class TestMultiTrackRecursiveLoading:

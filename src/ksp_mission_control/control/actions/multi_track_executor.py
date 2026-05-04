@@ -246,35 +246,6 @@ class MultiTrackExecutor:
                 return result
         raise ValueError(f"Unknown track: {track_name!r}")
 
-    def continue_track(self, track_name: str, vessel_state: State) -> None:
-        """Continue a paused track (skip failed step)."""
-        for name, executor in self._tracks:
-            if name == track_name:
-                executor.continue_plan(vessel_state)
-                return
-        raise ValueError(f"Unknown track: {track_name!r}")
-
-    def abort_plan(self) -> StepResult:
-        """Abort all tracks (called when user chooses abort after failure)."""
-        return self.abort()
-
-    def continue_plan(self, vessel_state: State) -> None:
-        """Continue the first paused track."""
-        for _name, executor in self._tracks:
-            if executor.paused_on_failure:
-                executor.continue_plan(vessel_state)
-                return
-        raise ValueError("No paused plan to continue")
-
-    @property
-    def paused_on_failure(self) -> bool:
-        """Whether any track is paused waiting for user decision."""
-        return any(executor.paused_on_failure for _name, executor in self._tracks)
-
-    def paused_tracks(self) -> list[str]:
-        """Return names of all tracks that are paused on failure."""
-        return [name for name, executor in self._tracks if executor.paused_on_failure]
-
     def snapshot(self) -> MultiTrackSnapshot:
         """Return an immutable snapshot of all tracks."""
         tracks = tuple(TrackSnapshot(track_name=name, plan_snapshot=executor.snapshot()) for name, executor in self._tracks)

@@ -1,8 +1,8 @@
 """PlanExecutor - sequential flight plan executor wrapping ActionRunner.
 
 Manages executing a FlightPlan step-by-step. When the current action
-succeeds, automatically starts the next step. On failure, pauses the
-plan for the UI to show a confirmation dialog.
+succeeds, automatically starts the next step. On failure, logs a warning
+and auto-continues to the next step.
 """
 
 from __future__ import annotations
@@ -63,7 +63,6 @@ class PlanExecutor:
         self._step_actions: list[Action] = []
         self._step_index: int = 0
         self._step_statuses: list[StepStatus] = []
-        self._paused_on_failure: bool = False
         self._emit_plan_started: bool = False
 
     def start_action(
@@ -100,7 +99,6 @@ class PlanExecutor:
         self._plan = plan
         self._step_index = 0
         self._step_statuses = [StepStatus.PENDING] * len(plan.steps)
-        self._paused_on_failure = False
         self._emit_plan_started = True
 
         self._step_statuses[0] = StepStatus.RUNNING
@@ -130,7 +128,7 @@ class PlanExecutor:
                 for entry in result.logs
             ]
 
-        if self._plan is None or self._paused_on_failure:
+        if self._plan is None:
             return result
 
         has_action = self._runner.snapshot().action_id is not None
@@ -153,9 +151,19 @@ class PlanExecutor:
                     # Plan complete
                     result.logs.append(LogEntry(level=LogLevel.PLAN_END, message=self._plan.name))
             else:
-                # Action failed - pause for user decision
+                # Action failed - auto-continue to next step
                 self._step_statuses[self._step_index] = StepStatus.FAILED
-                self._paused_on_failure = True
+
+                if self._step_index + 1 < len(self._plan.steps):
+                    self._step_index += 1
+                    self._step_statuses[self._step_index] = StepStatus.RUNNING
+                    self._runner.start_action(
+                        self._step_actions[self._step_index],
+                        vessel_state,
+                        self._plan.steps[self._step_index].param_values,
+                    )
+                else:
+                    result.logs.append(LogEntry(level=LogLevel.PLAN_END, message=self._plan.name))
 
         return result
 
@@ -167,40 +175,6 @@ class PlanExecutor:
             result.logs.append(LogEntry(level=LogLevel.PLAN_END, message=plan_name))
         self._clear_plan()
         return result
-
-    def continue_plan(self, vessel_state: State) -> None:
-        """Resume a paused plan by skipping the failed step and starting the next.
-
-        Called by the UI when the user chooses to continue after a failure.
-        Raises ValueError if no plan is paused or no more steps remain.
-        """
-        if self._plan is None or not self._paused_on_failure:
-            raise ValueError("No paused plan to continue")
-
-        self._paused_on_failure = False
-
-        if self._step_index + 1 >= len(self._plan.steps):
-            self._clear_plan()
-            raise ValueError("No more steps in the plan")
-
-        self._step_index += 1
-        self._step_statuses[self._step_index] = StepStatus.RUNNING
-        self._runner.start_action(
-            self._step_actions[self._step_index],
-            vessel_state,
-            self._plan.steps[self._step_index].param_values,
-        )
-
-    def abort_plan(self) -> StepResult:
-        """Abort a paused plan (user chose not to continue after failure)."""
-        result = self._runner.abort()
-        self._clear_plan()
-        return result
-
-    @property
-    def paused_on_failure(self) -> bool:
-        """Whether the plan is paused waiting for user decision after a failure."""
-        return self._paused_on_failure
 
     def snapshot(self) -> PlanSnapshot:
         """Return a thread-safe snapshot of plan + runner state."""
@@ -223,7 +197,6 @@ class PlanExecutor:
         self._step_actions = []
         self._step_index = 0
         self._step_statuses = []
-        self._paused_on_failure = False
 
     def _resolve_action(self, action_id: str) -> Action:
         """Get a fresh action instance by ID from the registry."""

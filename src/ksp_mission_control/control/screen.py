@@ -32,7 +32,6 @@ from ksp_mission_control.control.flight_plan_picker import FlightPlanPicker
 from ksp_mission_control.control.formatting import format_met
 from ksp_mission_control.control.manual_command_dialog import ManualCommandDialog
 from ksp_mission_control.control.param_input_modal import ParamInputModal
-from ksp_mission_control.control.plan_failure_dialog import FailureAction, PlanFailureDialog
 from ksp_mission_control.control.science_command_dialog import ScienceCommandDialog
 from ksp_mission_control.control.session import ControlSession
 from ksp_mission_control.control.tick_record import TickRecord
@@ -81,7 +80,6 @@ class ControlScreen(Screen[None]):
         super().__init__()
         self._session: ControlSession | None = None
         self._view_mode: ViewMode = ViewMode.SPLIT
-        self._showing_failure_dialog: bool = False
         self._tick_history: list[TickRecord] = []
         self._tick_index: dict[int, TickRecord] = {}
         self._tick_counter: int = 0
@@ -159,44 +157,11 @@ class ControlScreen(Screen[None]):
         )
         self.query_one("#log-registry", LogRegistryWidget).append_logs(logs, met=state.met, tick_id=self._tick_counter)
 
-        # Show failure dialog if any track is paused on failure
-        if self._session is not None and self._session.paused_on_failure and not self._showing_failure_dialog:
-            self._showing_failure_dialog = True
-            paused = self._session.paused_tracks()
-            paused_track = paused[0] if paused else None
-            failed_snap = plan_snap
-            if paused_track is not None:
-                for track in multi_snap.tracks:
-                    if track.track_name == paused_track:
-                        failed_snap = track.plan_snapshot
-                        break
-            self.app.push_screen(
-                PlanFailureDialog(
-                    failed_snap,
-                    track_name=paused_track,
-                    is_multi_track=multi_snap.is_multi_track,
-                ),
-                callback=self._handle_failure_dialog,
-            )
-
-    def _handle_failure_dialog(self, action: FailureAction | None) -> None:
-        """Handle the result of the failure confirmation dialog."""
-        self._showing_failure_dialog = False
-        if self._session is None or action is None:
-            return
-        if action == FailureAction.CONTINUE:
-            try:
-                self._session.continue_plan()
-            except ValueError as exc:
-                self.notify(str(exc), severity="error")
-                self._log_error(str(exc))
-        elif action == FailureAction.ABORT_TRACK:
-            paused = self._session.paused_tracks()
-            if paused:
-                self._session.abort_track(paused[0])
-        elif action == FailureAction.ABORT_ALL:
-            self._session.abort_plan()
-            self.query_one("#control-panel", ControlPanelWidget).update_running(None)
+        # Show toast notification when a plan step fails
+        if plan_snap.plan_name is not None:
+            for log_entry in logs:
+                if log_entry.level == LogLevel.ACTION_FAILED:
+                    self.notify(log_entry.message, severity="warning", timeout=5)
 
     def _show_error(self, message: str) -> None:
         self._log_error(message)

@@ -237,13 +237,9 @@ class ControlSession:
         """Begin executing a flight plan. Raises ValueError on invalid plan."""
         self._executor.start_plan(plan, self._last_state, plans_dir=plans_dir)
 
-    def continue_plan(self) -> None:
-        """Continue a paused plan (skip failed step). Raises ValueError if not paused."""
-        self._executor.continue_plan(self._last_state)
-
     def abort_plan(self) -> None:
-        """Abort a paused plan after failure."""
-        result = self._executor.abort_plan()
+        """Abort all plan tracks."""
+        result = self._executor.abort()
         if self._conn is not None:
             with contextlib.suppress(Exception):
                 apply_controls(self._conn, result.commands)
@@ -271,15 +267,6 @@ class ControlSession:
         if self._conn is not None:
             with contextlib.suppress(Exception):
                 apply_controls(self._conn, result.commands)
-
-    @property
-    def paused_on_failure(self) -> bool:
-        """Whether any track is paused waiting for user decision."""
-        return self._executor.paused_on_failure
-
-    def paused_tracks(self) -> list[str]:
-        """Return names of all tracks that are paused on failure."""
-        return self._executor.paused_tracks()
 
     def _wait_for_reconnect(self) -> None:
         """Wait before retrying. Returns early if shutdown is requested."""
