@@ -6,8 +6,6 @@
 suborbital_launch   auto_stage
 
 # Aerobrake and deploy chutes
-autopilot   pitch=90  heading=90
 wait_for   apoapsis=True
-wait_for   above_dynamic_pressure=500
-throttle   throttle_level=0.1
+aerobreak   auto_stage=True
 parachutes     min_altitude=10_000  stage_for_parachutes=True  wait_for_safe=True

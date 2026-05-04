@@ -35,11 +35,12 @@ class SuborbitalLaunchAction(Action):
             required=False,
             param_type=ParamType.FLOAT,
             default=None,
+            unit="m",
         ),
         ActionParam(
             param_id="auto_stage",
             label="Auto Stage",
-            description="Automatically stage the vessel during the suborbital launch if the current stage runs out of thrust.",
+            description="Automatically stage the vessel if the current stage runs out of thrust.",
             required=False,
             param_type=ParamType.BOOL,
             default=False,
