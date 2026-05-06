@@ -194,7 +194,7 @@ class ControlPanelWidget(Static):
         if in_pending and plan is not None:
             craft_line = f"craft: [b]{plan.craft}[/b]" if plan.craft else "[dim]no craft attached[/dim]"
             title.update("[b]Plan Ready to Launch[/b]")
-            info.update(f"[b]{plan.name}[/b]\n{craft_line}")
+            info.update(f"Plan: [b]{plan.name}[/b]\n{craft_line}")
             status_content.display = False
             plan_content.display = False
         else:
