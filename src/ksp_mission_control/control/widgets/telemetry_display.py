@@ -11,7 +11,24 @@ from textual.message import Message
 from textual.widgets import Static
 
 from ksp_mission_control.control.actions.base import ScienceExperiment, State
-from ksp_mission_control.control.formatting import format_met
+from ksp_mission_control.control.formatting import format_met, resolve_theme_colors
+from ksp_mission_control.control.widgets.telemetry_alerts import (
+    ALERT_COLOR_VARIABLE,
+    AlertLevel,
+    evaluate_comms_connected,
+    evaluate_comms_signal_strength,
+    evaluate_dynamic_pressure,
+    evaluate_electric_charge,
+    evaluate_engine_flameouts,
+    evaluate_fuel_fraction,
+    evaluate_g_force,
+    evaluate_liquid_fuel,
+    evaluate_mono_propellant,
+    evaluate_oxidizer,
+    evaluate_periapsis,
+    evaluate_time_to_impact,
+    evaluate_twr,
+)
 
 
 class ScienceCardWidget(Static, can_focus=False):
@@ -124,7 +141,13 @@ class TelemetryDisplayWidget(Static):
     def __init__(self, *, id: str | None = None) -> None:  # noqa: A002
         super().__init__(id=id)
         self._science_experiments: tuple[ScienceExperiment, ...] = ()
+        self._alert_colors: dict[AlertLevel, str] | None = None
         self._frozen: bool = False
+
+    def _resolve_alert_colors(self) -> dict[AlertLevel, str]:
+        if self._alert_colors is None:
+            self._alert_colors = resolve_theme_colors(self.app, ALERT_COLOR_VARIABLE)
+        return self._alert_colors
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="telemetry-header"):
@@ -160,10 +183,11 @@ class TelemetryDisplayWidget(Static):
 
     def _render_state(self, state: State) -> None:
         """Render a State snapshot into the three telemetry columns."""
+        colors = self._resolve_alert_colors()
         self.query_one("#telemetry-ut", Static).update(f"UT: {_format_time(state.universal_time)} ")
-        self.query_one("#telemetry-flight", Static).update(_format_flight(state))
-        self.query_one("#telemetry-orbit", Static).update(_format_orbit(state))
-        self.query_one("#telemetry-resources", Static).update(_format_resources(state))
+        self.query_one("#telemetry-flight", Static).update(_format_flight(state, colors))
+        self.query_one("#telemetry-orbit", Static).update(_format_orbit(state, colors))
+        self.query_one("#telemetry-resources", Static).update(_format_resources(state, colors))
         self._update_science(state)
 
     def _update_science(self, state: State) -> None:
@@ -243,19 +267,27 @@ def _format_mass(kg: float) -> str:
     return f"{kg:.1f} kg"
 
 
-def _format_flight(state: State) -> str:
+def _color(text: str, level: AlertLevel, colors: dict[AlertLevel, str]) -> str:
+    """Wrap text in Rich color tags if the alert level is above NORMAL."""
+    if level == AlertLevel.NORMAL:
+        return text
+    hex_color = colors[level]
+    return f"[{hex_color}]{text}[/{hex_color}]"
+
+
+def _format_flight(state: State, colors: dict[AlertLevel, str]) -> str:
     return "\n".join(
         [
             "[b]Overview[/b]",
             f"Vessel:          {state.name}",
             f"Situation:       {state.situation.display_name}",
             f"MET:             {_format_time(state.met)}",
-            f"G-force:         {state.g_force:.2f} g",
+            f"G-force:         {_color(f'{state.g_force:.2f} g', evaluate_g_force(state), colors)}",
             "",
             "[b]Altitude[/b]",
             f"Surface:         {_format_altitude(state.altitude_surface)}",
             f"Sea level:       {_format_altitude(state.altitude_sea)}",
-            f"Time to impact:  {_format_time(state.altitude_time_to_impact)}",
+            f"Time to impact:  {_color(_format_time(state.altitude_time_to_impact), evaluate_time_to_impact(state), colors)}",
             "",
             "[b]Speed[/b]",
             f"Vertical:        {state.speed_vertical:+.1f} m/s",
@@ -270,7 +302,7 @@ def _format_flight(state: State) -> str:
             "",
             "[b]Atmosphere[/b]",
             f"In atmosphere:   {'Yes' if state.in_atmosphere else 'No'}",
-            f"Dynamic press.:  {state.pressure_dynamic / 1000:.2f} kPa",
+            f"Dynamic press.:  {_color(f'{state.pressure_dynamic / 1000:.2f} kPa', evaluate_dynamic_pressure(state), colors)}",
             f"Static press.:   {state.pressure_static / 1000:.2f} kPa",
             f"Mach:            {state.aero_mach:.2f}",
             f"AoA:             {state.aero_angle_of_attack:.1f} deg",
@@ -285,14 +317,15 @@ def _on_off(value: bool) -> str:
     return "ON" if value else "OFF"
 
 
-def _format_orbit(state: State) -> str:
+def _format_orbit(state: State, colors: dict[AlertLevel, str]) -> str:
+    periapsis_level = evaluate_periapsis(state)
     return "\n".join(
         [
             "[b]Orbit[/b]",
             f"Apoapsis:        {_format_altitude(state.orbit_apoapsis)}",
             f"T to apoapsis:   {_format_time(state.orbit_apoapsis_time_to)}",
             f"T from apoapsis: {_format_time(state.orbit_apoapsis_time_from)}",
-            f"Periapsis:       {_format_altitude(state.orbit_periapsis)}",
+            f"Periapsis:       {_color(_format_altitude(state.orbit_periapsis), periapsis_level, colors)}",
             f"T to periapsis:  {_format_time(state.orbit_periapsis_time_to)}",
             f"T from periapsis:{_format_time(state.orbit_periapsis_time_from)}",
             f"Inclination:     {state.orbit_inclination:.2f} deg",
@@ -305,17 +338,17 @@ def _format_orbit(state: State) -> str:
             f"Roll:            {state.orientation_roll:.1f} deg",
             "",
             "[b]Propulsion[/b]",
-            f"TWR:             {state.twr:.2f} / {state.max_twr:.2f}",
+            f"TWR:             {_color(f'{state.twr:.2f}', evaluate_twr(state), colors)} / {state.max_twr:.2f}",
             f"Delta-v:         {state.delta_v:.0f} m/s",
             f"Thrust:          {_format_force(state.thrust)} / {_format_force(state.thrust_peak)}",
             f"Mass:            {_format_mass(state.mass)}",
             f"Isp:             {state.engine_impulse_specific:.1f} s",
-            f"Fuel fraction:   {state.fuel_fraction * 100:.1f}%",
-            f"Flameouts:       {state.engine_flameout_count}",
+            f"Fuel fraction:   {_color(f'{state.fuel_fraction * 100:.1f}%', evaluate_fuel_fraction(state), colors)}",
+            f"Flameouts:       {_color(str(state.engine_flameout_count), evaluate_engine_flameouts(state), colors)}",
             "",
             "[b]Comms[/b]",
-            f"Connected:       {_on_off(state.comms_connected)}",
-            f"Signal:          {state.comms_signal_strength * 100:.0f}%",
+            f"Connected:       {_color(_on_off(state.comms_connected), evaluate_comms_connected(state), colors)}",
+            f"Signal:          {_color(f'{state.comms_signal_strength * 100:.0f}%', evaluate_comms_signal_strength(state), colors)}",
         ]
     )
 
@@ -325,14 +358,43 @@ def _format_resource(amount: float, fraction: float) -> str:
     return f"{amount:.1f} ({fraction * 100:.0f}%)"
 
 
-def _format_resources(state: State) -> str:
+def _color_resource(label: str, amount: float, fraction: float, level: AlertLevel, colors: dict[AlertLevel, str]) -> str:
+    """Format a resource line with alert coloring."""
+    return f"{label} {_color(_format_resource(amount, fraction), level, colors)}"
+
+
+def _format_resources(state: State, colors: dict[AlertLevel, str]) -> str:
     return "\n".join(
         [
             "[b]Resources[/b]",
-            f"Electric charge: {_format_resource(state.resource_electric_charge, state.resource_electric_charge_fraction)}",
-            f"Liquid fuel:     {_format_resource(state.resource_liquid_fuel, state.resource_liquid_fuel_fraction)}",
-            f"Oxidizer:        {_format_resource(state.resource_oxidizer, state.resource_oxidizer_fraction)}",
-            f"Mono propellant: {_format_resource(state.resource_mono_propellant, state.resource_mono_propellant_fraction)}",
+            _color_resource(
+                "Electric charge:",
+                state.resource_electric_charge,
+                state.resource_electric_charge_fraction,
+                evaluate_electric_charge(state),
+                colors,
+            ),
+            _color_resource(
+                "Liquid fuel:    ",
+                state.resource_liquid_fuel,
+                state.resource_liquid_fuel_fraction,
+                evaluate_liquid_fuel(state),
+                colors,
+            ),
+            _color_resource(
+                "Oxidizer:       ",
+                state.resource_oxidizer,
+                state.resource_oxidizer_fraction,
+                evaluate_oxidizer(state),
+                colors,
+            ),
+            _color_resource(
+                "Mono propellant:",
+                state.resource_mono_propellant,
+                state.resource_mono_propellant_fraction,
+                evaluate_mono_propellant(state),
+                colors,
+            ),
             "",
             "[b]Controls[/b]",
             f"Throttle:        {state.control_throttle * 100:.0f}%",
