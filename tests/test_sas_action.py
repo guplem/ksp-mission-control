@@ -41,7 +41,7 @@ class TestSasAction:
         state = State()
         action.start(state, {"mode": "stability_assist"})
         commands = VesselCommands()
-        result = action.tick(state, commands, 0.5, ActionLogger())
+        action.tick(state, commands, 0.5, ActionLogger())
         assert commands.sas_mode == SASMode.STABILITY_ASSIST
 
     def test_raises_on_invalid_mode(self) -> None:
