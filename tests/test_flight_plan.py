@@ -182,3 +182,59 @@ class TestParseParallelDirective:
         plan_file.write_text("# Just comments\n")
         with pytest.raises(ValueError, match="has no steps"):
             parse_flight_plan(plan_file)
+
+
+class TestParseCraftDirective:
+    """Tests for @craft directive parsing in .plan files."""
+
+    def test_craft_directive_parsed(self, tmp_path: Path) -> None:
+        plan_file = tmp_path / "with_craft.plan"
+        plan_file.write_text("@craft fart-1\nhover\n")
+        plan = parse_flight_plan(plan_file)
+        assert plan.craft == "fart-1"
+        assert len(plan.steps) == 1
+
+    def test_no_craft_defaults_to_none(self, tmp_path: Path) -> None:
+        plan_file = tmp_path / "no_craft.plan"
+        plan_file.write_text("hover\n")
+        plan = parse_flight_plan(plan_file)
+        assert plan.craft is None
+
+    def test_craft_empty_name_raises(self, tmp_path: Path) -> None:
+        plan_file = tmp_path / "bad_craft.plan"
+        plan_file.write_text("@craft \nhover\n")
+        with pytest.raises(ValueError, match="@craft requires a craft name"):
+            parse_flight_plan(plan_file)
+
+    def test_craft_bare_directive_raises(self, tmp_path: Path) -> None:
+        plan_file = tmp_path / "bare_craft.plan"
+        plan_file.write_text("@craft\nhover\n")
+        with pytest.raises(ValueError, match="@craft requires a craft name"):
+            parse_flight_plan(plan_file)
+
+    def test_duplicate_craft_raises(self, tmp_path: Path) -> None:
+        plan_file = tmp_path / "dup_craft.plan"
+        plan_file.write_text("@craft fart-1\n@craft fart-2\nhover\n")
+        with pytest.raises(ValueError, match="duplicate @craft"):
+            parse_flight_plan(plan_file)
+
+    def test_craft_with_parallel_and_steps(self, tmp_path: Path) -> None:
+        plan_file = tmp_path / "all_directives.plan"
+        plan_file.write_text("@craft fart-2\n@parallel science/collect.plan\nhover\n")
+        plan = parse_flight_plan(plan_file)
+        assert plan.craft == "fart-2"
+        assert plan.parallel_plans == ("science/collect.plan",)
+        assert len(plan.steps) == 1
+
+    def test_craft_only_no_steps_raises(self, tmp_path: Path) -> None:
+        plan_file = tmp_path / "craft_only.plan"
+        plan_file.write_text("@craft fart-1\n")
+        with pytest.raises(ValueError, match="has no steps"):
+            parse_flight_plan(plan_file)
+
+    def test_craft_with_only_parallel_is_valid(self, tmp_path: Path) -> None:
+        plan_file = tmp_path / "craft_parallel.plan"
+        plan_file.write_text("@craft fart-1\n@parallel science/collect.plan\n")
+        plan = parse_flight_plan(plan_file)
+        assert plan.craft == "fart-1"
+        assert plan.parallel_plans == ("science/collect.plan",)

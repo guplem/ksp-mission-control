@@ -173,18 +173,20 @@ class TestSetupScreenChecks:
             assert screen.check_action_control_room() is False
 
     @pytest.mark.asyncio
-    async def test_auto_navigates_to_control_room_when_all_pass(self) -> None:
-        """When all checks pass, the screen should automatically push ControlScreen."""
+    async def test_stays_on_setup_when_all_checks_pass(self) -> None:
+        """All checks passing enables the button; the user must click it."""
+        from textual.widgets import Button
+
         checks = _make_checks(krpc=True, comms=True, vessel=True)
         async with SetupTestApp(checks=checks).run_test() as pilot:
             await pilot.app.workers.wait_for_complete()
             await pilot.pause()
-            from ksp_mission_control.control.screen import ControlScreen
-
-            assert isinstance(pilot.app.screen, ControlScreen)
+            assert isinstance(pilot.app.screen, SetupScreen)
+            enter_btn = pilot.app.screen.query_one("#enter-control-room", Button)
+            assert enter_btn.disabled is False
 
     @pytest.mark.asyncio
-    async def test_no_auto_navigate_when_checks_fail(self) -> None:
+    async def test_stays_on_setup_when_checks_fail(self) -> None:
         """When checks fail, the screen should stay on SetupScreen."""
         checks = _make_checks(krpc=False)
         async with SetupTestApp(checks=checks).run_test() as pilot:

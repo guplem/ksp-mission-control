@@ -3,3 +3,21 @@
     padding: 1 2;
     margin: 2 1;
 }
+
+#setup-buttons {
+    margin-top: 1;
+    height: auto;
+}
+
+#setup-buttons Horizontal {
+    height: auto;
+    align-horizontal: center;
+}
+
+#setup-buttons Button {
+    margin: 0 1;
+}
+
+#setup-launch-status {
+    margin-top: 1;
+}

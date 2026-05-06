@@ -1,6 +1,8 @@
 """ControlPanelWidget - displays running action status and flight plan steps.
 
 When idle, shows buttons: "Run Action", "Load Flight Plan", and "Manual Command".
+When a plan is staged but not started, shows a pending-plan tray with
+"Launch", "Manual Command", and "Cancel" buttons.
 When a single action is running, shows its status.
 When a flight plan is active, shows each step with its status as Rich markup.
 """
@@ -12,6 +14,7 @@ from textual.css.query import NoMatches
 from textual.message import Message
 from textual.widgets import Button, Static
 
+from ksp_mission_control.control.actions.flight_plan import FlightPlan
 from ksp_mission_control.control.actions.multi_track_executor import MultiTrackSnapshot
 from ksp_mission_control.control.actions.plan_executor import PlanSnapshot, StepStatus
 from ksp_mission_control.control.actions.registry import get_available_actions
@@ -48,6 +51,11 @@ class ControlPanelWidget(Static):
         height: auto;
     }
 
+    #pending-plan-info {
+        height: auto;
+        padding: 0 0 1 0;
+    }
+
     .action-btn {
         margin-top: 1;
         width: 100%;
@@ -62,12 +70,22 @@ class ControlPanelWidget(Static):
         """Posted when the user clicks the Load Flight Plan button."""
 
     class ManualCommandRequested(Message):
-        """Posted when the user clicks the Manual Command button."""
+        """Posted when the user clicks any Manual Command button (idle or pending)."""
+
+    class LaunchPendingRequested(Message):
+        """Posted when the user clicks Launch in the pending-plan tray."""
+
+    class CancelPendingRequested(Message):
+        """Posted when the user clicks Cancel in the pending-plan tray."""
+
+    class CancelRunRequested(Message):
+        """Posted when the user clicks Cancel during action/plan execution."""
 
     def __init__(self, *, id: str | None = None) -> None:  # noqa: A002
         super().__init__(id=id)
         self._running_action_id: str | None = None
         self._plan_active: bool = False
+        self._pending_plan: FlightPlan | None = None
         self._last_plan_snapshot: PlanSnapshot | None = None
         self._last_multi_snapshot: MultiTrackSnapshot | None = None
         self._status_colors: dict[StepStatus, str] | None = None
@@ -76,23 +94,36 @@ class ControlPanelWidget(Static):
         yield Static("[b]Control[/b]", id="control-panel-title")
         yield Static("", id="action-status-content")
         yield Static("", id="plan-steps-content")
+        yield Static("", id="pending-plan-info")
+        yield Button("Launch", id="pending-launch-btn", variant="primary", classes="action-btn")
+        yield Button("Manual Command", id="pending-manual-btn", classes="action-btn")
+        yield Button("Cancel", id="pending-cancel-btn", classes="action-btn")
         yield Button("Run Action", id="run-action-btn", classes="action-btn")
         yield Button("Load Flight Plan", id="load-plan-btn", classes="action-btn")
         yield Button("Manual Command", id="manual-cmd-btn", classes="action-btn")
+        yield Button("Cancel", id="cancel-run-btn", variant="error", classes="action-btn")
 
     def on_mount(self) -> None:
-        """Hide dynamic content areas initially."""
+        """Hide dynamic content areas and the pending-plan tray initially."""
         self.query_one("#action-status-content", Static).display = False
         self.query_one("#plan-steps-content", Static).display = False
+        self._set_pending_visibility(False)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button clicks."""
-        if event.button.id == "run-action-btn":
+        button_id = event.button.id
+        if button_id == "run-action-btn":
             self.post_message(self.RunActionRequested())
-        elif event.button.id == "load-plan-btn":
+        elif button_id == "load-plan-btn":
             self.post_message(self.LoadPlanRequested())
-        elif event.button.id == "manual-cmd-btn":
+        elif button_id in ("manual-cmd-btn", "pending-manual-btn"):
             self.post_message(self.ManualCommandRequested())
+        elif button_id == "pending-launch-btn":
+            self.post_message(self.LaunchPendingRequested())
+        elif button_id == "pending-cancel-btn":
+            self.post_message(self.CancelPendingRequested())
+        elif button_id == "cancel-run-btn":
+            self.post_message(self.CancelRunRequested())
 
     def update_running(self, action_id: str | None) -> None:
         """Update which action (if any) is currently running.
@@ -139,16 +170,74 @@ class ControlPanelWidget(Static):
         elif self._plan_active:
             self._show_idle_mode()
 
+    def set_pending_plan(self, plan: FlightPlan | None) -> None:
+        """Enter or leave pending-plan mode.
+
+        While a plan is pending, the regular idle/plan/action content is
+        hidden and the panel shows only the plan summary plus the
+        Launch / Manual Command / Cancel tray.
+        """
+        self._pending_plan = plan
+        in_pending = plan is not None
+        self._set_pending_visibility(in_pending)
+
+        try:
+            title = self.query_one("#control-panel-title", Static)
+            info = self.query_one("#pending-plan-info", Static)
+            status_content = self.query_one("#action-status-content", Static)
+            plan_content = self.query_one("#plan-steps-content", Static)
+        except NoMatches:
+            return
+
+        if in_pending and plan is not None:
+            craft_line = f"craft: [b]{plan.craft}[/b]" if plan.craft else "[dim]no craft attached[/dim]"
+            title.update("[b]Plan Ready to Launch[/b]")
+            info.update(f"[b]{plan.name}[/b]\n{craft_line}")
+            status_content.display = False
+            plan_content.display = False
+        else:
+            info.update("")
+            title.update("[b]Control[/b]")
+            self._update_button_visibility()
+
+    def _set_pending_visibility(self, visible: bool) -> None:
+        """Show or hide the pending-plan tray (info + 3 buttons)."""
+        try:
+            info = self.query_one("#pending-plan-info", Static)
+            launch_btn = self.query_one("#pending-launch-btn", Button)
+            manual_btn = self.query_one("#pending-manual-btn", Button)
+            cancel_btn = self.query_one("#pending-cancel-btn", Button)
+        except NoMatches:
+            return
+        info.display = visible
+        launch_btn.display = visible
+        manual_btn.display = visible
+        cancel_btn.display = visible
+        if visible:
+            self._update_button_visibility()
+
     def _update_button_visibility(self) -> None:
-        """Show buttons only when idle (no action running, no plan active)."""
+        """Reconcile idle/running button visibility against the current state.
+
+        - Pending mode: all idle/running buttons hidden (the pending tray takes over).
+        - Running (action or plan): Cancel + Manual Command shown; Run/Load hidden.
+        - Idle: Run Action, Load Plan, Manual Command shown; Cancel hidden.
+        """
         try:
             run_btn = self.query_one("#run-action-btn", Button)
             plan_btn = self.query_one("#load-plan-btn", Button)
+            manual_btn = self.query_one("#manual-cmd-btn", Button)
+            cancel_run_btn = self.query_one("#cancel-run-btn", Button)
         except NoMatches:
             return
-        idle = self._running_action_id is None and not self._plan_active
+        in_pending = self._pending_plan is not None
+        running = self._running_action_id is not None or self._plan_active
+        idle = not in_pending and not running
+
         run_btn.display = idle
         plan_btn.display = idle
+        manual_btn.display = not in_pending
+        cancel_run_btn.display = running and not in_pending
 
     def _resolve_status_colors(self) -> dict[StepStatus, str]:
         """Resolve theme CSS variables to hex colors, cached after first call."""

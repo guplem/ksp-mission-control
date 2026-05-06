@@ -14,6 +14,7 @@ from textual.app import ComposeResult
 from textual.containers import Container, Vertical
 from textual.screen import Screen
 from textual.widgets import Footer, Header
+from textual.worker import Worker, WorkerState
 
 from ksp_mission_control.control.action_picker import ActionPicker
 from ksp_mission_control.control.actions.base import (
@@ -22,12 +23,12 @@ from ksp_mission_control.control.actions.base import (
     LogLevel,
     State,
     VesselCommands,
-    VesselSituation,
 )
 from ksp_mission_control.control.actions.flight_plan import FlightPlan
 from ksp_mission_control.control.actions.multi_track_executor import MultiTrackSnapshot
 from ksp_mission_control.control.actions.runner import RunnerSnapshot
 from ksp_mission_control.control.confirm_exit_dialog import ConfirmExitDialog
+from ksp_mission_control.control.craft_loader import CraftLoadResult, load_craft_in_ksp
 from ksp_mission_control.control.flight_plan_picker import FlightPlanPicker
 from ksp_mission_control.control.formatting import format_met
 from ksp_mission_control.control.manual_command_dialog import ManualCommandDialog
@@ -70,19 +71,19 @@ class ControlScreen(Screen[None]):
 
     BINDINGS = [
         ("escape", "clear", "Clear"),
-        ("c", "cancel", "Cancel"),
-        ("a", "abort", "Abort!"),
         ("s", "save_logs", "Save Logs"),
         ("v", "cycle_view", "Cycle View"),
     ]
 
-    def __init__(self) -> None:
+    def __init__(self, pending_plan: FlightPlan | None = None) -> None:
         super().__init__()
         self._session: ControlSession | None = None
         self._view_mode: ViewMode = ViewMode.SPLIT
         self._tick_history: list[TickRecord] = []
         self._tick_index: dict[int, TickRecord] = {}
         self._tick_counter: int = 0
+        self._pending_plan: FlightPlan | None = pending_plan
+        self._pending_plan_synced: bool = False
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -156,6 +157,12 @@ class ControlScreen(Screen[None]):
             message=runner_state.message,
         )
         self.query_one("#log-registry", LogRegistryWidget).append_logs(logs, met=state.met, tick_id=self._tick_counter)
+
+        # Sync pending-plan tray on first tick (control panel has mounted by now).
+        if not self._pending_plan_synced:
+            self._pending_plan_synced = True
+            if self._pending_plan is not None:
+                control_panel.set_pending_plan(self._pending_plan)
 
         # Show toast notification when a plan step fails
         if plan_snap.plan_name is not None:
@@ -236,8 +243,116 @@ class ControlScreen(Screen[None]):
         )
 
     def _handle_plan_selected(self, plan: FlightPlan | None) -> None:
-        """Start the selected flight plan."""
+        """Route the selected plan: load the craft if needed, then stage it.
+
+        - No ``@craft``: start the plan immediately on the current vessel.
+        - ``@craft`` matches the current vessel: start immediately (no install/launch).
+        - ``@craft`` differs (or no current vessel): run the unified
+          install + launch workflow, then enter pending-plan mode so the
+          user clicks Launch when ready.
+        """
         if plan is None or self._session is None:
+            return
+
+        if plan.craft is None:
+            self._start_plan(plan)
+            return
+
+        craft_path = Path.cwd() / "vessels" / f"{plan.craft}.craft"
+        if not craft_path.is_file():
+            msg = f"Craft file not found: vessels/{plan.craft}.craft"
+            self.notify(msg, severity="error")
+            self._log_error(msg)
+            return
+
+        from ksp_mission_control.craft import sanitize_craft_name  # noqa: PLC0415
+
+        current_name = self._tick_history[-1].state.name if self._tick_history else ""
+        if sanitize_craft_name(current_name) == plan.craft:
+            self._start_plan(plan)
+            return
+
+        self._load_craft_for_plan(plan)
+
+    @work(thread=True)
+    def _load_craft_for_plan(self, plan: FlightPlan) -> tuple[CraftLoadResult, FlightPlan]:
+        """Run the unified craft load workflow, then return result + plan."""
+        from ksp_mission_control.app import MissionControlApp  # noqa: PLC0415
+        from ksp_mission_control.craft import CraftError  # noqa: PLC0415
+        from ksp_mission_control.setup.kRPC_comms.parser import (  # noqa: PLC0415
+            resolve_krpc_connection,
+        )
+
+        if plan.craft is None:
+            raise CraftError("plan has no craft to load")
+        config_manager = cast(MissionControlApp, self.app).config_manager
+        ksp_path_str = config_manager.config.ksp_path
+        if ksp_path_str is None:
+            raise CraftError("KSP install path not configured")
+
+        result = load_craft_in_ksp(
+            app=self.app,
+            craft_name=plan.craft,
+            vessels_dir=Path.cwd() / "vessels",
+            ksp_path=Path(ksp_path_str),
+            krpc_settings=resolve_krpc_connection(config_manager),
+        )
+        return result, plan
+
+    def _enter_pending_plan(self, plan: FlightPlan) -> None:
+        """Mount the pending-plan tray for *plan* in the control panel."""
+        self._pending_plan = plan
+        self.query_one("#control-panel", ControlPanelWidget).set_pending_plan(plan)
+
+    def _exit_pending_plan(self) -> None:
+        """Clear the pending-plan tray and return the control panel to idle."""
+        self._pending_plan = None
+        self.query_one("#control-panel", ControlPanelWidget).set_pending_plan(None)
+
+    def on_control_panel_widget_launch_pending_requested(
+        self,
+        event: ControlPanelWidget.LaunchPendingRequested,
+    ) -> None:
+        """User clicked Launch in the pending tray: start the plan now."""
+        plan = self._pending_plan
+        if plan is None:
+            return
+        self._exit_pending_plan()
+        self._start_plan(plan)
+
+    def on_control_panel_widget_cancel_pending_requested(
+        self,
+        event: ControlPanelWidget.CancelPendingRequested,
+    ) -> None:
+        """User clicked Cancel in the pending tray: drop the plan, stay in control room."""
+        self._exit_pending_plan()
+
+    def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
+        """Pick up the result of the craft-loader worker.
+
+        On success, stage the plan in the pending-plan tray (the user must
+        then click Launch). On error or cancellation, surface a notification
+        and leave the screen as it was.
+        """
+        if event.worker.name != "_load_craft_for_plan":
+            return
+        if event.state == WorkerState.SUCCESS:
+            result, plan = cast(
+                tuple[CraftLoadResult, FlightPlan],
+                event.worker.result,
+            )
+            if result == CraftLoadResult.LAUNCHED:
+                self._enter_pending_plan(plan)
+            else:
+                self.notify("Craft load cancelled.", severity="information")
+        elif event.state == WorkerState.ERROR:
+            error = event.worker.error
+            self.notify(f"Craft load failed: {error}", severity="error", timeout=10)
+            self._log_error(f"Craft load failed: {error}")
+
+    def _start_plan(self, plan: FlightPlan) -> None:
+        """Start executing a flight plan."""
+        if self._session is None:
             return
         try:
             plans_dir = Path.cwd() / "plans"
@@ -269,27 +384,16 @@ class ControlScreen(Screen[None]):
             self.notify(str(exc), severity="error")
             self._log_error(str(exc))
 
-    def action_cancel(self) -> None:
-        """Cancel the currently running action or flight plan."""
+    def on_control_panel_widget_cancel_run_requested(
+        self,
+        event: ControlPanelWidget.CancelRunRequested,
+    ) -> None:
+        """User clicked Cancel during action/plan execution: stop everything."""
         if self._session is None:
-            return
-        if self._session.snapshot().action_id is None:
-            self.notify("Nothing to cancel", severity="warning", timeout=1.5)
             return
         self._session.abort()
         self.query_one("#control-panel", ControlPanelWidget).update_running(None)
         self.notify("Cancelled", timeout=1.5)
-
-    def action_abort(self) -> None:
-        """Trigger the in-game abort action group."""
-        if self._session is None:
-            return
-        last_state = self._tick_history[-1].state if self._tick_history else None
-        if last_state is not None and last_state.situation == VesselSituation.PRE_LAUNCH:
-            self.notify("Cannot abort before launch", severity="warning", timeout=1.5)
-            return
-        self._session.send_manual_command(VesselCommands(abort=True))
-        self.notify("ABORT!", severity="error", timeout=3)
 
     def action_save_logs(self) -> None:
         """Save the full tick-by-tick log to file and copy the path to clipboard."""

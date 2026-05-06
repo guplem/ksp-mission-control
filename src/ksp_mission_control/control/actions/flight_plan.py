@@ -37,6 +37,7 @@ class FlightPlan:
     name: str
     steps: tuple[FlightPlanStep, ...]
     parallel_plans: tuple[str, ...] = ()
+    craft: str | None = None
 
 
 def _parse_param_value(raw: str, param_type: ParamType) -> float | bool | str:
@@ -104,6 +105,7 @@ def parse_flight_plan(path: Path) -> FlightPlan:
     actions = get_available_actions()
     steps: list[FlightPlanStep] = []
     parallel_plans: list[str] = []
+    craft: str | None = None
 
     text = path.read_text(encoding="utf-8")
     for line_number, raw_line in enumerate(text.splitlines(), start=1):
@@ -116,6 +118,15 @@ def parse_flight_plan(path: Path) -> FlightPlan:
             if not parallel_path:
                 raise ValueError(f"Line {line_number}: @parallel requires a file path")
             parallel_plans.append(parallel_path)
+            continue
+
+        if line == "@craft" or line.startswith("@craft "):
+            craft_name = line[len("@craft") :].strip()
+            if not craft_name:
+                raise ValueError(f"Line {line_number}: @craft requires a craft name")
+            if craft is not None:
+                raise ValueError(f"Line {line_number}: duplicate @craft directive")
+            craft = craft_name
             continue
 
         tokens = line.split()
@@ -136,4 +147,5 @@ def parse_flight_plan(path: Path) -> FlightPlan:
         name=plan_name,
         steps=tuple(steps),
         parallel_plans=tuple(parallel_plans),
+        craft=craft,
     )

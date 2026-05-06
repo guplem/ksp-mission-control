@@ -750,3 +750,25 @@ def apply_controls(conn: object, controls: VesselCommands) -> None:
         vc.parachutes = controls.deployable_parachutes
     if controls.deployable_radiators is not None:
         vc.radiators = controls.deployable_radiators
+
+
+def list_launchable_vessels(conn: object) -> list[str]:
+    """Return the names of launchable VAB craft in the current save."""
+    return list(conn.space_center.launchable_vessels("VAB"))  # type: ignore[attr-defined]
+
+
+def launch_vessel_from_vab(conn: object, craft_name: str) -> None:
+    """Launch a VAB craft to the launch pad via kRPC.
+
+    Recovers any existing vessel at the pad before launching.
+    """
+    conn.space_center.launch_vessel_from_vab(craft_name)  # type: ignore[attr-defined]
+
+
+def get_active_vessel_name(conn: object) -> str:
+    """Return the active vessel's name. Raises if there is no active vessel."""
+    sc = conn.space_center  # type: ignore[attr-defined]
+    vessel = sc.active_vessel
+    if vessel is None:
+        raise NoActiveVesselError("No active vessel")
+    return str(vessel.name)

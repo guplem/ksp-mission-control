@@ -74,14 +74,19 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
         ("escape", "cancel", "Cancel"),
     ]
 
-    def __init__(self, plans_dir: Path | None = None) -> None:
+    def __init__(self, plans_dir: Path | None = None, *, require_craft: bool = False) -> None:
         super().__init__()
         self._plans_dir = plans_dir or Path.cwd() / _PLANS_DIR_NAME
         self._parsed_plans: dict[str, FlightPlan] = {}
         self._parse_errors: dict[str, str] = {}
+        self._require_craft = require_craft
 
     def _load_plans(self) -> None:
-        """Scan the plans directory recursively for .plan files."""
+        """Scan the plans directory recursively for .plan files.
+
+        When ``require_craft`` is True, plans without an ``@craft`` directive
+        are dropped from the listing entirely.
+        """
         self._parsed_plans.clear()
         self._parse_errors.clear()
         if not self._plans_dir.is_dir():
@@ -90,9 +95,13 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
             relative = plan_file.relative_to(self._plans_dir)
             display_name = str(relative.with_suffix("")).replace("\\", "/")
             try:
-                self._parsed_plans[display_name] = parse_flight_plan(plan_file)
+                plan = parse_flight_plan(plan_file)
             except ValueError as exc:
                 self._parse_errors[display_name] = str(exc)
+                continue
+            if self._require_craft and plan.craft is None:
+                continue
+            self._parsed_plans[display_name] = plan
 
     def compose(self) -> ComposeResult:
         with VerticalScroll(id="picker-container"):
@@ -117,11 +126,12 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
         for name, plan in self._parsed_plans.items():
             step_count = len(plan.steps)
             step_word = "step" if step_count == 1 else "steps"
+            craft_suffix = f" — [b]{plan.craft}[/b]" if plan.craft else ""
             idx = len(self._plan_names)
             self._plan_names.append(name)
             listview.append(
                 ListItem(
-                    Static(f"{name} ({step_count} {step_word})"),
+                    Static(f"{name} ({step_count} {step_word}){craft_suffix}"),
                     id=f"plan-{idx}",
                 )
             )
