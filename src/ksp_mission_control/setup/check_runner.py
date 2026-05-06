@@ -26,9 +26,7 @@ class CheckRunner:
     @property
     def all_passed(self) -> bool:
         """Return True when every check has been run and passed."""
-        return len(self._results) == len(self._checks) and all(
-            r.passed for r in self._results.values()
-        )
+        return len(self._results) == len(self._checks) and all(r.passed for r in self._results.values())
 
     def run_all(self) -> None:
         """Reset results and execute checks sequentially.

@@ -97,9 +97,7 @@ class TestGetDefaultSearchPaths:
 class TestFindKspInstall:
     """Tests for auto-detecting KSP installation."""
 
-    def test_finds_ksp_in_search_paths(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_finds_ksp_in_search_paths(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should find KSP when it exists in one of the search paths."""
         ksp_dir = tmp_path / "KSP_linux"
         ksp_dir.mkdir()
@@ -122,9 +120,7 @@ class TestFindKspInstall:
         result = find_ksp_install()
         assert result is None
 
-    def test_returns_ksp_install_info(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_returns_ksp_install_info(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         ksp_dir = tmp_path / "KSP"
         ksp_dir.mkdir()
         (ksp_dir / "GameData").mkdir()
@@ -156,9 +152,7 @@ class TestFindKspInstall:
         assert result is not None
         assert result.has_krpc is True
 
-    def test_skips_invalid_directories(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_skips_invalid_directories(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should skip directories that aren't valid KSP installs."""
         invalid = tmp_path / "not_ksp"
         invalid.mkdir()

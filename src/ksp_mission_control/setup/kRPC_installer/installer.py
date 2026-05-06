@@ -37,9 +37,7 @@ def extract_krpc_zip(zip_path: Path, ksp_path: Path) -> None:
     with zipfile.ZipFile(zip_path) as zf:
         gamedata_entries = [n for n in zf.namelist() if n.startswith("GameData/")]
         if not any("krpc.dll" in entry.lower() for entry in gamedata_entries):
-            raise KrpcInstallError(
-                f"{zip_path.name} does not contain kRPC (missing GameData/kRPC/KRPC.dll)"
-            )
+            raise KrpcInstallError(f"{zip_path.name} does not contain kRPC (missing GameData/kRPC/KRPC.dll)")
 
         gamedata_dest = ksp_path / "GameData"
         gamedata_dest.mkdir(parents=True, exist_ok=True)
@@ -90,10 +88,7 @@ async def get_latest_krpc_download_url(
         if _MAIN_ZIP_PATTERN.match(name):
             return asset["browser_download_url"], version
 
-    raise KrpcInstallError(
-        f"No suitable kRPC download found in release {version}. "
-        f"Assets: {[a['name'] for a in data.get('assets', [])]}"
-    )
+    raise KrpcInstallError(f"No suitable kRPC download found in release {version}. Assets: {[a['name'] for a in data.get('assets', [])]}")
 
 
 async def install_krpc(

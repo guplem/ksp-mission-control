@@ -171,9 +171,7 @@ class TestKrpcCommsCheck:
         # Create a settings.cfg with an unused port so the check fails
         cfg_dir = tmp_path / "GameData" / "kRPC" / "PluginData"
         cfg_dir.mkdir(parents=True)
-        (cfg_dir / "settings.cfg").write_text(
-            _make_settings_cfg(address="127.0.0.1", rpc_port=19999, stream_port=19998)
-        )
+        (cfg_dir / "settings.cfg").write_text(_make_settings_cfg(address="127.0.0.1", rpc_port=19999, stream_port=19998))
         check = KrpcCommsCheck(
             config_manager=_mock_config_manager(ksp_path=str(tmp_path)),
             timeout=0.1,
@@ -207,9 +205,7 @@ class TestVesselDetectedCheck:
 
     def test_fails_when_no_active_vessel(self) -> None:
         mock_conn = Mock()
-        type(mock_conn.space_center).active_vessel = property(
-            lambda self: (_ for _ in ()).throw(RuntimeError("no vessel"))
-        )
+        type(mock_conn.space_center).active_vessel = property(lambda self: (_ for _ in ()).throw(RuntimeError("no vessel")))
         mock_krpc = Mock()
         mock_krpc.connect.return_value = mock_conn
         with patch.dict("sys.modules", {"krpc": mock_krpc}):

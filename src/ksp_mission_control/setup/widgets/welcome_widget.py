@@ -30,6 +30,4 @@ class WelcomeWidget(Static):
         yield Center(Static(LOGO, id="logo"))
         yield Center(Static("v0.1.0", id="version"))
         yield Static("")
-        yield Center(
-            Static("[b]Terminal Mission Control for Kerbal Space Program[/b]", id="tagline")
-        )
+        yield Center(Static("[b]Terminal Mission Control for Kerbal Space Program[/b]", id="tagline"))
