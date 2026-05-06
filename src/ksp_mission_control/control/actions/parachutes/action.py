@@ -61,7 +61,7 @@ class ParachutesAction(Action):
             ),
             required=False,
             param_type=ParamType.BOOL,
-            default=True,
+            default=False,
         ),
     ]
 

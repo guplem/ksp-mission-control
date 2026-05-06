@@ -7,5 +7,5 @@ suborbital_launch   auto_stage
 
 # Aerobrake and deploy chutes
 wait_for   apoapsis=True
-aerobreak   auto_stage=True
-parachutes     min_altitude=10_000  stage_for_parachutes=True  wait_for_safe=True
+aerobreak   auto_stage=True  target_altitude=10_000
+parachutes     min_altitude=10_000  stage_for_parachutes=True  wait_for_safe=False

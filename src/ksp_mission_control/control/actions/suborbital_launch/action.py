@@ -45,6 +45,24 @@ class SuborbitalLaunchAction(Action):
             param_type=ParamType.BOOL,
             default=False,
         ),
+        ActionParam(
+            param_id="max_dynamic_pressure",
+            label="Max Dynamic Pressure",
+            description="The maximum dynamic pressure to allow during the launch.",
+            required=False,
+            param_type=ParamType.FLOAT,
+            default=35_000,
+            unit="Pa",
+        ),
+        ActionParam(
+            param_id="min_throttle",
+            label="Min Throttle",
+            description="The minimum throttle setting to use during the launch.",
+            required=False,
+            param_type=ParamType.FLOAT,
+            default=0.30,
+            unit="%",
+        ),
     ]
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
@@ -60,6 +78,16 @@ class SuborbitalLaunchAction(Action):
 
         # Save auto-stage setting
         self._auto_stage: bool = bool(param_values["auto_stage"])
+
+        # Save max dynamic pressure
+        self._max_dynamic_pressure: float = float(param_values["max_dynamic_pressure"])
+        if self._max_dynamic_pressure <= 0.0:
+            raise ValueError("Invalid max dynamic pressure: must be positive.")
+
+        # Save min throttle
+        self._min_throttle: float = float(param_values["min_throttle"])
+        if not (0.0 <= self._min_throttle <= 1.0):
+            raise ValueError("Invalid min throttle: must be between 0 and 1.")
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
 
@@ -89,17 +117,14 @@ class SuborbitalLaunchAction(Action):
 
         # Throttle control
         if state.orbit_apoapsis < self._target_altitude:
-            max_dynamic_pressure = 30_000  # Pa
-            min_throttle = 0.25
-
-            if state.pressure_dynamic > max_dynamic_pressure:
+            if state.pressure_dynamic > self._max_dynamic_pressure:
                 # Throtle down to avoid excessive dynamic pressure
-                log.debug(f"Dynamic pressure {state.pressure_dynamic:.1f} Pa exceeds max {max_dynamic_pressure} Pa, throttling down ⬇️")
-                commands.throttle = max(min_throttle, state.control_throttle - 0.1)
+                log.debug(f"Dynamic pressure {state.pressure_dynamic:.1f} Pa exceeds max {self._max_dynamic_pressure} Pa, throttling down ⬇️")
+                commands.throttle = max(self._min_throttle, state.control_throttle - 0.1)
             elif state.control_throttle < 1.0:
                 # If we're below max dynamic pressure and not already at full throttle, increase throttle
                 if state.control_throttle < 1.0:
-                    log.debug(f"Dynamic pressure {state.pressure_dynamic:.1f} Pa below max {max_dynamic_pressure} Pa, throttling up ⬆️")
+                    log.debug(f"Dynamic pressure {state.pressure_dynamic:.1f} Pa below max {self._max_dynamic_pressure} Pa, throttling up ⬆️")
                 commands.throttle = min(1.0, state.control_throttle + 0.1)
 
             return ActionResult(
