@@ -138,41 +138,41 @@ class TestActionRunnerStartAndStep:
         assert action._param_values == {"speed": 10.0}  # noqa: SLF001
 
 
-class TestActionRunnerAbort:
-    """Tests for aborting a running action."""
+class TestActionRunnerStop:
+    """Tests for stopping a running action."""
 
-    def test_abort_calls_stop(self) -> None:
+    def test_stop_calls_action_stop(self) -> None:
         runner = ActionRunner()
         action = StubAction()
         runner.start_action(action, State())
         runner.step(State(), dt=0.5)
-        result = runner.abort()
+        result = runner.stop()
         assert action.stopped
         # Base Action.stop() only logs; no command resets
         assert result.commands.throttle is None
 
-    def test_abort_clears_state(self) -> None:
+    def test_stop_clears_state(self) -> None:
         runner = ActionRunner()
         action = StubAction()
         runner.start_action(action, State())
         runner.step(State(), dt=0.5)
-        runner.abort()
+        runner.stop()
         # Subsequent step returns empty controls
         result = runner.step(State(), dt=0.5)
         assert result.commands.throttle is None
 
-    def test_snapshot_after_abort_shows_no_action(self) -> None:
+    def test_snapshot_after_stop_shows_no_action(self) -> None:
         runner = ActionRunner()
         action = StubAction()
         runner.start_action(action, State())
-        runner.abort()
+        runner.stop()
         snap = runner.snapshot()
         assert snap.action_id is None
         assert snap.status is None
 
-    def test_abort_with_no_action_returns_empty_controls(self) -> None:
+    def test_stop_with_no_action_returns_empty_controls(self) -> None:
         runner = ActionRunner()
-        result = runner.abort()
+        result = runner.stop()
         assert result.commands.throttle is None
 
 

@@ -220,12 +220,12 @@ class MultiTrackExecutor:
             finished_status=finished_status,
         )
 
-    def abort(self) -> StepResult:
-        """Abort all tracks."""
+    def stop(self) -> StepResult:
+        """Stop all tracks."""
         merged_commands = VesselCommands()
         all_logs: list[LogEntry] = []
         for _track_name, executor in self._tracks:
-            result = executor.abort()
+            result = executor.stop()
             for field in dataclass_fields(result.commands):
                 value = getattr(result.commands, field.name)
                 if field.name == "science_commands":
@@ -237,11 +237,11 @@ class MultiTrackExecutor:
         self._tracks.clear()
         return StepResult(commands=merged_commands, logs=all_logs)
 
-    def abort_track(self, track_name: str) -> StepResult:
-        """Abort a single track by name."""
+    def stop_track(self, track_name: str) -> StepResult:
+        """Stop a single track by name."""
         for index, (name, executor) in enumerate(self._tracks):
             if name == track_name:
-                result = executor.abort()
+                result = executor.stop()
                 self._tracks.pop(index)
                 return result
         raise ValueError(f"Unknown track: {track_name!r}")

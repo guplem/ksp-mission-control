@@ -237,9 +237,9 @@ class ControlSession:
         """Begin executing a flight plan. Raises ValueError on invalid plan."""
         self._executor.start_plan(plan, self._last_state, plans_dir=plans_dir)
 
-    def abort_plan(self) -> None:
-        """Abort all plan tracks."""
-        result = self._executor.abort()
+    def stop_plan(self) -> None:
+        """Stop all plan tracks."""
+        result = self._executor.stop()
         if self._conn is not None:
             with contextlib.suppress(Exception):
                 apply_controls(self._conn, result.commands)
@@ -254,16 +254,16 @@ class ControlSession:
         """
         self._pending_manual_command = commands
 
-    def abort(self) -> None:
-        """Abort the current action and apply cleanup commands if connected."""
-        result = self._executor.abort()
+    def stop(self) -> None:
+        """Stop the current action and apply cleanup commands if connected."""
+        result = self._executor.stop()
         if self._conn is not None:
             with contextlib.suppress(Exception):
                 apply_controls(self._conn, result.commands)
 
-    def abort_track(self, track_name: str) -> None:
-        """Abort a single track by name."""
-        result = self._executor.abort_track(track_name)
+    def stop_track(self, track_name: str) -> None:
+        """Stop a single track by name."""
+        result = self._executor.stop_track(track_name)
         if self._conn is not None:
             with contextlib.suppress(Exception):
                 apply_controls(self._conn, result.commands)
@@ -273,10 +273,10 @@ class ControlSession:
         self._stop_event.wait(_RECONNECT_INTERVAL)
 
     def shutdown(self) -> None:
-        """Stop the poll loop, abort any running action, and close the connection."""
+        """Stop the poll loop, stop any running action, and close the connection."""
         self._stop_event.set()
         if self._executor.snapshot().primary.runner.action_id is not None:
-            self.abort()
+            self.stop()
         conn = self._conn
         self._conn = None
         if conn is not None:

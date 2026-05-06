@@ -167,10 +167,10 @@ class PlanExecutor:
 
         return result
 
-    def abort(self) -> StepResult:
-        """Abort the current action and cancel any remaining plan."""
+    def stop(self) -> StepResult:
+        """Stop the current action and cancel any remaining plan."""
         plan_name = self._plan.name if self._plan is not None else None
-        result = self._runner.abort()
+        result = self._runner.stop()
         if plan_name is not None:
             result.logs.append(LogEntry(level=LogLevel.PLAN_END, message=plan_name))
         self._clear_plan()

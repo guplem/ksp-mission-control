@@ -209,7 +209,7 @@ class ControlScreen(Screen[None]):
             return
         self.query_one("#telemetry-display", TelemetryDisplayWidget).show_historical_state(record.state, record.met)
 
-    def on_control_panel_widget_run_action_requested(self, event: ControlPanelWidget.RunActionRequested) -> None:
+    def on_control_panel_widget_start_action_requested(self, event: ControlPanelWidget.StartActionRequested) -> None:
         """Open the action picker dialog."""
         self.app.push_screen(
             ActionPicker(),
@@ -384,16 +384,16 @@ class ControlScreen(Screen[None]):
             self.notify(str(exc), severity="error")
             self._log_error(str(exc))
 
-    def on_control_panel_widget_cancel_run_requested(
+    def on_control_panel_widget_stop_run_requested(
         self,
-        event: ControlPanelWidget.CancelRunRequested,
+        event: ControlPanelWidget.StopRunRequested,
     ) -> None:
-        """User clicked Cancel during action/plan execution: stop everything."""
+        """User clicked Stop during action/plan execution: stop everything."""
         if self._session is None:
             return
-        self._session.abort()
+        self._session.stop()
         self.query_one("#control-panel", ControlPanelWidget).update_running(None)
-        self.notify("Cancelled", timeout=1.5)
+        self.notify("Stopped", timeout=1.5)
 
     def action_save_logs(self) -> None:
         """Save the full tick-by-tick log to file and copy the path to clipboard."""

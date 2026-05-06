@@ -80,20 +80,20 @@ class TestControlSession:
         assert snapshot.action_id == "stub"
         assert snapshot.status == ActionStatus.RUNNING
 
-    def test_abort_clears_running_action(self) -> None:
+    def test_stop_clears_running_action(self) -> None:
         session = _make_session()
         action = StubAction()
         session.start_action(action)
 
-        session.abort()
+        session.stop()
 
         assert session.snapshot().action_id is None
 
-    def test_abort_no_action_is_safe(self) -> None:
+    def test_stop_no_action_is_safe(self) -> None:
         session = _make_session()
 
         # Should not raise
-        session.abort()
+        session.stop()
         assert session.snapshot().action_id is None
 
     def test_shutdown_sets_stop_event(self) -> None:
@@ -103,7 +103,7 @@ class TestControlSession:
 
         assert session._stop_event.is_set()  # noqa: SLF001
 
-    def test_shutdown_aborts_running_action(self) -> None:
+    def test_shutdown_stops_running_action(self) -> None:
         session = _make_session()
         session.start_action(StubAction())
 

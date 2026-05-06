@@ -211,12 +211,12 @@ class TestMultiTrackExecutorSingleAction:
         snap = executor.snapshot()
         assert snap.primary.runner.action_id == "stub"
 
-    def test_abort_single_action(self) -> None:
+    def test_stop_single_action(self) -> None:
         executor = MultiTrackExecutor()
         action = StubAction()
         state = State()
         executor.start_action(action, state)
-        executor.abort()
+        executor.stop()
         snap = executor.snapshot()
         assert snap.tracks == ()
 
@@ -271,12 +271,12 @@ class TestMultiTrackExecutorSinglePlan:
         assert snap.primary.step_statuses[1] == StepStatus.RUNNING
         assert snap.primary.current_step_index == 1
 
-    def test_abort_plan(self) -> None:
+    def test_stop_plan(self) -> None:
         executor = MultiTrackExecutor()
         plan, actions = _make_plan(num_steps=2)
         state = State()
         executor.start_plan(plan, state, actions=actions)
-        executor.abort()
+        executor.stop()
         snap = executor.snapshot()
         assert snap.tracks == ()
 
@@ -372,7 +372,7 @@ class TestMultiTrackExecutorParallel:
         flight_snap = snap.tracks[0].plan_snapshot
         assert flight_snap.runner.action_id == "stub"
 
-    def test_abort_track_removes_only_that_track(self) -> None:
+    def test_stop_track_removes_only_that_track(self) -> None:
         executor = MultiTrackExecutor()
         plan_a, actions_a = _make_plan(name="flight", num_steps=1, throttle=0.5)
         plan_b, actions_b = _make_plan(name="science", num_steps=1, throttle=None)
@@ -386,14 +386,14 @@ class TestMultiTrackExecutorParallel:
         executor_b.start_plan(plan_b, state, actions=actions_b)
         executor._tracks.append(("science", executor_b))
 
-        executor.abort_track("science")
+        executor.stop_track("science")
         assert executor.track_count == 1
         assert executor.snapshot().tracks[0].track_name == "flight"
 
-    def test_abort_track_raises_for_unknown(self) -> None:
+    def test_stop_track_raises_for_unknown(self) -> None:
         executor = MultiTrackExecutor()
         with pytest.raises(ValueError, match="Unknown track"):
-            executor.abort_track("nonexistent")
+            executor.stop_track("nonexistent")
 
 
 class TestMultiTrackRecursiveLoading:

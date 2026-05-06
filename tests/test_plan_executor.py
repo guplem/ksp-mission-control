@@ -87,12 +87,12 @@ class TestPlanExecutorSingleAction:
         snap = executor.snapshot()
         assert snap.plan_name is None
 
-    def test_abort_single_action(self) -> None:
+    def test_stop_single_action(self) -> None:
         executor = PlanExecutor()
         action = StubAction()
         state = State()
         executor.start_action(action, state)
-        executor.abort()
+        executor.stop()
         snap = executor.snapshot()
         assert snap.runner.action_id is None
 
@@ -207,14 +207,14 @@ class TestPlanExecutorPlan:
         plan_end_logs = [log for log in result.logs if log.level == LogLevel.PLAN_END]
         assert len(plan_end_logs) == 1
 
-    def test_abort_cancels_remaining_steps(self) -> None:
+    def test_stop_cancels_remaining_steps(self) -> None:
         executor = PlanExecutor()
         plan, actions = _make_plan(2)
         state = State()
         executor.start_plan(plan, state, actions=actions)
 
         executor.step(state, dt=0.5)
-        executor.abort()
+        executor.stop()
 
         snap = executor.snapshot()
         assert snap.plan_name is None

@@ -1,7 +1,7 @@
 """ControlPanelWidget - displays running action status and flight plan steps.
 
-When idle, shows buttons: "Run Action", "Load Flight Plan", and "Manual Command".
-When a plan is staged but not started, shows a pending-plan tray with
+When idle, shows buttons: "Start Action", "Load Flight Plan", and "Manual Command".
+When a plan is pending but not running, shows a pending-plan tray with
 "Launch", "Manual Command", and "Cancel" buttons.
 When a single action is running, shows its status.
 When a flight plan is active, shows each step with its status as Rich markup.
@@ -30,9 +30,11 @@ _STATUS_VARIABLE: dict[StepStatus, str] = {
 _STATUS_LABELS: dict[StepStatus, str] = {
     StepStatus.PENDING: "PENDING",
     StepStatus.RUNNING: "RUNNING",
-    StepStatus.SUCCEEDED: "OK",
+    StepStatus.SUCCEEDED: "SUCCEEDED",
     StepStatus.FAILED: "FAILED",
 }
+
+_STATUS_LABEL_WIDTH = max(len(label) for label in _STATUS_LABELS.values())
 
 
 class ControlPanelWidget(Static):
@@ -63,8 +65,8 @@ class ControlPanelWidget(Static):
 
     """
 
-    class RunActionRequested(Message):
-        """Posted when the user clicks the Run Action button."""
+    class StartActionRequested(Message):
+        """Posted when the user clicks the Start Action button."""
 
     class LoadPlanRequested(Message):
         """Posted when the user clicks the Load Flight Plan button."""
@@ -78,8 +80,8 @@ class ControlPanelWidget(Static):
     class CancelPendingRequested(Message):
         """Posted when the user clicks Cancel in the pending-plan tray."""
 
-    class CancelRunRequested(Message):
-        """Posted when the user clicks Cancel during action/plan execution."""
+    class StopRunRequested(Message):
+        """Posted when the user clicks Stop during action/plan execution."""
 
     def __init__(self, *, id: str | None = None) -> None:  # noqa: A002
         super().__init__(id=id)
@@ -98,10 +100,10 @@ class ControlPanelWidget(Static):
         yield Button("Launch", id="pending-launch-btn", variant="primary", classes="action-btn")
         yield Button("Manual Command", id="pending-manual-btn", classes="action-btn")
         yield Button("Cancel", id="pending-cancel-btn", classes="action-btn")
-        yield Button("Run Action", id="run-action-btn", classes="action-btn")
+        yield Button("Start Action", id="start-action-btn", classes="action-btn")
         yield Button("Load Flight Plan", id="load-plan-btn", classes="action-btn")
         yield Button("Manual Command", id="manual-cmd-btn", classes="action-btn")
-        yield Button("Cancel", id="cancel-run-btn", variant="error", classes="action-btn")
+        yield Button("Stop", id="stop-run-btn", variant="error", classes="action-btn")
 
     def on_mount(self) -> None:
         """Hide dynamic content areas and the pending-plan tray initially."""
@@ -112,8 +114,8 @@ class ControlPanelWidget(Static):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button clicks."""
         button_id = event.button.id
-        if button_id == "run-action-btn":
-            self.post_message(self.RunActionRequested())
+        if button_id == "start-action-btn":
+            self.post_message(self.StartActionRequested())
         elif button_id == "load-plan-btn":
             self.post_message(self.LoadPlanRequested())
         elif button_id in ("manual-cmd-btn", "pending-manual-btn"):
@@ -122,8 +124,8 @@ class ControlPanelWidget(Static):
             self.post_message(self.LaunchPendingRequested())
         elif button_id == "pending-cancel-btn":
             self.post_message(self.CancelPendingRequested())
-        elif button_id == "cancel-run-btn":
-            self.post_message(self.CancelRunRequested())
+        elif button_id == "stop-run-btn":
+            self.post_message(self.StopRunRequested())
 
     def update_running(self, action_id: str | None) -> None:
         """Update which action (if any) is currently running.
@@ -220,24 +222,24 @@ class ControlPanelWidget(Static):
         """Reconcile idle/running button visibility against the current state.
 
         - Pending mode: all idle/running buttons hidden (the pending tray takes over).
-        - Running (action or plan): Cancel + Manual Command shown; Run/Load hidden.
-        - Idle: Run Action, Load Plan, Manual Command shown; Cancel hidden.
+        - Running (action or plan): Stop + Manual Command shown; Start/Load hidden.
+        - Idle: Start Action, Load Plan, Manual Command shown; Stop hidden.
         """
         try:
-            run_btn = self.query_one("#run-action-btn", Button)
+            start_btn = self.query_one("#start-action-btn", Button)
             plan_btn = self.query_one("#load-plan-btn", Button)
             manual_btn = self.query_one("#manual-cmd-btn", Button)
-            cancel_run_btn = self.query_one("#cancel-run-btn", Button)
+            stop_run_btn = self.query_one("#stop-run-btn", Button)
         except NoMatches:
             return
         in_pending = self._pending_plan is not None
         running = self._running_action_id is not None or self._plan_active
         idle = not in_pending and not running
 
-        run_btn.display = idle
+        start_btn.display = idle
         plan_btn.display = idle
         manual_btn.display = not in_pending
-        cancel_run_btn.display = running and not in_pending
+        stop_run_btn.display = running and not in_pending
 
     def _resolve_status_colors(self) -> dict[StepStatus, str]:
         """Resolve theme CSS variables to hex colors, cached after first call."""
@@ -280,7 +282,7 @@ class ControlPanelWidget(Static):
             status_tag = _STATUS_LABELS[step_status]
 
             step_number = index + 1
-            status_part = f"[{color}]{status_tag:>7}[/{color}]"
+            status_part = f"[{color}]{status_tag:>{_STATUS_LABEL_WIDTH}}[/{color}]"
 
             if step_status == StepStatus.RUNNING:
                 name_part = f"[bold]Step {step_number}: {label_text}[/bold]"
@@ -332,7 +334,7 @@ class ControlPanelWidget(Static):
                 color = colors[step_status]
                 status_tag = _STATUS_LABELS[step_status]
                 step_number = index + 1
-                status_part = f"[{color}]{status_tag:>7}[/{color}]"
+                status_part = f"[{color}]{status_tag:>{_STATUS_LABEL_WIDTH}}[/{color}]"
 
                 if step_status == StepStatus.RUNNING:
                     name_part = f"[bold]Step {step_number}: {label_text}[/bold]"

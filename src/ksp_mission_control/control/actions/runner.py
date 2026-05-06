@@ -71,7 +71,7 @@ class ActionRunner:
         action.start(state, resolved)
         self._emit_started = True
 
-    def abort(self) -> StepResult:
+    def stop(self) -> StepResult:
         """Stop the current action immediately.
 
         Returns cleanup commands and any log messages from stop().
@@ -80,7 +80,7 @@ class ActionRunner:
         commands = VesselCommands()
         log = ActionLogger()
         if self._action is not None:
-            log.entries.append(LogEntry(level=LogLevel.ACTION_FAILED, message=f"Aborted: {self._action.label}"))
+            log.entries.append(LogEntry(level=LogLevel.ACTION_FAILED, message=f"Stopped: {self._action.label}"))
             self._action.stop(self._last_state, commands, log)
             log.entries.append(LogEntry(level=LogLevel.ACTION_END, message=f"{self._action.label}"))
             self._action = None

@@ -16,18 +16,18 @@ class FailureAction(Enum):
     """User's choice when a plan step fails."""
 
     CONTINUE = "continue"
-    ABORT_TRACK = "abort_track"
-    ABORT_ALL = "abort_all"
+    STOP_TRACK = "stop_track"
+    STOP_ALL = "stop_all"
 
 
 class PlanFailureDialog(ModalScreen[FailureAction]):
     """Modal dialog shown when a flight plan step fails.
 
-    Asks the user whether to continue to the next step, abort just the
-    failed track, or abort all tracks.
+    Asks the user whether to continue to the next step, stop just the
+    failed track, or stop all tracks.
 
-    For single-track plans, "Abort Track" is labeled "Abort Plan" and
-    behaves identically to "Abort All".
+    For single-track plans, "Stop Track" is labeled "Stop Plan" and
+    behaves identically to "Stop All".
     """
 
     AUTO_FOCUS = ""
@@ -65,7 +65,7 @@ class PlanFailureDialog(ModalScreen[FailureAction]):
     """
 
     BINDINGS = [
-        ("escape", "abort_plan", "Abort Plan"),
+        ("escape", "stop_plan", "Stop Plan"),
     ]
 
     def __init__(
@@ -106,18 +106,18 @@ class PlanFailureDialog(ModalScreen[FailureAction]):
                     variant="primary",
                 )
                 if self._is_multi_track:
-                    yield Button("Abort Track", id="abort-track-btn", variant="warning")
-                    yield Button("Abort All", id="abort-all-btn", variant="error")
+                    yield Button("Stop Track", id="stop-track-btn", variant="warning")
+                    yield Button("Stop All", id="stop-all-btn", variant="error")
                 else:
-                    yield Button("Abort Plan", id="abort-all-btn", variant="error")
+                    yield Button("Stop Plan", id="stop-all-btn", variant="error")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "continue-btn":
             self.dismiss(FailureAction.CONTINUE)
-        elif event.button.id == "abort-track-btn":
-            self.dismiss(FailureAction.ABORT_TRACK)
-        elif event.button.id == "abort-all-btn":
-            self.dismiss(FailureAction.ABORT_ALL)
+        elif event.button.id == "stop-track-btn":
+            self.dismiss(FailureAction.STOP_TRACK)
+        elif event.button.id == "stop-all-btn":
+            self.dismiss(FailureAction.STOP_ALL)
 
-    def action_abort_plan(self) -> None:
-        self.dismiss(FailureAction.ABORT_ALL)
+    def action_stop_plan(self) -> None:
+        self.dismiss(FailureAction.STOP_ALL)
