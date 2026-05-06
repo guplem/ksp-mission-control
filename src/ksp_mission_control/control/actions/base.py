@@ -145,8 +145,12 @@ class ReferenceFrame(Enum):
     Members:
         VESSEL_SURFACE: Aligned with the vessel's surface position.
             +x = zenith (up), +y = north, +z = east.
+        VESSEL_SURFACE_VELOCITY: Aligned with the vessel's velocity relative to the surface.
+            +y = surface prograde (direction of motion through the atmosphere),
+            +z = in the astronomical horizon plane, +x = orthogonal to y and z.
+            Use this for atmospheric maneuvers where the body's rotation matters.
         VESSEL_ORBITAL: Aligned with the vessel's orbital velocity.
-            +x = prograde, +y = normal, +z = radial.
+            +x = anti-radial, +y = orbital prograde, +z = orbital normal.
         VESSEL: The vessel's own reference frame (moves and rotates with it).
             +x = vessel right, +y = vessel forward, +z = vessel down.
         BODY: Centered on the orbited body, rotates with it.
@@ -156,6 +160,7 @@ class ReferenceFrame(Enum):
     """
 
     VESSEL_SURFACE = "vessel_surface"
+    VESSEL_SURFACE_VELOCITY = "vessel_surface_velocity"
     VESSEL_ORBITAL = "vessel_orbital"
     VESSEL = "vessel"
     BODY = "body"
@@ -233,9 +238,9 @@ class AutopilotDirection:
 
     Example::
 
-        # Point prograde in the orbital frame:
+        # Point prograde in the orbital frame (+y = orbital prograde):
         commands.autopilot_direction = AutopilotDirection(
-            vector=(1.0, 0.0, 0.0),
+            vector=(0.0, 1.0, 0.0),
             reference_frame=ReferenceFrame.VESSEL_ORBITAL,
         )
 

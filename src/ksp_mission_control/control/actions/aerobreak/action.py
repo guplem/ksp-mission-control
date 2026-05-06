@@ -30,10 +30,14 @@ from ksp_mission_control.control.actions.base import (
     VesselCommands,
 )
 
-# Retrograde direction in the orbital reference frame: -x = opposite of prograde
+# Surface retrograde: opposite to the velocity through the atmosphere. Surface frame
+# (not orbital) is required because the body's rotation makes orbital and surface
+# velocity vectors diverge significantly when descending through the atmosphere.
+# kRPC's surface_velocity_reference_frame uses +y as the surface prograde axis, so
+# (0, -1, 0) points opposite to the velocity vector.
 _RETROGRADE_DIRECTION = AutopilotDirection(
-    vector=(-1.0, 0.0, 0.0),
-    reference_frame=ReferenceFrame.VESSEL_ORBITAL,
+    vector=(0.0, -1.0, 0.0),
+    reference_frame=ReferenceFrame.VESSEL_SURFACE_VELOCITY,
 )
 
 # Safety margin multiplier for braking distance (start burn slightly early)

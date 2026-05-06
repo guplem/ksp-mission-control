@@ -670,6 +670,7 @@ def apply_controls(conn: object, controls: VesselCommands) -> None:
         direction = controls.autopilot_direction
         frame_map = {
             ReferenceFrame.VESSEL_SURFACE: vessel.surface_reference_frame,
+            ReferenceFrame.VESSEL_SURFACE_VELOCITY: vessel.surface_velocity_reference_frame,
             ReferenceFrame.VESSEL_ORBITAL: vessel.orbital_reference_frame,
             ReferenceFrame.VESSEL: vessel.reference_frame,
             ReferenceFrame.BODY: orbit.body.reference_frame,

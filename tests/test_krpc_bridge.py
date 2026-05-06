@@ -158,6 +158,7 @@ def _make_mock_conn(
     auto_pilot.disengage = disengage
 
     vessel_surface_ref = SimpleNamespace()
+    vessel_surface_velocity_ref = SimpleNamespace()
     vessel_orbital_ref = SimpleNamespace()
     vessel_ref = SimpleNamespace()
 
@@ -358,6 +359,7 @@ def _make_mock_conn(
             specific_impulse=320.0,
             vacuum_specific_impulse=350.0,
             surface_reference_frame=vessel_surface_ref,
+            surface_velocity_reference_frame=vessel_surface_velocity_ref,
             orbital_reference_frame=vessel_orbital_ref,
             reference_frame=vessel_ref,
             parts=parts,
@@ -701,6 +703,18 @@ class TestApplyControlsAutopilotDirection:
         apply_controls(conn, commands)
         assert vessel.auto_pilot.target_direction == (0.0, 1.0, 0.0)
         assert vessel.auto_pilot.reference_frame is vessel.surface_reference_frame
+
+    def test_sets_direction_with_vessel_surface_velocity_frame(self) -> None:
+        conn = _make_mock_conn()
+        vessel = conn.space_center.active_vessel
+        commands = VesselCommands(
+            autopilot_direction=AutopilotDirection(
+                vector=(-1.0, 0.0, 0.0),
+                reference_frame=ReferenceFrame.VESSEL_SURFACE_VELOCITY,
+            )
+        )
+        apply_controls(conn, commands)
+        assert vessel.auto_pilot.reference_frame is vessel.surface_velocity_reference_frame
 
     def test_sets_direction_with_vessel_orbital_frame(self) -> None:
         conn = _make_mock_conn()

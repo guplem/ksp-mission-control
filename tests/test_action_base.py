@@ -659,6 +659,7 @@ class TestReferenceFrame:
 
     def test_has_expected_members(self) -> None:
         assert ReferenceFrame.VESSEL_SURFACE.value == "vessel_surface"
+        assert ReferenceFrame.VESSEL_SURFACE_VELOCITY.value == "vessel_surface_velocity"
         assert ReferenceFrame.VESSEL_ORBITAL.value == "vessel_orbital"
         assert ReferenceFrame.VESSEL.value == "vessel"
         assert ReferenceFrame.BODY.value == "body"
