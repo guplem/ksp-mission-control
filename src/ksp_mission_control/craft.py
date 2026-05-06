@@ -66,7 +66,7 @@ def find_craft_in_save(save_dir: Path, vessel_name: str) -> Path:
     """
     craft_path = save_dir / "Ships" / "VAB" / f"{vessel_name}.craft"
     if not craft_path.is_file():
-        raise CraftError(f"Craft file not found: {craft_path}\nThe vessel may have been built in the SPH or renamed.")
+        raise CraftError(f"Craft file not found: {craft_path}\nThe vessel may have been built in the Space Plane Hangar (SPH) or renamed.")
     return craft_path
 
 

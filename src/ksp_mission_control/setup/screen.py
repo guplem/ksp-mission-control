@@ -294,16 +294,16 @@ class SetupScreen(Screen[None]):
             stream_port=krpc_settings.stream_port,
         )
         try:
-            live_name = get_active_vessel_name(conn)
+            active_name = get_active_vessel_name(conn)
         finally:
             import contextlib  # noqa: PLC0415
 
             with contextlib.suppress(Exception):
                 conn.close()
 
-        sanitized = sanitize_craft_name(live_name)
+        sanitized = sanitize_craft_name(active_name)
         if not sanitized:
-            raise CraftError(f"Vessel name {live_name!r} cannot be sanitized to a filename")
+            raise CraftError(f"Vessel name {active_name!r} cannot be sanitized to a filename")
 
         crafts_dir = Path.cwd() / "crafts"
         dest_path = crafts_dir / f"{sanitized}.craft"
@@ -317,7 +317,7 @@ class SetupScreen(Screen[None]):
         # Copy from KSP's active save's VAB into crafts/, then put the
         # sanitized name on the clipboard so plans can paste it as @craft.
         save_dir = find_active_save_dir(Path(ksp_path_str))
-        craft_source = find_craft_in_save(save_dir, live_name)
+        craft_source = find_craft_in_save(save_dir, active_name)
         dest = export_craft_to_project(craft_source, crafts_dir)
         self.app.call_from_thread(self.app.copy_to_clipboard, sanitized)
         return sanitized, dest.name

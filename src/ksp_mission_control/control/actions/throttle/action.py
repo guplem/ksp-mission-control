@@ -61,7 +61,7 @@ class ThrottleAction(Action):
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         if state.thrust_available <= 0:
-            return ActionResult(status=ActionStatus.FAILED, message="Cannot set throttle: no thrust available")
+            return ActionResult(status=ActionStatus.FAILED, message="Failed: no thrust available")
 
         if self._throttle_level is not None:
             commands.throttle = self._throttle_level
@@ -71,7 +71,7 @@ class ThrottleAction(Action):
         # start() guarantees exactly one of _throttle_level/_twr is set.
         assert self._twr is not None
         if state.weight <= 0.0:
-            return ActionResult(status=ActionStatus.FAILED, message="Cannot compute TWR: vessel has no weight")
+            return ActionResult(status=ActionStatus.FAILED, message="Failed: vessel has no weight")
 
         throttle = max(0.0, min(1.0, (self._twr * state.weight) / state.thrust_available))
         commands.throttle = throttle

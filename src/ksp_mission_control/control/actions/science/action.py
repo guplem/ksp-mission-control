@@ -92,25 +92,25 @@ class ExecuteScienceAction(Action):
             if not matching:
                 return ActionResult(
                     status=ActionStatus.FAILED,
-                    message=f"No science experiment found with name tag '{self._name_tag}'",
+                    message=f"Failed: no science experiment found with name tag '{self._name_tag}'",
                 )
             commands.science_commands += tuple(ScienceCommand(e.index, action) for e in matching)
             names = ", ".join(e.title for e in matching)
-            return ActionResult(status=ActionStatus.SUCCEEDED, message=f"Running science on tag '{self._name_tag}': {names}")
+            return ActionResult(status=ActionStatus.SUCCEEDED, message=f"Activated science on tag '{self._name_tag}': {names}")
 
         if self._science_index is not None and 0 <= self._science_index < len(state.science_experiments):
             commands.science_commands += (ScienceCommand(self._science_index, action),)
-            return ActionResult(status=ActionStatus.SUCCEEDED, message=f"Running science experiment index {self._science_index}")
+            return ActionResult(status=ActionStatus.SUCCEEDED, message=f"Activated science experiment index {self._science_index}")
 
         if self._science_count is not None and self._science_count > 0:
             available_experiments = [e for e in state.science_experiments if e.available and e.available]
             experiments_to_run = available_experiments[: self._science_count]
             commands.science_commands += tuple(ScienceCommand(e.index, action) for e in experiments_to_run)
-            return ActionResult(status=ActionStatus.SUCCEEDED, message=f"Running {len(experiments_to_run)} science experiment(s)")
+            return ActionResult(status=ActionStatus.SUCCEEDED, message=f"Activated {len(experiments_to_run)} science experiment(s)")
 
         commands.all_science = action
         available_count = sum(1 for e in state.science_experiments if e.available and not e.has_data)
-        return ActionResult(status=ActionStatus.SUCCEEDED, message=f"All ({available_count}) science experiments activated")
+        return ActionResult(status=ActionStatus.SUCCEEDED, message=f"Activated all ({available_count}) science experiments")
 
     def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
         pass

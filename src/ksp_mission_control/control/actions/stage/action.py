@@ -43,7 +43,7 @@ class StageAction(Action):
         if state.stage_current <= 0:
             return ActionResult(
                 status=ActionStatus.FAILED,
-                message="Cannot stage: already at stage 0",
+                message="Failed: already at stage 0",
             )
 
         if self._wait_for_no_thrust and state.thrust_available > 0:

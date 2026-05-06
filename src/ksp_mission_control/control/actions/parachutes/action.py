@@ -74,7 +74,7 @@ class ParachutesAction(Action):
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         # Check if parachutes are present
         if state.parts.parachutes_count() == 0:
-            return ActionResult(status=ActionStatus.FAILED, message="No parachutes found on the vessel")
+            return ActionResult(status=ActionStatus.FAILED, message="Failed: no parachutes found on the vessel")
 
         # Wait for altitude gate
         if self._min_altitude is not None and state.altitude_surface > self._min_altitude:
@@ -89,7 +89,7 @@ class ParachutesAction(Action):
                 commands.stage = True
                 return ActionResult(status=ActionStatus.RUNNING, message="Staging for parachutes")
             else:
-                return ActionResult(status=ActionStatus.FAILED, message="Parachutes are not in the current stage")
+                return ActionResult(status=ActionStatus.FAILED, message="Failed: parachutes not in the current stage")
 
         # Wait for safe deployment conditions
         if self._wait_for_safe:

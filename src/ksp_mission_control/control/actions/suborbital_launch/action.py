@@ -79,12 +79,12 @@ class SuborbitalLaunchAction(Action):
                 else:
                     return ActionResult(
                         status=ActionStatus.FAILED,
-                        message=f"No thrust available. Current apoapsis is {state.orbit_apoapsis:.1f}m, target altitude is {self._target_altitude:.1f}m",  # noqa: E501
+                        message=f"Failed: no thrust available. Current apoapsis is {state.orbit_apoapsis:.1f}m, target altitude is {self._target_altitude:.1f}m",  # noqa: E501
                     )
             else:
                 return ActionResult(
                     status=ActionStatus.FAILED,
-                    message=f"No thrust available and staging disabled. Current apoapsis is {state.orbit_apoapsis:.1f}m, target altitude is {self._target_altitude:.1f}m",  # noqa: E501
+                    message=f"Failed: no thrust available and staging disabled. Current apoapsis is {state.orbit_apoapsis:.1f}m, target altitude is {self._target_altitude:.1f}m",  # noqa: E501
                 )
 
         # Throttle control

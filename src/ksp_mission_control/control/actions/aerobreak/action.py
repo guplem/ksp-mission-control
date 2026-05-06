@@ -121,12 +121,12 @@ class AerobreakAction(Action):
                 else:
                     return ActionResult(
                         status=ActionStatus.FAILED,
-                        message=f"No thrust available. Speed {state.speed_surface:.1f}m/s, target {self._target_speed:.1f}m/s",  # noqa: E501
+                        message=f"Failed: no thrust available. Speed {state.speed_surface:.1f}m/s, target {self._target_speed:.1f}m/s",  # noqa: E501
                     )
             else:
                 return ActionResult(
                     status=ActionStatus.FAILED,
-                    message=f"No thrust available and staging disabled. Speed {state.speed_surface:.1f}m/s, target {self._target_speed:.1f}m/s",  # noqa: E501
+                    message=f"Failed: no thrust available and staging disabled. Speed {state.speed_surface:.1f}m/s, target {self._target_speed:.1f}m/s",  # noqa: E501
                 )
 
         # --- Braking distance calculation ---
