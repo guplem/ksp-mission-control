@@ -50,6 +50,9 @@ class StubAction(Action):
         controls.throttle = 0.5
         return ActionResult(status=ActionStatus.RUNNING)
 
+    def stop(self, state: State, controls: VesselCommands, log: ActionLogger) -> None:
+        pass
+
 
 # ---------------------------------------------------------------------------
 # Tests

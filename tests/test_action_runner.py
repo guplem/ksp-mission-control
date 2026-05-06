@@ -68,6 +68,9 @@ class RequiredParamAction(Action):
     def tick(self, state: State, controls: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         return ActionResult(status=ActionStatus.RUNNING)
 
+    def stop(self, state: State, controls: VesselCommands, log: ActionLogger) -> None:
+        pass
+
 
 class TestActionRunnerNoAction:
     """Tests for the runner with no active action."""

@@ -42,11 +42,14 @@ class SingleParamAction(Action):
         ),
     ]
 
-    def start(self, param_values: dict[str, Any]) -> None:
+    def start(self, state: State, param_values: dict[str, Any]) -> None:
         pass
 
     def tick(self, state: State, controls: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         return ActionResult(status=ActionStatus.RUNNING)
+
+    def stop(self, state: State, controls: VesselCommands, log: ActionLogger) -> None:
+        pass
 
 
 class MultiParamAction(Action):
@@ -73,11 +76,14 @@ class MultiParamAction(Action):
         ),
     ]
 
-    def start(self, param_values: dict[str, Any]) -> None:
+    def start(self, state: State, param_values: dict[str, Any]) -> None:
         pass
 
     def tick(self, state: State, controls: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         return ActionResult(status=ActionStatus.RUNNING)
+
+    def stop(self, state: State, controls: VesselCommands, log: ActionLogger) -> None:
+        pass
 
 
 class NoParamAction(Action):
@@ -88,11 +94,14 @@ class NoParamAction(Action):
     description: ClassVar[str] = "Action with no parameters"
     params: ClassVar[list[ActionParam]] = []
 
-    def start(self, param_values: dict[str, Any]) -> None:
+    def start(self, state: State, param_values: dict[str, Any]) -> None:
         pass
 
     def tick(self, state: State, controls: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         return ActionResult(status=ActionStatus.RUNNING)
+
+    def stop(self, state: State, controls: VesselCommands, log: ActionLogger) -> None:
+        pass
 
 
 class BoolParamAction(Action):
@@ -120,11 +129,14 @@ class BoolParamAction(Action):
         ),
     ]
 
-    def start(self, param_values: dict[str, Any]) -> None:
+    def start(self, state: State, param_values: dict[str, Any]) -> None:
         pass
 
     def tick(self, state: State, controls: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         return ActionResult(status=ActionStatus.RUNNING)
+
+    def stop(self, state: State, controls: VesselCommands, log: ActionLogger) -> None:
+        pass
 
 
 class StrParamAction(Action):
@@ -151,11 +163,14 @@ class StrParamAction(Action):
         ),
     ]
 
-    def start(self, param_values: dict[str, Any]) -> None:
+    def start(self, state: State, param_values: dict[str, Any]) -> None:
         pass
 
     def tick(self, state: State, controls: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         return ActionResult(status=ActionStatus.RUNNING)
+
+    def stop(self, state: State, controls: VesselCommands, log: ActionLogger) -> None:
+        pass
 
 
 class IntParamAction(Action):
@@ -182,11 +197,14 @@ class IntParamAction(Action):
         ),
     ]
 
-    def start(self, param_values: dict[str, Any]) -> None:
+    def start(self, state: State, param_values: dict[str, Any]) -> None:
         pass
 
     def tick(self, state: State, controls: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         return ActionResult(status=ActionStatus.RUNNING)
+
+    def stop(self, state: State, controls: VesselCommands, log: ActionLogger) -> None:
+        pass
 
 
 # ---------------------------------------------------------------------------
