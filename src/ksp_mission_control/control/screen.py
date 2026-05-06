@@ -70,7 +70,7 @@ class ControlScreen(Screen[None]):
     CSS_PATH = "style.tcss"
 
     BINDINGS = [
-        ("escape", "clear", "Clear"),
+        ("escape", "exit", "Exit"),
         ("s", "save_logs", "Save Logs"),
         ("v", "cycle_view", "Cycle View"),
     ]
@@ -450,7 +450,7 @@ class ControlScreen(Screen[None]):
         """Called when the screen is removed from the DOM (app quit)."""
         self._shutdown()
 
-    def action_clear(self) -> None:
+    def action_exit(self) -> None:
         """Ask the user to confirm, then shut down and return to setup."""
         self.app.push_screen(
             ConfirmExitDialog(),
