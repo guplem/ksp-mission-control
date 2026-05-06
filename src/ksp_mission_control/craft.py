@@ -1,6 +1,6 @@
 """Craft file management utilities.
 
-Handles copying .craft files between the project's ``vessels/`` directory
+Handles copying .craft files between the project's ``crafts/`` directory
 and KSP's per-save ``Ships/VAB/`` directory.  Pure filesystem operations
 -- no kRPC or Textual dependency.
 """
@@ -70,11 +70,11 @@ def find_craft_in_save(save_dir: Path, vessel_name: str) -> Path:
     return craft_path
 
 
-def save_craft_to_project(craft_source: Path, vessels_dir: Path) -> Path:
-    """Copy a KSP craft file into the project's ``vessels/`` directory.
+def export_craft_to_project(craft_source: Path, crafts_dir: Path) -> Path:
+    """Copy a KSP craft file into the project's ``crafts/`` directory.
 
     The destination filename is the sanitized version of the craft's
-    original stem.  Creates ``vessels/`` if it does not exist.
+    original stem.  Creates ``crafts/`` if it does not exist.
 
     Returns the destination path.
     """
@@ -82,19 +82,19 @@ def save_craft_to_project(craft_source: Path, vessels_dir: Path) -> Path:
     if not sanitized:
         raise CraftError(f"Cannot sanitize craft name: {craft_source.stem!r}")
 
-    vessels_dir.mkdir(parents=True, exist_ok=True)
-    dest = vessels_dir / f"{sanitized}.craft"
+    crafts_dir.mkdir(parents=True, exist_ok=True)
+    dest = crafts_dir / f"{sanitized}.craft"
     shutil.copy2(craft_source, dest)
     return dest
 
 
-def install_craft_to_save(vessels_dir: Path, craft_name: str, save_dir: Path) -> str:
+def load_craft_into_ksp(crafts_dir: Path, craft_name: str, save_dir: Path) -> str:
     """Copy a project craft file into a KSP save's VAB directory.
 
     *craft_name* is the sanitized stem (without ``.craft``).
     Returns the craft name for use with kRPC's ``launch_vessel_from_vab``.
     """
-    source = vessels_dir / f"{craft_name}.craft"
+    source = crafts_dir / f"{craft_name}.craft"
     if not source.is_file():
         raise CraftError(f"Craft file not found in project: {source}")
 

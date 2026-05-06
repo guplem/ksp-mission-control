@@ -28,7 +28,6 @@ from ksp_mission_control.control.actions.flight_plan import FlightPlan
 from ksp_mission_control.control.actions.multi_track_executor import MultiTrackSnapshot
 from ksp_mission_control.control.actions.runner import RunnerSnapshot
 from ksp_mission_control.control.confirm_exit_dialog import ConfirmExitDialog
-from ksp_mission_control.control.craft_loader import CraftLoadResult, load_craft_in_ksp
 from ksp_mission_control.control.flight_plan_picker import FlightPlanPicker
 from ksp_mission_control.control.formatting import format_met
 from ksp_mission_control.control.manual_command_dialog import ManualCommandDialog
@@ -36,6 +35,7 @@ from ksp_mission_control.control.param_input_modal import ParamInputModal
 from ksp_mission_control.control.science_command_dialog import ScienceCommandDialog
 from ksp_mission_control.control.session import ControlSession
 from ksp_mission_control.control.tick_record import TickRecord
+from ksp_mission_control.control.vessel_spawner import SpawnVesselResult, spawn_vessel_from_craft
 from ksp_mission_control.control.widgets.command_history import (
     CommandHistoryWidget,
     format_field_value,
@@ -248,7 +248,7 @@ class ControlScreen(Screen[None]):
         - No ``@craft``: start the plan immediately on the current vessel.
         - ``@craft`` matches the current vessel: start immediately (no install/launch).
         - ``@craft`` differs (or no current vessel): run the unified
-          install + launch workflow, then enter pending-plan mode so the
+          load + spawn workflow, then enter pending-plan mode so the
           user clicks Launch when ready.
         """
         if plan is None or self._session is None:
@@ -258,9 +258,9 @@ class ControlScreen(Screen[None]):
             self._start_plan(plan)
             return
 
-        craft_path = Path.cwd() / "vessels" / f"{plan.craft}.craft"
+        craft_path = Path.cwd() / "crafts" / f"{plan.craft}.craft"
         if not craft_path.is_file():
-            msg = f"Craft file not found: vessels/{plan.craft}.craft"
+            msg = f"Craft file not found: crafts/{plan.craft}.craft"
             self.notify(msg, severity="error")
             self._log_error(msg)
             return
@@ -272,11 +272,11 @@ class ControlScreen(Screen[None]):
             self._start_plan(plan)
             return
 
-        self._load_craft_for_plan(plan)
+        self._spawn_vessel_for_plan(plan)
 
     @work(thread=True)
-    def _load_craft_for_plan(self, plan: FlightPlan) -> tuple[CraftLoadResult, FlightPlan]:
-        """Run the unified craft load workflow, then return result + plan."""
+    def _spawn_vessel_for_plan(self, plan: FlightPlan) -> tuple[SpawnVesselResult, FlightPlan]:
+        """Run the unified vessel spawn workflow, then return result + plan."""
         from ksp_mission_control.app import MissionControlApp  # noqa: PLC0415
         from ksp_mission_control.craft import CraftError  # noqa: PLC0415
         from ksp_mission_control.setup.kRPC_comms.parser import (  # noqa: PLC0415
@@ -284,16 +284,16 @@ class ControlScreen(Screen[None]):
         )
 
         if plan.craft is None:
-            raise CraftError("plan has no craft to load")
+            raise CraftError("plan has no craft to spawn")
         config_manager = cast(MissionControlApp, self.app).config_manager
         ksp_path_str = config_manager.config.ksp_path
         if ksp_path_str is None:
             raise CraftError("KSP install path not configured")
 
-        result = load_craft_in_ksp(
+        result = spawn_vessel_from_craft(
             app=self.app,
             craft_name=plan.craft,
-            vessels_dir=Path.cwd() / "vessels",
+            crafts_dir=Path.cwd() / "crafts",
             ksp_path=Path(ksp_path_str),
             krpc_settings=resolve_krpc_connection(config_manager),
         )
@@ -328,27 +328,27 @@ class ControlScreen(Screen[None]):
         self._exit_pending_plan()
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
-        """Pick up the result of the craft-loader worker.
+        """Pick up the result of the vessel-spawner worker.
 
         On success, stage the plan in the pending-plan tray (the user must
         then click Launch). On error or cancellation, surface a notification
         and leave the screen as it was.
         """
-        if event.worker.name != "_load_craft_for_plan":
+        if event.worker.name != "_spawn_vessel_for_plan":
             return
         if event.state == WorkerState.SUCCESS:
             result, plan = cast(
-                tuple[CraftLoadResult, FlightPlan],
+                tuple[SpawnVesselResult, FlightPlan],
                 event.worker.result,
             )
-            if result == CraftLoadResult.LAUNCHED:
+            if result == SpawnVesselResult.SPAWNED:
                 self._enter_pending_plan(plan)
             else:
-                self.notify("Craft load cancelled.", severity="information")
+                self.notify("Spawn cancelled.", severity="information")
         elif event.state == WorkerState.ERROR:
             error = event.worker.error
-            self.notify(f"Craft load failed: {error}", severity="error", timeout=10)
-            self._log_error(f"Craft load failed: {error}")
+            self.notify(f"Spawn failed: {error}", severity="error", timeout=10)
+            self._log_error(f"Spawn failed: {error}")
 
     def _start_plan(self, plan: FlightPlan) -> None:
         """Start executing a flight plan."""

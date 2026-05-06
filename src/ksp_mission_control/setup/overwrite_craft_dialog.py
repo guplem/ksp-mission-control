@@ -1,4 +1,4 @@
-"""SaveVesselOverwriteDialog - confirmation when the project already has the .craft."""
+"""OverwriteCraftDialog - confirmation when the project already has the .craft."""
 
 from __future__ import annotations
 
@@ -11,23 +11,23 @@ from textual.widgets import Button, Static
 
 
 class OverwriteChoice(Enum):
-    """User's choice when ``vessels/<name>.craft`` already exists in the project."""
+    """User's choice when ``crafts/<name>.craft`` already exists in the project."""
 
     OVERWRITE = "overwrite"
     CANCEL = "cancel"
 
 
-class SaveVesselOverwriteDialog(ModalScreen[OverwriteChoice]):
-    """Modal dialog shown before overwriting a craft already saved to the project."""
+class OverwriteCraftDialog(ModalScreen[OverwriteChoice]):
+    """Modal dialog shown before overwriting a craft already exported to the project."""
 
     AUTO_FOCUS = ""
 
     DEFAULT_CSS = """
-    SaveVesselOverwriteDialog {
+    OverwriteCraftDialog {
         align: center middle;
     }
 
-    #save-overwrite-container {
+    #overwrite-craft-container {
         width: 64;
         height: auto;
         padding: 1 2;
@@ -35,21 +35,21 @@ class SaveVesselOverwriteDialog(ModalScreen[OverwriteChoice]):
         background: $surface;
     }
 
-    #save-overwrite-title {
+    #overwrite-craft-title {
         padding: 0 0 1 0;
     }
 
-    #save-overwrite-message {
+    #overwrite-craft-message {
         padding: 0 0 1 0;
     }
 
-    #save-overwrite-buttons {
+    #overwrite-craft-buttons {
         padding: 1 0 0 0;
         align-horizontal: right;
         height: auto;
     }
 
-    #save-overwrite-buttons Button {
+    #overwrite-craft-buttons Button {
         margin-left: 1;
     }
     """
@@ -63,20 +63,20 @@ class SaveVesselOverwriteDialog(ModalScreen[OverwriteChoice]):
         self._sanitized_name = sanitized_name
 
     def compose(self) -> ComposeResult:
-        with Vertical(id="save-overwrite-container"):
-            yield Static("[b]Vessel Already Saved[/b]", id="save-overwrite-title")
+        with Vertical(id="overwrite-craft-container"):
+            yield Static("[b]Craft Already Exists[/b]", id="overwrite-craft-title")
             yield Static(
-                f"The project already contains [b]vessels/{self._sanitized_name}.craft[/b].\nOverwrite it with the live craft from KSP?",
-                id="save-overwrite-message",
+                f"The project already contains [b]crafts/{self._sanitized_name}.craft[/b].\nOverwrite it with the active vessel's craft from KSP?",
+                id="overwrite-craft-message",
             )
-            with Horizontal(id="save-overwrite-buttons"):
-                yield Button("Overwrite", id="save-overwrite-btn", variant="primary")
-                yield Button("Cancel", id="save-overwrite-cancel-btn")
+            with Horizontal(id="overwrite-craft-buttons"):
+                yield Button("Overwrite", id="overwrite-craft-btn", variant="primary")
+                yield Button("Cancel", id="overwrite-craft-cancel-btn")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "save-overwrite-btn":
+        if event.button.id == "overwrite-craft-btn":
             self.dismiss(OverwriteChoice.OVERWRITE)
-        elif event.button.id == "save-overwrite-cancel-btn":
+        elif event.button.id == "overwrite-craft-cancel-btn":
             self.dismiss(OverwriteChoice.CANCEL)
 
     def action_cancel(self) -> None:

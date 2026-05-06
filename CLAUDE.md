@@ -118,6 +118,11 @@ plans/                        # Flight plan files (.plan)
 ├── hover-and-land.plan       # Hover then land
 ├── square-patrol.plan        # Square patrol pattern via translation
 └── etc.                      # More plans...
+
+crafts/                       # Craft blueprint files (.craft) exported from KSP
+├── fart-1.craft
+├── fart-2.craft
+└── etc.                      # More crafts...
 ```
 
 ### Module organization rules
@@ -148,6 +153,41 @@ When adding or renaming fields, follow these rules (full rationale in ADR 0008):
 - **Derived properties**: `@property` methods, natural names without group prefix (`weight`, `twr`, `delta_v`).
 
 Groups: `altitude_`, `speed_`, `pressure_`, `aero_`, `orbit_`, `body_`, `position_`, `orientation_`, `mass_`, `thrust_`, `engine_`, `stage_`, `resource_`, `control_` (sub-groups: `input_`, `autopilot_`, `sas_`, `ui_`, `deployable_`, `translate_`), `comms_`.
+
+### Vocabulary and verbs (ADR 0010)
+
+Use these words exactly. Full rationale in ADR 0010.
+
+**Nouns**: `craft` is a blueprint (`.craft` file). `vessel` is a live instance flying in KSP. A craft becomes a vessel only by being spawned. Never use both in the same sentence interchangeably. Do not use `ship`, `rocket`, or `spacecraft`.
+
+**Three workflows**:
+
+| Workflow | Verb | Direction |
+|---|---|---|
+| Export craft | `export` | live vessel -> project `crafts/` |
+| Load craft | `load` | project `crafts/` -> KSP `Ships/VAB/` |
+| Spawn vessel | `spawn` | KSP craft -> vessel on pad |
+
+**Action verbs**:
+
+| Concept | Verb |
+|---|---|
+| Start a flight plan | `launch` |
+| Start a single action | `start` |
+| Send a one-shot command | `send` |
+| Stop a running plan/track/action | `stop` |
+| Dismiss a dialog or pre-execution staged item | `cancel` |
+| Trigger the in-game ABORT action group | `abort` (reserved; `VesselCommands.abort` field only) |
+
+**Plan states**: `PENDING -> RUNNING -> SUCCEEDED -> FAILED`. Render the full word in the UI. Use `pending` for staged-but-not-running plans; `staged` is reserved for KSP staging (booster separation).
+
+**Action message tense** (`ActionResult.message` only):
+
+- RUNNING: present continuous (`"Hovering at 100m"`).
+- SUCCEEDED: past tense or static descriptor (`"Reached target apoapsis"`, `"Landed"`).
+- FAILED: past tense with cause (`"Failed: insufficient thrust"`).
+
+**Live vessel reference**: always `active vessel`. Never `live vessel` or `current vessel`.
 
 ### Code style rules
 
@@ -259,6 +299,7 @@ Format: `adr/NNNN-short-title.md` with Context, Decision, Consequences sections.
 | [0007](adr/0007-screen-session-pattern.md) | Screen + session/runner separation of concerns | Adding new screens or refactoring screen logic |
 | [0008](adr/0008-vessel-state-naming-convention.md) | State/VesselCommands field naming convention | Adding or renaming fields on State or VesselCommands |
 | [0009](adr/0009-action-lifecycle-contract.md) | Action lifecycle contract (start/tick/stop) | Adding new actions or modifying existing action lifecycle methods |
+| [0010](adr/0010-vocabulary-and-verbs.md) | Vocabulary and verbs (craft/vessel, export/load/spawn, launch/start/stop) | Naming any new module, button, log message, or dialog string |
 
 When to create a new ADR: any decision involving trade-offs between alternatives, especially around dependencies, architecture boundaries, or data flow.
 

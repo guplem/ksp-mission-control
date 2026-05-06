@@ -9,11 +9,11 @@ import pytest
 
 from ksp_mission_control.craft import (
     CraftError,
+    export_craft_to_project,
     find_active_save_dir,
     find_craft_in_save,
-    install_craft_to_save,
+    load_craft_into_ksp,
     sanitize_craft_name,
-    save_craft_to_project,
 )
 
 
@@ -115,75 +115,75 @@ class TestFindCraftInSave:
             find_craft_in_save(tmp_path, "NonExistent")
 
 
-class TestSaveCraftToProject:
-    """Tests for copying craft files into the project vessels directory."""
+class TestExportCraftToProject:
+    """Tests for exporting craft files into the project crafts directory."""
 
     def test_copies_with_sanitized_name(self, tmp_path: Path) -> None:
         source = tmp_path / "Fart - 1.craft"
         source.write_text("ship = Fart - 1")
-        vessels = tmp_path / "vessels"
+        crafts = tmp_path / "crafts"
 
-        result = save_craft_to_project(source, vessels)
+        result = export_craft_to_project(source, crafts)
 
-        assert result == vessels / "fart-1.craft"
+        assert result == crafts / "fart-1.craft"
         assert result.read_text() == "ship = Fart - 1"
 
-    def test_creates_vessels_dir(self, tmp_path: Path) -> None:
+    def test_creates_crafts_dir(self, tmp_path: Path) -> None:
         source = tmp_path / "Test.craft"
         source.write_text("data")
-        vessels = tmp_path / "vessels"
+        crafts = tmp_path / "crafts"
 
-        save_craft_to_project(source, vessels)
-        assert vessels.is_dir()
+        export_craft_to_project(source, crafts)
+        assert crafts.is_dir()
 
     def test_overwrites_existing(self, tmp_path: Path) -> None:
         source = tmp_path / "Test.craft"
         source.write_text("new content")
-        vessels = tmp_path / "vessels"
-        vessels.mkdir()
-        (vessels / "test.craft").write_text("old content")
+        crafts = tmp_path / "crafts"
+        crafts.mkdir()
+        (crafts / "test.craft").write_text("old content")
 
-        save_craft_to_project(source, vessels)
-        assert (vessels / "test.craft").read_text() == "new content"
+        export_craft_to_project(source, crafts)
+        assert (crafts / "test.craft").read_text() == "new content"
 
     def test_empty_name_raises(self, tmp_path: Path) -> None:
         source = tmp_path / "!!!.craft"
         source.write_text("data")
 
         with pytest.raises(CraftError, match="Cannot sanitize"):
-            save_craft_to_project(source, tmp_path / "vessels")
+            export_craft_to_project(source, tmp_path / "crafts")
 
 
-class TestInstallCraftToSave:
-    """Tests for copying project craft files into a KSP save."""
+class TestLoadCraftIntoKsp:
+    """Tests for loading project craft files into a KSP save."""
 
     def test_copies_to_vab(self, tmp_path: Path) -> None:
-        vessels = tmp_path / "vessels"
-        vessels.mkdir()
-        (vessels / "fart-1.craft").write_text("ship data")
+        crafts = tmp_path / "crafts"
+        crafts.mkdir()
+        (crafts / "fart-1.craft").write_text("ship data")
 
         save_dir = tmp_path / "save"
         save_dir.mkdir()
 
-        result = install_craft_to_save(vessels, "fart-1", save_dir)
+        result = load_craft_into_ksp(crafts, "fart-1", save_dir)
 
         assert result == "fart-1"
         assert (save_dir / "Ships" / "VAB" / "fart-1.craft").read_text() == "ship data"
 
     def test_creates_vab_dir(self, tmp_path: Path) -> None:
-        vessels = tmp_path / "vessels"
-        vessels.mkdir()
-        (vessels / "test.craft").write_text("data")
+        crafts = tmp_path / "crafts"
+        crafts.mkdir()
+        (crafts / "test.craft").write_text("data")
 
         save_dir = tmp_path / "save"
         save_dir.mkdir()
 
-        install_craft_to_save(vessels, "test", save_dir)
+        load_craft_into_ksp(crafts, "test", save_dir)
         assert (save_dir / "Ships" / "VAB").is_dir()
 
     def test_missing_source_raises(self, tmp_path: Path) -> None:
-        vessels = tmp_path / "vessels"
-        vessels.mkdir()
+        crafts = tmp_path / "crafts"
+        crafts.mkdir()
 
         with pytest.raises(CraftError, match="not found in project"):
-            install_craft_to_save(vessels, "missing", tmp_path / "save")
+            load_craft_into_ksp(crafts, "missing", tmp_path / "save")

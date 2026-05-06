@@ -15,14 +15,14 @@ from textual.worker import Worker, WorkerState
 from ksp_mission_control.app import MissionControlApp
 from ksp_mission_control.config import ConfigManager
 from ksp_mission_control.control.actions.flight_plan import FlightPlan
-from ksp_mission_control.control.craft_loader import CraftLoadResult, load_craft_in_ksp
 from ksp_mission_control.control.screen import ControlScreen
+from ksp_mission_control.control.vessel_spawner import SpawnVesselResult, spawn_vessel_from_craft
 from ksp_mission_control.craft import (
     CraftError,
+    export_craft_to_project,
     find_active_save_dir,
     find_craft_in_save,
     sanitize_craft_name,
-    save_craft_to_project,
 )
 from ksp_mission_control.setup.check_runner import CheckRunner
 from ksp_mission_control.setup.checks import CheckResult, SetupCheck, get_default_checks
@@ -75,7 +75,7 @@ class SetupScreen(Screen[None]):
             with Center(id="setup-buttons"), Horizontal():
                 yield Button("Enter Control Room", id="enter-control-room", variant="primary", disabled=True)
                 yield Button("Launch from Flight Plan", id="launch-plan-btn", variant="primary", disabled=True)
-                yield Button("Save Vessel", id="save-vessel-btn", variant="default", disabled=True)
+                yield Button("Export Craft", id="export-craft-btn", variant="default", disabled=True)
             yield Center(Static("", id="setup-launch-status"))
         yield Footer()
 
@@ -92,9 +92,9 @@ class SetupScreen(Screen[None]):
         self._comms_passed = False
         self._active_vessel_name = None
         self.query_one("#launch-plan-btn", Button).disabled = True
-        save_btn = self.query_one("#save-vessel-btn", Button)
-        save_btn.disabled = True
-        save_btn.tooltip = None
+        export_btn = self.query_one("#export-craft-btn", Button)
+        export_btn.disabled = True
+        export_btn.tooltip = None
         self._set_launch_status("")
         # Show all checks as not-started before kicking off the worker thread
         for check in self._checks:
@@ -137,7 +137,7 @@ class SetupScreen(Screen[None]):
             self.query_one("#launch-plan-btn", Button).disabled = False
 
         # Cache the active vessel name as soon as the vessel check reports it,
-        # so "Save Vessel" can use it once all checks pass.
+        # so "Export Craft" can use it once all checks pass.
         if check_id == "check-vessel" and result is not None and result.passed:
             vessel_check = next(
                 (c for c in self._checks if isinstance(c, VesselDetectedCheck)),
@@ -149,14 +149,14 @@ class SetupScreen(Screen[None]):
         all_passed = self.all_checks_passed
         self.query_one("#enter-control-room", Button).disabled = not all_passed
 
-        # Save Vessel needs both a known vessel name AND a clean checklist.
-        save_btn = self.query_one("#save-vessel-btn", Button)
+        # Export Craft needs both a known vessel name AND a clean checklist.
+        export_btn = self.query_one("#export-craft-btn", Button)
         if all_passed and self._active_vessel_name is not None:
-            save_btn.disabled = False
-            save_btn.tooltip = f"Save '{self._active_vessel_name}' to vessels/"
+            export_btn.disabled = False
+            export_btn.tooltip = f"Export '{self._active_vessel_name}' to crafts/"
         else:
-            save_btn.disabled = True
-            save_btn.tooltip = None
+            export_btn.disabled = True
+            export_btn.tooltip = None
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses on the setup screen."""
@@ -164,8 +164,8 @@ class SetupScreen(Screen[None]):
             self.app.push_screen(ControlScreen())
         elif event.button.id == "launch-plan-btn":
             self._do_launch_from_plan()
-        elif event.button.id == "save-vessel-btn":
-            self._do_save_vessel()
+        elif event.button.id == "export-craft-btn":
+            self._do_export_craft()
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         """Navigate to the detail screen for the selected checklist item."""
@@ -213,7 +213,7 @@ class SetupScreen(Screen[None]):
         )
 
     def _handle_plan_for_launch(self, plan: FlightPlan | None) -> None:
-        """Validate the chosen plan, then run the unified craft loader."""
+        """Validate the chosen plan, then run the unified vessel spawner."""
         if plan is None:
             return
         # require_craft=True guarantees plan.craft is set, but defensive.
@@ -221,29 +221,29 @@ class SetupScreen(Screen[None]):
             self._set_launch_status("Selected plan has no @craft directive.")
             return
 
-        craft_path = Path.cwd() / "vessels" / f"{plan.craft}.craft"
+        craft_path = Path.cwd() / "crafts" / f"{plan.craft}.craft"
         if not craft_path.is_file():
-            self._set_launch_status(f"Craft file not found: vessels/{plan.craft}.craft")
+            self._set_launch_status(f"Craft file not found: crafts/{plan.craft}.craft")
             return
 
-        self._set_launch_status(f"Loading {plan.craft}...")
+        self._set_launch_status(f"Spawning {plan.craft}...")
         self.query_one("#launch-plan-btn", Button).disabled = True
-        self._load_craft_and_navigate(plan)
+        self._spawn_vessel_and_navigate(plan)
 
     @work(thread=True)
-    def _load_craft_and_navigate(self, plan: FlightPlan) -> tuple[CraftLoadResult, FlightPlan]:
-        """Run the shared install + launch workflow; result handled in on_worker_state_changed."""
+    def _spawn_vessel_and_navigate(self, plan: FlightPlan) -> tuple[SpawnVesselResult, FlightPlan]:
+        """Run the shared load + spawn workflow; result handled in on_worker_state_changed."""
         config_manager = cast(MissionControlApp, self.app).config_manager
         ksp_path_str = config_manager.config.ksp_path
         if ksp_path_str is None:
             raise CraftError("KSP install path not configured")
         if plan.craft is None:
-            raise CraftError("plan has no craft to load")
+            raise CraftError("plan has no craft to spawn")
 
-        result = load_craft_in_ksp(
+        result = spawn_vessel_from_craft(
             app=self.app,
             craft_name=plan.craft,
-            vessels_dir=Path.cwd() / "vessels",
+            crafts_dir=Path.cwd() / "crafts",
             ksp_path=Path(ksp_path_str),
             krpc_settings=resolve_krpc_connection(config_manager),
         )
@@ -252,32 +252,32 @@ class SetupScreen(Screen[None]):
     def _set_launch_status(self, message: str) -> None:
         self.query_one("#setup-launch-status", Static).update(message)
 
-    # -- Save Vessel --
+    # -- Export Craft --
 
-    def _do_save_vessel(self) -> None:
-        """Re-query the live vessel name, prompt on overwrite, save to vessels/.
+    def _do_export_craft(self) -> None:
+        """Re-query the active vessel name, prompt on overwrite, export to crafts/.
 
         The cached name from check-vessel only gates the button; the actual
-        save uses a fresh kRPC query so a vessel rename in KSP since the
+        export uses a fresh kRPC query so a vessel rename in KSP since the
         check ran is picked up automatically.
         """
-        self.query_one("#save-vessel-btn", Button).disabled = True
+        self.query_one("#export-craft-btn", Button).disabled = True
         self._set_launch_status("Querying active vessel...")
-        self._save_vessel_worker()
+        self._export_craft_worker()
 
     @work(thread=True)
-    def _save_vessel_worker(self) -> tuple[str, str] | None:
-        """Run the full save flow: query → confirm → copy.
+    def _export_craft_worker(self) -> tuple[str, str] | None:
+        """Run the full export flow: query → confirm → copy.
 
         Returns ``(sanitized, dest_filename)`` on success, ``None`` on cancel.
         """
         import krpc  # noqa: PLC0415
 
-        from ksp_mission_control.control.craft_loader import await_modal  # noqa: PLC0415
         from ksp_mission_control.control.krpc_bridge import get_active_vessel_name  # noqa: PLC0415
-        from ksp_mission_control.setup.save_vessel_overwrite_dialog import (  # noqa: PLC0415
+        from ksp_mission_control.control.vessel_spawner import await_modal  # noqa: PLC0415
+        from ksp_mission_control.setup.overwrite_craft_dialog import (  # noqa: PLC0415
             OverwriteChoice,
-            SaveVesselOverwriteDialog,
+            OverwriteCraftDialog,
         )
 
         config_manager = cast(MissionControlApp, self.app).config_manager
@@ -285,10 +285,10 @@ class SetupScreen(Screen[None]):
         if ksp_path_str is None:
             raise CraftError("KSP install path not configured")
 
-        # Fresh kRPC query for the live vessel name.
+        # Fresh kRPC query for the active vessel name.
         krpc_settings = resolve_krpc_connection(config_manager)
         conn = krpc.connect(
-            name="KSP-MC Save Vessel",
+            name="KSP-MC Export Craft",
             address=krpc_settings.address,
             rpc_port=krpc_settings.rpc_port,
             stream_port=krpc_settings.stream_port,
@@ -305,52 +305,52 @@ class SetupScreen(Screen[None]):
         if not sanitized:
             raise CraftError(f"Vessel name {live_name!r} cannot be sanitized to a filename")
 
-        vessels_dir = Path.cwd() / "vessels"
-        dest_path = vessels_dir / f"{sanitized}.craft"
+        crafts_dir = Path.cwd() / "crafts"
+        dest_path = crafts_dir / f"{sanitized}.craft"
 
         # Confirm overwrite if a copy already lives in the project.
         if dest_path.is_file():
-            choice = await_modal(self.app, SaveVesselOverwriteDialog(sanitized))
+            choice = await_modal(self.app, OverwriteCraftDialog(sanitized))
             if choice == OverwriteChoice.CANCEL:
                 return None
 
-        # Copy from KSP's active save's VAB into vessels/, then put the
+        # Copy from KSP's active save's VAB into crafts/, then put the
         # sanitized name on the clipboard so plans can paste it as @craft.
         save_dir = find_active_save_dir(Path(ksp_path_str))
         craft_source = find_craft_in_save(save_dir, live_name)
-        dest = save_craft_to_project(craft_source, vessels_dir)
+        dest = export_craft_to_project(craft_source, crafts_dir)
         self.app.call_from_thread(self.app.copy_to_clipboard, sanitized)
         return sanitized, dest.name
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
-        if event.worker.name == "_load_craft_and_navigate":
+        if event.worker.name == "_spawn_vessel_and_navigate":
             if event.state == WorkerState.SUCCESS:
                 result, plan = cast(
-                    tuple[CraftLoadResult, FlightPlan],
+                    tuple[SpawnVesselResult, FlightPlan],
                     event.worker.result,
                 )
-                if result == CraftLoadResult.LAUNCHED:
-                    self._set_launch_status(f"Loaded {plan.craft}. Entering control room...")
+                if result == SpawnVesselResult.SPAWNED:
+                    self._set_launch_status(f"Spawned {plan.craft}. Entering control room...")
                     self.app.push_screen(ControlScreen(pending_plan=plan))
                 else:
-                    self._set_launch_status("Craft load cancelled.")
+                    self._set_launch_status("Spawn cancelled.")
             elif event.state == WorkerState.ERROR:
                 error_msg = f"Launch failed: {event.worker.error}"
                 self._set_launch_status(error_msg)
                 self.notify(error_msg, severity="error", timeout=10)
             if event.state in (WorkerState.SUCCESS, WorkerState.ERROR):
                 self.query_one("#launch-plan-btn", Button).disabled = not self._comms_passed
-        elif event.worker.name == "_save_vessel_worker":
+        elif event.worker.name == "_export_craft_worker":
             if event.state == WorkerState.SUCCESS:
                 payload = cast("tuple[str, str] | None", event.worker.result)
                 if payload is None:
-                    self._set_launch_status("Save cancelled.")
+                    self._set_launch_status("Export cancelled.")
                 else:
                     sanitized, dest_name = payload
-                    self._set_launch_status(f"Saved {sanitized} ({dest_name}). Name copied to clipboard.")
+                    self._set_launch_status(f"Exported {sanitized} ({dest_name}). Name copied to clipboard.")
             elif event.state == WorkerState.ERROR:
-                error_msg = f"Save failed: {event.worker.error}"
+                error_msg = f"Export failed: {event.worker.error}"
                 self._set_launch_status(error_msg)
                 self.notify(error_msg, severity="error", timeout=10)
             if event.state in (WorkerState.SUCCESS, WorkerState.ERROR):
-                self.query_one("#save-vessel-btn", Button).disabled = self._active_vessel_name is None or not self.all_checks_passed
+                self.query_one("#export-craft-btn", Button).disabled = self._active_vessel_name is None or not self.all_checks_passed

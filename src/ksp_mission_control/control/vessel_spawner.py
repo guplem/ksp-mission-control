@@ -1,4 +1,4 @@
-"""Unified craft install + launch workflow.
+"""Spawn a vessel from a project craft, loading it into KSP first if needed.
 
 Runs synchronously from a worker thread and pushes modal dialogs via
 ``app.call_from_thread``. The thread blocks on ``threading.Event`` until
@@ -8,6 +8,16 @@ each step is async on the UI side.
 Used by both the setup screen ("Launch from Flight Plan") and the control
 screen (loading a plan whose ``@craft`` differs from the current vessel)
 so the dialog UX is identical regardless of entry point.
+
+Vocabulary (ADR 0010):
+
+- *load craft*: copy the .craft from the project's ``crafts/`` into KSP's
+  ``Ships/VAB/``. Triggers :class:`LoadCraftDialog` if KSP already has a
+  copy with that name.
+- *spawn vessel*: instantiate the loaded craft as a live vessel on the
+  launch pad via ``launch_vessel_from_vab``. Triggers
+  :class:`SpawnVesselDialog` unconditionally because the pad recovery
+  cannot be detected ahead of time.
 """
 
 from __future__ import annotations
@@ -19,18 +29,18 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ksp_mission_control.control.install_craft_dialog import (
-    InstallChoice,
-    InstallCraftDialog,
-)
 from ksp_mission_control.control.krpc_bridge import launch_vessel_from_vab
-from ksp_mission_control.control.load_vessel_dialog import (
+from ksp_mission_control.control.load_craft_dialog import (
     LoadChoice,
-    LoadVesselDialog,
+    LoadCraftDialog,
+)
+from ksp_mission_control.control.spawn_vessel_dialog import (
+    SpawnChoice,
+    SpawnVesselDialog,
 )
 from ksp_mission_control.craft import (
     find_active_save_dir,
-    install_craft_to_save,
+    load_craft_into_ksp,
 )
 
 if TYPE_CHECKING:
@@ -40,37 +50,37 @@ if TYPE_CHECKING:
     from ksp_mission_control.setup.kRPC_comms.parser import KrpcServerSettings
 
 
-class CraftLoadResult(Enum):
-    """Outcome of :func:`load_craft_in_ksp`."""
+class SpawnVesselResult(Enum):
+    """Outcome of :func:`spawn_vessel_from_craft`."""
 
-    LAUNCHED = "launched"
-    """Craft is installed and the live vessel in KSP is the requested craft."""
+    SPAWNED = "spawned"
+    """Craft is loaded into KSP and the live vessel on the pad is the requested craft."""
 
     CANCELLED = "cancelled"
     """User dismissed one of the confirmation dialogs."""
 
 
-_KRPC_LOAD_SETTLE_SECONDS = 5.0
+_KRPC_SPAWN_SETTLE_SECONDS = 5.0
 """Wait time after launch_vessel_from_vab so KSP can load the new scene."""
 
 
-def load_craft_in_ksp(
+def spawn_vessel_from_craft(
     *,
     app: App[object],
     craft_name: str,
-    vessels_dir: Path,
+    crafts_dir: Path,
     ksp_path: Path,
     krpc_settings: KrpcServerSettings,
-) -> CraftLoadResult:
-    """Install ``craft_name`` into the active save and load it onto the pad.
+) -> SpawnVesselResult:
+    """Load ``craft_name`` into the active save and spawn it as a vessel on the pad.
 
-    Pushes :class:`InstallCraftDialog` if the file already exists in the
-    save's VAB, and :class:`LoadVesselDialog` unconditionally before placing
-    the craft on the pad (since kRPC silently recovers anything already
-    there). Both dialogs offer Cancel.
+    Pushes :class:`LoadCraftDialog` if the file is already loaded into the
+    save's VAB, and :class:`SpawnVesselDialog` unconditionally before
+    spawning the vessel on the pad (since kRPC silently recovers anything
+    already there). Both dialogs offer Cancel.
 
     The actual mission launch (engines, plan execution) happens later via
-    the pending-plan tray; this function only loads the craft.
+    the pending-plan tray; this function only spawns the vessel.
 
     Must be called from a worker thread; the function blocks on each modal
     via ``threading.Event``. Filesystem and kRPC errors propagate to the
@@ -80,34 +90,34 @@ def load_craft_in_ksp(
     save_craft_path = save_dir / "Ships" / "VAB" / f"{craft_name}.craft"
 
     if save_craft_path.is_file():
-        install_choice = await_modal(app, InstallCraftDialog(craft_name))
-        if install_choice == InstallChoice.CANCEL:
-            return CraftLoadResult.CANCELLED
-        if install_choice == InstallChoice.OVERWRITE:
-            install_craft_to_save(vessels_dir, craft_name, save_dir)
+        load_choice = await_modal(app, LoadCraftDialog(craft_name))
+        if load_choice == LoadChoice.CANCEL:
+            return SpawnVesselResult.CANCELLED
+        if load_choice == LoadChoice.OVERWRITE:
+            load_craft_into_ksp(crafts_dir, craft_name, save_dir)
         # USE_EXISTING: leave the save's copy untouched.
     else:
-        install_craft_to_save(vessels_dir, craft_name, save_dir)
+        load_craft_into_ksp(crafts_dir, craft_name, save_dir)
 
     import krpc  # noqa: PLC0415
 
     conn = krpc.connect(
-        name="KSP-MC Craft Loader",
+        name="KSP-MC Vessel Spawner",
         address=krpc_settings.address,
         rpc_port=krpc_settings.rpc_port,
         stream_port=krpc_settings.stream_port,
     )
     try:
-        load_choice = await_modal(app, LoadVesselDialog(craft_name))
-        if load_choice == LoadChoice.CANCEL:
-            return CraftLoadResult.CANCELLED
+        spawn_choice = await_modal(app, SpawnVesselDialog(craft_name))
+        if spawn_choice == SpawnChoice.CANCEL:
+            return SpawnVesselResult.CANCELLED
         launch_vessel_from_vab(conn, craft_name)
     finally:
         with contextlib.suppress(Exception):
             conn.close()
 
-    time.sleep(_KRPC_LOAD_SETTLE_SECONDS)
-    return CraftLoadResult.LAUNCHED
+    time.sleep(_KRPC_SPAWN_SETTLE_SECONDS)
+    return SpawnVesselResult.SPAWNED
 
 
 def await_modal[T: Enum](app: App[object], modal: ModalScreen[T]) -> T:
