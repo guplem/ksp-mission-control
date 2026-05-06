@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import contextlib
 import threading
-import time
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -58,10 +57,6 @@ class SpawnVesselResult(Enum):
 
     CANCELLED = "cancelled"
     """User dismissed one of the confirmation dialogs."""
-
-
-_KRPC_SPAWN_SETTLE_SECONDS = 5.0
-"""Wait time after launch_vessel_from_vab so KSP can load the new scene."""
 
 
 def spawn_vessel_from_craft(
@@ -116,7 +111,6 @@ def spawn_vessel_from_craft(
         with contextlib.suppress(Exception):
             conn.close()
 
-    time.sleep(_KRPC_SPAWN_SETTLE_SECONDS)
     return SpawnVesselResult.SPAWNED
 
 
