@@ -104,7 +104,8 @@ class LaunchAction(Action):
             param_id="target_altitude",
             label="Target Altitude",
             description=(
-                f"Target apoapsis altitude (default: {_DEFAULT_ALTITUDE_ATMOSPHERE_MULTIPLIER:.0%} of atmosphere, or {_DEFAULT_ALTITUDE_AIRLESS_BODY:.0f}m)"
+                f"Target apoapsis altitude (default: {_DEFAULT_ALTITUDE_ATMOSPHERE_MULTIPLIER:.0%} of atmosphere, "
+                f"or {_DEFAULT_ALTITUDE_AIRLESS_BODY:.0f}m)"
             ),
             required=False,
             param_type=ParamType.FLOAT,

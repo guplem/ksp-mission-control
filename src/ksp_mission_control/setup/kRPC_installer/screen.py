@@ -222,10 +222,7 @@ class KrpcSetupScreen(Screen[None]):
             self._set_uninstall_enabled(True)
         elif event.state == WorkerState.ERROR:
             error = event.worker.error
-            if isinstance(error, KrpcInstallError):
-                msg = str(error)
-            else:
-                msg = f"Unexpected error: {error}"
+            msg = str(error) if isinstance(error, KrpcInstallError) else f"Unexpected error: {error}"
             self._set_status(f"Installation failed: {msg}")
             self._set_install_enabled(True)
 
@@ -235,10 +232,7 @@ class KrpcSetupScreen(Screen[None]):
             self._set_install_enabled(True)
         elif event.state == WorkerState.ERROR:
             error = event.worker.error
-            if isinstance(error, KrpcInstallError):
-                msg = str(error)
-            else:
-                msg = f"Unexpected error: {error}"
+            msg = str(error) if isinstance(error, KrpcInstallError) else f"Unexpected error: {error}"
             self._set_status(f"Uninstall failed: {msg}")
             self._set_uninstall_enabled(True)
 
