@@ -56,14 +56,15 @@ class VesselDetectedCheck(SetupCheck):
             rpc_port=settings.rpc_port,
             stream_port=settings.stream_port,
         )
+        no_vessel_message = "No vessel detected. Flight plan with craft required to launch"
         try:
             vessel = conn.space_center.active_vessel
             if vessel is None:
-                return CheckResult(passed=False, message="No active vessel"), None
+                return CheckResult(passed=False, message=no_vessel_message), None
             name = vessel.name
             return CheckResult(passed=True, message=f"Vessel: {name}"), name
-        except Exception as exc:
-            return CheckResult(passed=False, message=f"No active vessel ({exc})"), None
+        except Exception:
+            return CheckResult(passed=False, message=no_vessel_message), None
         finally:
             with contextlib.suppress(Exception):
                 conn.close()
