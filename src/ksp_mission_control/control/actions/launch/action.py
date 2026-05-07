@@ -20,14 +20,15 @@ All parameters are nullable. When None, they are inferred from the current
 body's properties at start():
 
 - target_altitude: body_atmosphere_depth * 1.1 (or 50km if no atmosphere)
-- target_inclination: 0 (equatorial, eastward launch)
+- target_inclination: current orbit inclination (matches the launch
+  latitude on the pad, i.e. the lowest-energy eastward launch)
 - turn_start_altitude: ~1000m (just enough to clear the pad and build speed)
 - turn_end_altitude: 0.7 * target_altitude
 """
 
 from __future__ import annotations
 
-from math import asin, cos, degrees, radians, sin
+from math import asin, cos, degrees, radians
 from typing import Any, ClassVar
 
 from ksp_mission_control.control.actions.base import (
@@ -115,7 +116,9 @@ class LaunchAction(Action):
         ActionParam(
             param_id="target_inclination",
             label="Target Inclination",
-            description="Orbital inclination in degrees (default: 0 = current inclination)",
+            description=(
+                "Orbital inclination in degrees: 0 = equatorial east, 90 = polar, 180 = equatorial west (default: current orbital inclination)"
+            ),
             required=False,
             param_type=ParamType.FLOAT,
             default=None,
@@ -162,9 +165,10 @@ class LaunchAction(Action):
         """
         actual_turn_start = max(self._initial_altitude + _GRAVITY_TURN_CLEARANCE, turn_start)  # ensure we start after clearing the pad
         progress = (altitude - actual_turn_start) / (turn_end - actual_turn_start)  # percent of turn completed
-        progress = max(0, min(1, progress))  # clamp to [0, 1]
-        target_pitch = sin(progress) * 90  # smoothly interpolate from 90 to 0
-        return target_pitch
+        progress = max(0.0, min(1.0, progress))  # clamp to [0, 1]
+        # Quarter-cosine curve: 90 deg at progress=0, 0 deg at progress=1.
+        # Slow drop early (climb through dense atmosphere), fast drop late.
+        return cos(radians(progress * 90.0)) * 90.0
 
     # -- Lifecycle ------------------------------------------------------------
 
@@ -206,26 +210,52 @@ class LaunchAction(Action):
         else:
             self._turn_end_altitude = self._target_altitude * _DEFAULT_TURN_END_FRACTION
 
+        # Validate that the requested inclination is geometrically reachable
+        # from the current latitude. The minimum reachable inclination from
+        # latitude phi is |phi|; the maximum is 180 - |phi|. Anything outside
+        # that range cannot be reached without an off-plane burn.
+        self._fail_message: str | None = None
+        abs_inc = abs(self._target_inclination)
+        abs_lat = abs(state.position_latitude)
+        if abs_inc < abs_lat or abs_inc > 180.0 - abs_lat:
+            self._fail_message = (
+                f"Inclination {self._target_inclination:.1f} deg unreachable from latitude "
+                f"{state.position_latitude:.1f} deg. Reachable range: "
+                f"[{abs_lat:.1f}, {180.0 - abs_lat:.1f}] deg."
+            )
+
         # Compute the launch heading from the target inclination.
         self._launch_heading: float = _inclination_to_heading(self._target_inclination, state.position_latitude)
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
 
+        # Surface a start-time validation failure on the first tick.
+        if self._fail_message is not None:
+            return ActionResult(status=ActionStatus.FAILED, message=self._fail_message)
+
         # Check if finished
         if state.orbit_apoapsis >= self._target_altitude - self.tolerance_altitude:
             return ActionResult(status=ActionStatus.SUCCEEDED, message="Target apoapsis reached")
+
+        # Check if remaining thrust
+        if state.thrust_available <= 0:
+            return ActionResult(status=ActionStatus.FAILED, message="No thrust available")
 
         # General Configuration
         commands.ui_speed_mode = SpeedMode.ORBIT  # show orbital speed on navball
         commands.autopilot = True
 
-        # Rotation
-        if state.altitude_surface > _GRAVITY_TURN_CLEARANCE:
-            commands.autopilot_roll = 0  # For the time being, just go east
-            # commands.autopilot_roll = self._launch_heading  # keep the vessel pointed in the right compass direction for the desired inclination
+        # Heading is the launch azimuth (constant throughout the ascent); the
+        # autopilot rolls the vessel implicitly to align the body pitch axis
+        # with the orbital plane, so the gravity turn only varies pitch.
+        commands.autopilot_heading = self._launch_heading
 
-            if state.control_autopilot_error_roll and ((state.control_autopilot_error_roll < 5) or (state.control_autopilot_error_roll > -5)):
-                commands.autopilot_pitch = self._pitch_for_altitude(state.altitude_sea, self._turn_start_altitude, self._turn_end_altitude)
+        # Pitch: vertical until we have cleared the pad, then schedule the
+        # gravity turn against altitude.
+        if state.altitude_surface < _GRAVITY_TURN_CLEARANCE:
+            commands.autopilot_pitch = 90.0
+        else:
+            commands.autopilot_pitch = self._pitch_for_altitude(state.altitude_sea, self._turn_start_altitude, self._turn_end_altitude)
 
         # Throttle control
         commands.throttle = 1.0  # full throttle until we reach apoapsis
