@@ -21,6 +21,8 @@ _DEFAULT_PARAMS: dict[str, float | bool | str | None] = {
     "below_altitude": None,
     "above_available_thrust": None,
     "below_available_thrust": None,
+    "above_current_thrust": None,
+    "below_current_thrust": None,
     "apoapsis_above": None,
     "above_dynamic_pressure": None,
     "time": None,
@@ -167,3 +169,249 @@ class TestBiome:
         commands = VesselCommands()
         result = action.tick(state, commands, 0.5, ActionLogger())
         assert result.status == ActionStatus.RUNNING
+
+
+class TestApoapsis:
+    """Tests for the apoapsis bool parameter."""
+
+    def test_waits_when_apoapsis_not_yet_passed(self) -> None:
+        action = WaitForAction()
+        state = State(orbit_apoapsis_passed=False, orbit_apoapsis_time_to=45.0)
+        action.start(state, _params(apoapsis=True))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+        assert "45" in result.message
+
+    def test_succeeds_when_apoapsis_passed(self) -> None:
+        action = WaitForAction()
+        state = State(orbit_apoapsis_passed=True)
+        action.start(state, _params(apoapsis=True))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+    def test_no_condition_when_apoapsis_false(self) -> None:
+        action = WaitForAction()
+        state = State(orbit_apoapsis_passed=False)
+        action.start(state, _params(apoapsis=False))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+
+class TestPeriapsis:
+    """Tests for the periapsis bool parameter."""
+
+    def test_waits_when_periapsis_not_yet_passed(self) -> None:
+        action = WaitForAction()
+        state = State(orbit_periapsis_passed=False, orbit_periapsis_time_to=30.0)
+        action.start(state, _params(periapsis=True))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+        assert "30" in result.message
+
+    def test_succeeds_when_periapsis_passed(self) -> None:
+        action = WaitForAction()
+        state = State(orbit_periapsis_passed=True)
+        action.start(state, _params(periapsis=True))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+    def test_no_condition_when_periapsis_false(self) -> None:
+        action = WaitForAction()
+        state = State(orbit_periapsis_passed=False)
+        action.start(state, _params(periapsis=False))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+
+class TestAboveAltitude:
+    """Tests for the above_altitude parameter."""
+
+    def test_waits_when_below_altitude(self) -> None:
+        action = WaitForAction()
+        state = State(altitude_surface=800.0)
+        action.start(state, _params(above_altitude=1000.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+        assert "1000" in result.message
+
+    def test_succeeds_when_above_altitude(self) -> None:
+        action = WaitForAction()
+        state = State(altitude_surface=1200.0)
+        action.start(state, _params(above_altitude=1000.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+    def test_succeeds_when_at_exact_altitude(self) -> None:
+        action = WaitForAction()
+        state = State(altitude_surface=1000.0)
+        action.start(state, _params(above_altitude=1000.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+
+class TestBelowAltitude:
+    """Tests for the below_altitude parameter."""
+
+    def test_waits_when_above_altitude(self) -> None:
+        action = WaitForAction()
+        state = State(altitude_surface=1200.0)
+        action.start(state, _params(below_altitude=1000.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+        assert "1000" in result.message
+
+    def test_succeeds_when_below_altitude(self) -> None:
+        action = WaitForAction()
+        state = State(altitude_surface=800.0)
+        action.start(state, _params(below_altitude=1000.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+    def test_succeeds_when_at_exact_altitude(self) -> None:
+        action = WaitForAction()
+        state = State(altitude_surface=1000.0)
+        action.start(state, _params(below_altitude=1000.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+
+class TestAboveAvailableThrust:
+    """Tests for the above_available_thrust parameter."""
+
+    def test_waits_when_thrust_below_threshold(self) -> None:
+        action = WaitForAction()
+        state = State(thrust_available=50.0)
+        action.start(state, _params(above_available_thrust=100.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+        assert "100" in result.message
+
+    def test_succeeds_when_thrust_above_threshold(self) -> None:
+        action = WaitForAction()
+        state = State(thrust_available=150.0)
+        action.start(state, _params(above_available_thrust=100.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+    def test_succeeds_when_thrust_equals_threshold(self) -> None:
+        action = WaitForAction()
+        state = State(thrust_available=100.0)
+        action.start(state, _params(above_available_thrust=100.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+
+class TestBelowAvailableThrust:
+    """Tests for the below_available_thrust parameter."""
+
+    def test_waits_when_thrust_above_threshold(self) -> None:
+        action = WaitForAction()
+        state = State(thrust_available=150.0)
+        action.start(state, _params(below_available_thrust=100.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+        assert "100" in result.message
+
+    def test_succeeds_when_thrust_below_threshold(self) -> None:
+        action = WaitForAction()
+        state = State(thrust_available=50.0)
+        action.start(state, _params(below_available_thrust=100.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+    def test_succeeds_when_thrust_equals_threshold(self) -> None:
+        action = WaitForAction()
+        state = State(thrust_available=100.0)
+        action.start(state, _params(below_available_thrust=100.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+
+class TestAboveCurrentThrust:
+    """Tests for the above_current_thrust parameter."""
+
+    def test_waits_when_thrust_below_threshold(self) -> None:
+        action = WaitForAction()
+        state = State(thrust=50.0)
+        action.start(state, _params(above_current_thrust=100.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+        assert "100" in result.message
+
+    def test_succeeds_when_thrust_above_threshold(self) -> None:
+        action = WaitForAction()
+        state = State(thrust=150.0)
+        action.start(state, _params(above_current_thrust=100.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+    def test_succeeds_when_thrust_equals_threshold(self) -> None:
+        action = WaitForAction()
+        state = State(thrust=100.0)
+        action.start(state, _params(above_current_thrust=100.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+
+class TestBelowCurrentThrust:
+    """Tests for the below_current_thrust parameter."""
+
+    def test_waits_when_thrust_above_threshold(self) -> None:
+        action = WaitForAction()
+        state = State(thrust=150.0)
+        action.start(state, _params(below_current_thrust=100.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+        assert "100" in result.message
+
+    def test_succeeds_when_thrust_below_threshold(self) -> None:
+        action = WaitForAction()
+        state = State(thrust=50.0)
+        action.start(state, _params(below_current_thrust=100.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+    def test_succeeds_when_thrust_equals_threshold(self) -> None:
+        action = WaitForAction()
+        state = State(thrust=100.0)
+        action.start(state, _params(below_current_thrust=100.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+
+class TestTime:
+    """Tests for the time parameter."""
+
+    def test_waits_when_elapsed_below_duration(self) -> None:
+        action = WaitForAction()
+        state_start = State(universal_time=1000.0)
+        action.start(state_start, _params(time=10.0))
+        state_tick = State(universal_time=1005.0)
+        result = action.tick(state_tick, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+        assert "10" in result.message
+
+    def test_succeeds_when_elapsed_meets_duration(self) -> None:
+        action = WaitForAction()
+        state_start = State(universal_time=1000.0)
+        action.start(state_start, _params(time=10.0))
+        state_tick = State(universal_time=1010.0)
+        result = action.tick(state_tick, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+    def test_succeeds_when_elapsed_exceeds_duration(self) -> None:
+        action = WaitForAction()
+        state_start = State(universal_time=1000.0)
+        action.start(state_start, _params(time=10.0))
+        state_tick = State(universal_time=1020.0)
+        result = action.tick(state_tick, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+    def test_elapsed_time_shown_in_message(self) -> None:
+        action = WaitForAction()
+        state_start = State(universal_time=1000.0)
+        action.start(state_start, _params(time=10.0))
+        state_tick = State(universal_time=1003.0)
+        result = action.tick(state_tick, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+        assert "3" in result.message

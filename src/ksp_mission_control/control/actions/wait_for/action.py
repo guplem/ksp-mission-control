@@ -60,6 +60,22 @@ class WaitForAction(Action):
             default=None,
         ),
         ActionParam(
+            param_id="above_current_thrust",
+            label="Above Current Thrust",
+            description=("Wait until the vessel's current thrust is above this threshold before proceeding."),
+            required=False,
+            param_type=ParamType.FLOAT,
+            default=None,
+        ),
+        ActionParam(
+            param_id="below_current_thrust",
+            label="Below Current Thrust",
+            description=("Wait until the vessel's current thrust is below this threshold before proceeding."),
+            required=False,
+            param_type=ParamType.FLOAT,
+            default=None,
+        ),
+        ActionParam(
             param_id="above_available_thrust",
             label="Above Available Thrust",
             description=("Wait until the vessel's available thrust is above this threshold before proceeding."),
@@ -120,6 +136,10 @@ class WaitForAction(Action):
         self._above_available_thrust: float | None = float(raw_above_thrust) if raw_above_thrust is not None else None
         raw_below_thrust = param_values["below_available_thrust"]
         self._below_available_thrust: float | None = float(raw_below_thrust) if raw_below_thrust is not None else None
+        raw_above_current_thrust = param_values["above_current_thrust"]
+        self._above_current_thrust: float | None = float(raw_above_current_thrust) if raw_above_current_thrust is not None else None
+        raw_below_current_thrust = param_values["below_current_thrust"]
+        self._below_current_thrust: float | None = float(raw_below_current_thrust) if raw_below_current_thrust is not None else None
         raw_apoapsis_above = param_values["apoapsis_above"]
         self._apoapsis_above: float | None = float(raw_apoapsis_above) if raw_apoapsis_above is not None else None
         raw_above_dynamic_pressure = param_values["above_dynamic_pressure"]
@@ -159,6 +179,18 @@ class WaitForAction(Action):
             return ActionResult(
                 status=ActionStatus.RUNNING,
                 message=(f"Waiting for available thrust < {self._below_available_thrust:.1f}kN (current: {state.thrust_available:.1f}kN)"),
+            )
+
+        if self._above_current_thrust is not None and state.thrust < self._above_current_thrust:
+            return ActionResult(
+                status=ActionStatus.RUNNING,
+                message=(f"Waiting for current thrust > {self._above_current_thrust:.1f}kN (current: {state.thrust:.1f}kN)"),
+            )
+
+        if self._below_current_thrust is not None and state.thrust > self._below_current_thrust:
+            return ActionResult(
+                status=ActionStatus.RUNNING,
+                message=(f"Waiting for current thrust < {self._below_current_thrust:.1f}kN (current: {state.thrust:.1f}kN)"),
             )
 
         if self._apoapsis_above is not None and state.orbit_apoapsis < self._apoapsis_above:
