@@ -125,7 +125,7 @@ class LaunchAction(Action):
             label="Target Altitude",
             description=(
                 f"Target apoapsis altitude (default: {_DEFAULT_ALTITUDE_ATMOSPHERE_MULTIPLIER:.0%} of atmosphere, "
-                f"or {_DEFAULT_ALTITUDE_AIRLESS_BODY:.0f}m)"
+                f"or {_DEFAULT_ALTITUDE_AIRLESS_BODY:,.0f}m)"
             ),
             required=False,
             param_type=ParamType.FLOAT,
@@ -160,6 +160,14 @@ class LaunchAction(Action):
             param_type=ParamType.FLOAT,
             default=None,
             unit="m",
+        ),
+        ActionParam(
+            param_id="auto_stage",
+            label="Auto Stage",
+            description="Automatically stage when thrust is lost (ignition, booster sep, flameout). Disable if staging manually.",
+            required=False,
+            param_type=ParamType.BOOL,
+            default=False,
         ),
     ]
 
@@ -235,6 +243,8 @@ class LaunchAction(Action):
         # from the current latitude. The minimum reachable inclination from
         # latitude phi is |phi|; the maximum is 180 - |phi|. Anything outside
         # that range cannot be reached without an off-plane burn.
+        self._auto_stage: bool = bool(param_values["auto_stage"])
+
         self._fail_message: str | None = None
         abs_inc = abs(self._target_inclination)
         abs_lat = abs(state.position_latitude)
@@ -260,6 +270,12 @@ class LaunchAction(Action):
 
         # Check if remaining thrust
         if state.thrust_available <= 0:
+            if self._auto_stage:
+                if state.parts.engines_inactive() > 0:
+                    commands.stage = True
+                    log.info(f"Staging: no thrust, {state.parts.engines_inactive()} inactive engine(s) available")
+                    return ActionResult(status=ActionStatus.RUNNING, message="Staging to ignite engines")
+                return ActionResult(status=ActionStatus.FAILED, message="No thrust available and no inactive engines to stage")
             return ActionResult(status=ActionStatus.FAILED, message="No thrust available")
 
         # General Configuration
@@ -281,13 +297,13 @@ class LaunchAction(Action):
         # Throttle control
         commands.throttle = 1.0  # full throttle until apoapsis reaches target_altitude
 
-        if state.thrust_available <= 1:
+        if self._auto_stage and state.thrust_available <= 1:
             commands.stage = True
-            log.info(f"Staging stage {state.stage_current} due to insufficient thrust({state.thrust_available}N)")
+            log.info(f"Staging stage {state.stage_current} due to insufficient thrust ({state.thrust_available:,.1f}N)")
 
-        if state.engine_flameout_count > 0:
+        if self._auto_stage and state.engine_flameout_count > 0:
             commands.stage = True
-            log.info(f"Staging. {state.engine_flameout_count} engine(s) have flamed out ")
+            log.info(f"Staging: {state.engine_flameout_count} engine(s) have flamed out")
 
         log.debug(f"Dynamic pressure: {(state.pressure_dynamic / 1000):.1f}kPa ")
 

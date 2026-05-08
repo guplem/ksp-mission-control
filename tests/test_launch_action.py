@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 from ksp_mission_control.control.actions.base import (
     ActionLogger,
     ActionStatus,
@@ -40,7 +42,7 @@ class TestLaunchActionDefaultInclination:
             thrust_available=100.0,
         )
 
-    def _start(self, latitude: float = -0.1) -> LaunchAction:
+    def _start(self, latitude: float = -0.1, auto_stage: bool = False) -> LaunchAction:
         action = LaunchAction()
         action.start(
             self._make_state(latitude),
@@ -49,6 +51,7 @@ class TestLaunchActionDefaultInclination:
                 "target_inclination": None,
                 "turn_start_altitude": None,
                 "turn_end_altitude": None,
+                "auto_stage": auto_stage,
             },
         )
         return action
@@ -71,3 +74,76 @@ class TestLaunchActionDefaultInclination:
         log = ActionLogger()
         result = action.tick(self._make_state(latitude=-0.1), commands, 0.5, log)
         assert result.status != ActionStatus.FAILED
+
+
+class TestLaunchActionAutoStage:
+    """auto_stage=True stages instead of failing when thrust is lost."""
+
+    def _make_state(self, thrust_available: float = 0.0, engines_inactive: int = 1) -> State:
+        state = State(
+            position_latitude=0.0,
+            orbit_inclination=0.0,
+            altitude_sea=75.0,
+            altitude_surface=75.0,
+            body_has_atmosphere=True,
+            body_atmosphere_depth=70_000.0,
+            thrust_available=thrust_available,
+        )
+        parts_mock = MagicMock()
+        parts_mock.engines_inactive.return_value = engines_inactive
+        state = State(
+            position_latitude=0.0,
+            orbit_inclination=0.0,
+            altitude_sea=75.0,
+            altitude_surface=75.0,
+            body_has_atmosphere=True,
+            body_atmosphere_depth=70_000.0,
+            thrust_available=thrust_available,
+            parts=parts_mock,
+        )
+        return state
+
+    def _start(self, auto_stage: bool) -> LaunchAction:
+        action = LaunchAction()
+        action.start(
+            self._make_state(thrust_available=100.0, engines_inactive=0),
+            {
+                "target_altitude": None,
+                "target_inclination": None,
+                "turn_start_altitude": None,
+                "turn_end_altitude": None,
+                "auto_stage": auto_stage,
+            },
+        )
+        return action
+
+    def test_no_thrust_fails_without_auto_stage(self) -> None:
+        action = self._start(auto_stage=False)
+        result = action.tick(self._make_state(thrust_available=0.0), VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.FAILED
+
+    def test_no_thrust_stages_when_inactive_engines_available(self) -> None:
+        action = self._start(auto_stage=True)
+        commands = VesselCommands()
+        result = action.tick(self._make_state(thrust_available=0.0, engines_inactive=1), commands, 0.5, ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+        assert commands.stage is True
+
+    def test_no_thrust_fails_when_no_inactive_engines(self) -> None:
+        action = self._start(auto_stage=True)
+        result = action.tick(self._make_state(thrust_available=0.0, engines_inactive=0), VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.FAILED
+
+    def test_low_thrust_stages_with_auto_stage(self) -> None:
+        action = self._start(auto_stage=True)
+        state = self._make_state(thrust_available=0.5, engines_inactive=1)
+        commands = VesselCommands()
+        action.tick(state, commands, 0.5, ActionLogger())
+        assert commands.stage is True
+
+    def test_low_thrust_does_not_stage_without_auto_stage(self) -> None:
+        action = self._start(auto_stage=False)
+        state = self._make_state(thrust_available=0.5, engines_inactive=1)
+        commands = VesselCommands()
+        action.tick(state, commands, 0.5, ActionLogger())
+        assert commands.stage is None

@@ -1,5 +1,5 @@
 wait_for time=5
-launch
+launch auto_stage=True
 
 # Get rid of the solid booster once it's out of fuel
 wait_for below_current_thrust=0
