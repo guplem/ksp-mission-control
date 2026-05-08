@@ -1,10 +1,9 @@
 """ExecuteScienceAction - apply a science action to selected experiments.
 
-All selectors (index, name, title, name-tag, count) act as AND-composed
-filters. ``count`` caps the number of matches. When any selector is given,
-experiments that already hold data or are unavailable are skipped, so
-repeated calls pick fresh ones (e.g. "run two thermometers", later
-"run two more thermometers").
+All selectors (index, name, title, name-tag, has-data, count) act as AND-composed
+filters. ``count`` caps the number of matches. Always enumerates experiments
+individually; use ``has-data=false`` to skip experiments that already hold data,
+``has-data=true`` to target only those that do (e.g. for transmit or dump).
 """
 
 from __future__ import annotations
@@ -81,6 +80,14 @@ class ExecuteScienceAction(Action):
             param_type=ParamType.STR,
             default=None,
         ),
+        ActionParam(
+            param_id="has-data",
+            label="Has Data",
+            description="Filter by data status: true for experiments with data, false for those without. Omit to target all.",
+            required=False,
+            param_type=ParamType.BOOL,
+            default=None,
+        ),
     ]
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
@@ -101,17 +108,10 @@ class ExecuteScienceAction(Action):
         self._name: str | None = param_values["name"]
         self._title: str | None = param_values["title"]
         self._name_tag: str | None = param_values["name-tag"]
+        self._has_data_filter: bool | None = param_values["has-data"]
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
-        if not self._has_any_selector():
-            commands.all_science = self._action
-            runnable = sum(1 for e in state.science_experiments if e.available and not e.has_data)
-            return ActionResult(
-                status=ActionStatus.SUCCEEDED,
-                message=f"{self._action.display_name} applied to all ({runnable}) science experiments",
-            )
-
-        candidates = [e for e in state.science_experiments if self._matches(e) and e.available and not e.has_data]
+        candidates = [e for e in state.science_experiments if e.available and self._matches(e)]
         if not candidates:
             return ActionResult(
                 status=ActionStatus.FAILED,
@@ -130,9 +130,6 @@ class ExecuteScienceAction(Action):
     def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
         pass
 
-    def _has_any_selector(self) -> bool:
-        return self._index is not None or self._count is not None or self._name is not None or self._title is not None or self._name_tag is not None
-
     def _matches(self, experiment: ScienceExperiment) -> bool:
         if self._index is not None and experiment.index != self._index:
             return False
@@ -140,7 +137,11 @@ class ExecuteScienceAction(Action):
             return False
         if self._title is not None and experiment.title != self._title:
             return False
-        return self._name_tag is None or experiment.name_tag == self._name_tag
+        if self._name_tag is not None and experiment.name_tag != self._name_tag:
+            return False
+        if self._has_data_filter is not None and experiment.has_data != self._has_data_filter:
+            return False
+        return True
 
     def _filter_summary(self) -> str:
         parts: list[str] = []
@@ -152,6 +153,8 @@ class ExecuteScienceAction(Action):
             parts.append(f"title={self._title!r}")
         if self._name_tag is not None:
             parts.append(f"name-tag={self._name_tag!r}")
+        if self._has_data_filter is not None:
+            parts.append(f"has-data={self._has_data_filter}")
         if not parts:
-            return "filter (count only)"
+            return "any filter"
         return ", ".join(parts)

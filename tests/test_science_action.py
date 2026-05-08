@@ -25,6 +25,7 @@ _DEFAULT_PARAMS: dict[str, Any] = {
     "name": None,
     "title": None,
     "name-tag": None,
+    "has-data": None,
 }
 
 
@@ -64,21 +65,28 @@ def _tick(action: ExecuteScienceAction, state: State) -> tuple[VesselCommands, A
 
 
 class TestNoArgs:
-    def test_falls_through_to_all_science(self) -> None:
+    def test_runs_all_available_experiments(self) -> None:
         action = ExecuteScienceAction()
         state = State(science_experiments=(_experiment(0), _experiment(1)))
         action.start(state, _params())
         commands, result = _tick(action, state)
         assert result.status == ActionStatus.SUCCEEDED
-        assert commands.all_science == ScienceAction.RUN
-        assert commands.science_commands == ()
+        assert tuple(c.experiment_index for c in commands.science_commands) == (0, 1)
+        assert commands.all_science is None
 
     def test_action_param_overrides_default(self) -> None:
         action = ExecuteScienceAction()
         state = State(science_experiments=(_experiment(0),))
         action.start(state, _params(action="transmit"))
         commands, _ = _tick(action, state)
-        assert commands.all_science == ScienceAction.TRANSMIT
+        assert commands.science_commands[0].action == ScienceAction.TRANSMIT
+
+    def test_no_experiments_fails(self) -> None:
+        action = ExecuteScienceAction()
+        state = State(science_experiments=())
+        action.start(state, _params())
+        _, result = _tick(action, state)
+        assert result.status == ActionStatus.FAILED
 
     def test_unknown_action_raises(self) -> None:
         action = ExecuteScienceAction()
@@ -214,7 +222,7 @@ class TestCount:
         commands, _ = _tick(action, state)
         assert tuple(c.experiment_index for c in commands.science_commands) == (0, 1)
 
-    def test_count_without_filter_picks_first_n_fresh(self) -> None:
+    def test_count_without_filter_picks_first_n(self) -> None:
         action = ExecuteScienceAction()
         experiments = (_experiment(0), _experiment(1), _experiment(2))
         state = State(science_experiments=experiments)
@@ -223,9 +231,45 @@ class TestCount:
         assert tuple(c.experiment_index for c in commands.science_commands) == (0, 1)
 
 
-class TestSkipsAlreadyRun:
-    def test_count_skips_experiments_with_data(self) -> None:
-        """Two consecutive 'count=2 thermometer' calls pick different experiments."""
+class TestHasDataFilter:
+    def test_has_data_false_skips_experiments_with_data(self) -> None:
+        action = ExecuteScienceAction()
+        experiments = (
+            _experiment(0, name="temperatureScan", has_data=True),
+            _experiment(1, name="temperatureScan", has_data=False),
+        )
+        state = State(science_experiments=experiments)
+        action.start(state, _params(name="temperatureScan", **{"has-data": False}))
+        commands, result = _tick(action, state)
+        assert result.status == ActionStatus.SUCCEEDED
+        assert tuple(c.experiment_index for c in commands.science_commands) == (1,)
+
+    def test_has_data_true_targets_only_experiments_with_data(self) -> None:
+        action = ExecuteScienceAction()
+        experiments = (
+            _experiment(0, has_data=False),
+            _experiment(1, has_data=True),
+            _experiment(2, has_data=True),
+        )
+        state = State(science_experiments=experiments)
+        action.start(state, _params(**{"has-data": True}))
+        commands, result = _tick(action, state)
+        assert result.status == ActionStatus.SUCCEEDED
+        assert tuple(c.experiment_index for c in commands.science_commands) == (1, 2)
+
+    def test_no_has_data_filter_includes_all(self) -> None:
+        action = ExecuteScienceAction()
+        experiments = (
+            _experiment(0, has_data=False),
+            _experiment(1, has_data=True),
+        )
+        state = State(science_experiments=experiments)
+        action.start(state, _params())
+        commands, result = _tick(action, state)
+        assert result.status == ActionStatus.SUCCEEDED
+        assert tuple(c.experiment_index for c in commands.science_commands) == (0, 1)
+
+    def test_count_with_has_data_false_picks_first_n_without_data(self) -> None:
         action = ExecuteScienceAction()
         experiments = (
             _experiment(0, name="temperatureScan", has_data=True),
@@ -234,21 +278,12 @@ class TestSkipsAlreadyRun:
             _experiment(3, name="temperatureScan", has_data=False),
         )
         state = State(science_experiments=experiments)
-        action.start(state, _params(name="temperatureScan", count=2))
+        action.start(state, _params(name="temperatureScan", count=2, **{"has-data": False}))
         commands, _ = _tick(action, state)
         assert tuple(c.experiment_index for c in commands.science_commands) == (2, 3)
 
-    def test_filter_alone_skips_experiments_with_data(self) -> None:
-        action = ExecuteScienceAction()
-        experiments = (
-            _experiment(0, name="temperatureScan", has_data=True),
-            _experiment(1, name="temperatureScan", has_data=False),
-        )
-        state = State(science_experiments=experiments)
-        action.start(state, _params(name="temperatureScan"))
-        commands, _ = _tick(action, state)
-        assert tuple(c.experiment_index for c in commands.science_commands) == (1,)
 
+class TestSkipsUnavailable:
     def test_filter_skips_unavailable_experiments(self) -> None:
         action = ExecuteScienceAction()
         experiments = (
@@ -257,5 +292,6 @@ class TestSkipsAlreadyRun:
         )
         state = State(science_experiments=experiments)
         action.start(state, _params(name="temperatureScan"))
-        commands, _ = _tick(action, state)
+        commands, result = _tick(action, state)
+        assert result.status == ActionStatus.SUCCEEDED
         assert tuple(c.experiment_index for c in commands.science_commands) == (1,)
