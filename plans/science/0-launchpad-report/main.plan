@@ -1,0 +1,4 @@
+@craft fart-0
+
+# Just perform a crew report at the launchpad before takeoff
+science    action=run  
