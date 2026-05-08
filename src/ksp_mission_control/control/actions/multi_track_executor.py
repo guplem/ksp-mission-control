@@ -22,7 +22,7 @@ from ksp_mission_control.control.actions.base import (
     VesselCommands,
 )
 from ksp_mission_control.control.actions.flight_plan import FlightPlan, parse_flight_plan
-from ksp_mission_control.control.actions.plan_executor import PlanExecutor, PlanSnapshot
+from ksp_mission_control.control.actions.plan_executor import PlanExecutor, PlanSnapshot, StepStatus
 from ksp_mission_control.control.actions.runner import StepResult
 
 _MAX_PARALLEL_DEPTH = 10
@@ -54,6 +54,21 @@ class MultiTrackSnapshot:
     def is_multi_track(self) -> bool:
         """Whether there are multiple active tracks."""
         return len(self.tracks) > 1
+
+    @property
+    def all_finished(self) -> bool:
+        """True when every track has a loaded plan with no running action and all step statuses are terminal."""
+        if not self.tracks:
+            return False
+        for track in self.tracks:
+            snap = track.plan_snapshot
+            if snap.plan_name is None:
+                return False
+            if snap.runner.action_id is not None:
+                return False
+            if any(status not in (StepStatus.SUCCEEDED, StepStatus.FAILED) for status in snap.step_statuses):
+                return False
+        return True
 
 
 def _merge_commands(

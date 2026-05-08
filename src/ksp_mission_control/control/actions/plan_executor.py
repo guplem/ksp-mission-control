@@ -168,10 +168,17 @@ class PlanExecutor:
         return result
 
     def stop(self) -> StepResult:
-        """Stop the current action and cancel any remaining plan."""
+        """Stop the current action and cancel any remaining plan.
+
+        Skips emitting PLAN_END if every step is already terminal
+        (SUCCEEDED or FAILED), since step() already logged it on natural
+        completion. This avoids duplicate PLAN_END entries when the user
+        clicks Finish after a plan has already finished on its own.
+        """
         plan_name = self._plan.name if self._plan is not None else None
+        already_done = self._plan is not None and all(s in (StepStatus.SUCCEEDED, StepStatus.FAILED) for s in self._step_statuses)
         result = self._runner.stop()
-        if plan_name is not None:
+        if plan_name is not None and not already_done:
             result.logs.append(LogEntry(level=LogLevel.PLAN_END, message=plan_name))
         self._clear_plan()
         return result

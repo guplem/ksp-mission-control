@@ -5,6 +5,9 @@ When a plan is pending but not running, shows a pending-plan tray with
 "Launch", "Manual Command", and "Cancel" buttons.
 When a single action is running, shows its status.
 When a flight plan is active, shows each step with its status as Rich markup.
+When every track has finished (all step statuses terminal), the Stop button
+is replaced by a "Finish" button so the user can acknowledge completion and
+return the panel to idle.
 """
 
 from __future__ import annotations
@@ -83,10 +86,14 @@ class ControlPanelWidget(Static):
     class StopRunRequested(Message):
         """Posted when the user clicks Stop during action/plan execution."""
 
+    class FinishRunRequested(Message):
+        """Posted when the user clicks Finish after every track has completed."""
+
     def __init__(self, *, id: str | None = None) -> None:  # noqa: A002
         super().__init__(id=id)
         self._running_action_id: str | None = None
         self._plan_active: bool = False
+        self._all_finished: bool = False
         self._pending_plan: FlightPlan | None = None
         self._last_plan_snapshot: PlanSnapshot | None = None
         self._last_multi_snapshot: MultiTrackSnapshot | None = None
@@ -104,11 +111,13 @@ class ControlPanelWidget(Static):
         yield Button("Load Flight Plan", id="load-plan-btn", classes="action-btn")
         yield Button("Manual Command", id="manual-cmd-btn", classes="action-btn")
         yield Button("Stop", id="stop-run-btn", variant="error", classes="action-btn")
+        yield Button("Finish", id="finish-run-btn", variant="success", classes="action-btn")
 
     def on_mount(self) -> None:
-        """Hide dynamic content areas and the pending-plan tray initially."""
+        """Hide dynamic content areas, the pending-plan tray, and the Finish button initially."""
         self.query_one("#action-status-content", Static).display = False
         self.query_one("#plan-steps-content", Static).display = False
+        self.query_one("#finish-run-btn", Button).display = False
         self._set_pending_visibility(False)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -126,6 +135,8 @@ class ControlPanelWidget(Static):
             self.post_message(self.CancelPendingRequested())
         elif button_id == "stop-run-btn":
             self.post_message(self.StopRunRequested())
+        elif button_id == "finish-run-btn":
+            self.post_message(self.FinishRunRequested())
 
     def update_running(self, action_id: str | None) -> None:
         """Update which action (if any) is currently running.
@@ -169,6 +180,10 @@ class ControlPanelWidget(Static):
                 self._show_multi_track_mode(multi_snap)
             else:
                 self._show_plan_mode(plan_snap)
+            new_all_finished = multi_snap is not None and multi_snap.all_finished
+            if new_all_finished != self._all_finished:
+                self._all_finished = new_all_finished
+                self._update_button_visibility()
         elif self._plan_active:
             self._show_idle_mode()
 
@@ -222,24 +237,28 @@ class ControlPanelWidget(Static):
         """Reconcile idle/running button visibility against the current state.
 
         - Pending mode: all idle/running buttons hidden (the pending tray takes over).
-        - Running (action or plan): Stop + Manual Command shown; Start/Load hidden.
-        - Idle: Start Action, Load Plan, Manual Command shown; Stop hidden.
+        - Running (action or plan), tracks not finished: Stop + Manual Command shown.
+        - Running plan with every track finished: Finish replaces Stop.
+        - Idle: Start Action, Load Plan, Manual Command shown; Stop and Finish hidden.
         """
         try:
             start_btn = self.query_one("#start-action-btn", Button)
             plan_btn = self.query_one("#load-plan-btn", Button)
             manual_btn = self.query_one("#manual-cmd-btn", Button)
             stop_run_btn = self.query_one("#stop-run-btn", Button)
+            finish_btn = self.query_one("#finish-run-btn", Button)
         except NoMatches:
             return
         in_pending = self._pending_plan is not None
         running = self._running_action_id is not None or self._plan_active
         idle = not in_pending and not running
+        finished = running and not in_pending and self._all_finished
 
         start_btn.display = idle
         plan_btn.display = idle
         manual_btn.display = not in_pending
-        stop_run_btn.display = running and not in_pending
+        stop_run_btn.display = running and not in_pending and not finished
+        finish_btn.display = finished
 
     def _resolve_status_colors(self) -> dict[StepStatus, str]:
         """Resolve theme CSS variables to hex colors, cached after first call."""
@@ -357,6 +376,7 @@ class ControlPanelWidget(Static):
 
         plan_content.display = False
         self._plan_active = False
+        self._all_finished = False
         self._last_plan_snapshot = None
         self._update_button_visibility()
         title.update("[b]Control[/b]")

@@ -395,6 +395,17 @@ class ControlScreen(Screen[None]):
         self.query_one("#control-panel", ControlPanelWidget).update_running(None)
         self.notify("Stopped", timeout=1.5)
 
+    def on_control_panel_widget_finish_run_requested(
+        self,
+        event: ControlPanelWidget.FinishRunRequested,
+    ) -> None:
+        """User clicked Finish after every track completed: clear plan state and return to idle."""
+        if self._session is None:
+            return
+        self._session.stop()
+        self.query_one("#control-panel", ControlPanelWidget).update_running(None)
+        self.notify("Finished", timeout=1.5)
+
     def action_save_logs(self) -> None:
         """Save the full tick-by-tick log to file and copy the path to clipboard."""
         if not self._tick_history:
