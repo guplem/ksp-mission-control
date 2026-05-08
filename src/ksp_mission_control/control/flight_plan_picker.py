@@ -124,14 +124,22 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
         self._plan_names: list[str] = []
 
         for name, plan in self._parsed_plans.items():
+            summary_parts: list[str] = []
             step_count = len(plan.steps)
-            step_word = "step" if step_count == 1 else "steps"
+            if step_count > 0:
+                step_word = "step" if step_count == 1 else "steps"
+                summary_parts.append(f"{step_count} {step_word}")
+            parallel_count = len(plan.parallel_plans)
+            if parallel_count > 0:
+                sub_word = "sub-plan" if parallel_count == 1 else "sub-plans"
+                summary_parts.append(f"{parallel_count} {sub_word}")
+            summary = f" ({', '.join(summary_parts)})" if summary_parts else ""
             craft_suffix = f" — [b]{plan.craft}[/b]" if plan.craft else ""
             idx = len(self._plan_names)
             self._plan_names.append(name)
             listview.append(
                 ListItem(
-                    Static(f"{name} ({step_count} {step_word}){craft_suffix}"),
+                    Static(f"{name}{summary}{craft_suffix}"),
                     id=f"plan-{idx}",
                 )
             )
