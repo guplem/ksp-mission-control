@@ -20,8 +20,10 @@ class VesselDetectedCheck(SetupCheck):
     label = "Active vessel detected"
     screen = VesselScreen
 
-    def __init__(self, config_manager: ConfigManager) -> None:
+    def __init__(self, config_manager: ConfigManager, verbose: bool = False) -> None:
         self._config_manager = config_manager
+        self._verbose = verbose
+        """When True, failure messages include the raw kRPC exception text."""
         self.vessel_name: str | None = None
         """Name of the active vessel from the most recent successful check."""
 
@@ -45,8 +47,7 @@ class VesselDetectedCheck(SetupCheck):
         finally:
             pool.shutdown(wait=False)  # don't block on a hung thread
 
-    @staticmethod
-    def _query_vessel(settings: KrpcServerSettings) -> tuple[CheckResult, str | None]:
+    def _query_vessel(self, settings: KrpcServerSettings) -> tuple[CheckResult, str | None]:
         """Connect to kRPC and check for an active vessel (runs in a thread)."""
         import krpc  # noqa: PLC0415
 
@@ -56,15 +57,19 @@ class VesselDetectedCheck(SetupCheck):
             rpc_port=settings.rpc_port,
             stream_port=settings.stream_port,
         )
-        no_vessel_message = "No vessel detected. Flight plan with craft required to launch"
         try:
             vessel = conn.space_center.active_vessel
             if vessel is None:
-                return CheckResult(passed=False, message=no_vessel_message), None
+                return CheckResult(passed=False, message=self._no_vessel_message(None)), None
             name = vessel.name
             return CheckResult(passed=True, message=f"Vessel: {name}"), name
-        except Exception:
-            return CheckResult(passed=False, message=no_vessel_message), None
+        except Exception as exc:
+            return CheckResult(passed=False, message=self._no_vessel_message(exc)), None
         finally:
             with contextlib.suppress(Exception):
                 conn.close()
+
+    def _no_vessel_message(self, exc: BaseException | None) -> str:
+        if self._verbose and exc is not None:
+            return f"No active vessel ({exc})"
+        return "No vessel detected. Flight plan with craft required to launch"

@@ -76,7 +76,7 @@ class VesselScreen(Screen[None]):
         from ksp_mission_control.setup.vessel.check import VesselDetectedCheck
 
         config_manager = cast(MissionControlApp, self.app).config_manager
-        return VesselDetectedCheck(config_manager=config_manager).run()
+        return VesselDetectedCheck(config_manager=config_manager, verbose=True).run()
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         if event.worker.name != "_run_check":
