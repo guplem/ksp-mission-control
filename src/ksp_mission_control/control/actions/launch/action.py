@@ -41,7 +41,7 @@ body's properties at start():
 - target_altitude: body_atmosphere_depth * 1.1 (or 50km if no atmosphere)
 - target_inclination: current orbit inclination (matches the launch
   latitude on the pad, i.e. the lowest-energy eastward launch)
-- turn_start_altitude: ~1000m (just enough to clear the pad and build speed)
+- turn_start_altitude: initial altitude + 50m (just enough to clear the pad)
 - turn_end_altitude: 0.7 * target_altitude
 """
 
@@ -190,8 +190,7 @@ class LaunchAction(Action):
 
         Returns a pitch angle in degrees [0, 90].
         """
-        actual_turn_start = max(self._initial_altitude + _GRAVITY_TURN_CLEARANCE, turn_start)  # ensure we start after clearing the pad
-        progress = (altitude - actual_turn_start) / (turn_end - actual_turn_start)  # percent of turn completed
+        progress = (altitude - turn_start) / (turn_end - turn_start)  # percent of turn completed
         progress = max(0.0, min(1.0, progress))  # clamp to [0, 1]
         # Quarter-cosine curve: 90 deg at progress=0, 0 deg at progress=1.
         # Slow drop early (climb through dense atmosphere), fast drop late.
@@ -225,12 +224,12 @@ class LaunchAction(Action):
             self._target_inclination = abs(state.position_latitude)
 
         # Resolve turn_start_altitude: use provided value, or default to
-        # 50m above the initial altitude (just enough to clear the pad).
+        # clearance above the initial altitude (just enough to clear the pad).
         raw_turn_start = param_values["turn_start_altitude"]
         if raw_turn_start is not None:
             self._turn_start_altitude: float = float(raw_turn_start)
         else:
-            self._turn_start_altitude = self._initial_altitude
+            self._turn_start_altitude = self._initial_altitude + _GRAVITY_TURN_CLEARANCE
 
         # Resolve turn_end_altitude: use provided value, or default to 70% of target.
         raw_turn_end = param_values["turn_end_altitude"]
