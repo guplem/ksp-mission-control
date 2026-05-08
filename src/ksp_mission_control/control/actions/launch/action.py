@@ -4,14 +4,33 @@ Launches the vessel from the pad (or ground) and performs a gravity turn
 to reach a target apoapsis altitude. Cuts engines once the apoapsis is
 reached, leaving circularization to a separate action.
 
+Altitudes vs apoapsis
+---------------------
+``target_altitude`` and ``turn_end_altitude`` measure different things and
+the turn finishes well before the vessel reaches ``target_altitude``
+(default 70% of it). For readers new to orbital mechanics:
+
+- ``target_altitude`` is the apoapsis (high point) of the resulting orbit
+  the vessel ends up on, not the altitude at engine cutoff.
+- ``turn_end_altitude`` is the *current* altitude at which the commanded
+  pitch reaches horizontal.
+- After the turn, the vessel keeps rising for two reasons. First, it still
+  has vertical velocity from the climb. Second, once pitched horizontal at
+  full throttle the engines add tangential (sideways) speed; in orbital
+  mechanics, faster horizontal motion stretches the orbit and lifts the
+  apoapsis ahead of the vessel even while the vessel itself is still well
+  below it.
+- The action completes when ``orbit_apoapsis`` (not current altitude)
+  reaches ``target_altitude``.
+
 Phases
 ------
 1. **Vertical ascent**: Full throttle straight up until turn_start_altitude.
 2. **Gravity turn**: Gradually pitch from 90 deg toward the horizon between
    turn_start_altitude and turn_end_altitude, following the target
    inclination heading.
-3. **Coast to apoapsis**: Once pitch is near horizontal, hold prograde and
-   throttle to maintain apoapsis target without overshooting.
+3. **Horizontal burn**: Once pitch reaches 0, hold horizontal at full
+   throttle. Tangential thrust raises the apoapsis ahead of the vessel.
 4. **Complete**: Cut engines when apoapsis reaches target_altitude.
 
 Parameter defaults
@@ -258,7 +277,7 @@ class LaunchAction(Action):
             commands.autopilot_pitch = self._pitch_for_altitude(state.altitude_sea, self._turn_start_altitude, self._turn_end_altitude)
 
         # Throttle control
-        commands.throttle = 1.0  # full throttle until we reach apoapsis
+        commands.throttle = 1.0  # full throttle until apoapsis reaches target_altitude
 
         if state.thrust_available <= 1:
             commands.stage = True
