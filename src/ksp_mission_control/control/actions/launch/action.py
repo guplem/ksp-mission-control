@@ -207,12 +207,14 @@ class LaunchAction(Action):
         # Compute tolerance for considering apoapsis "close enough" to target.
         self.tolerance_altitude = self._target_altitude * _APOAPSIS_TOLERANCE_MULTIPLIER
 
-        # Resolve target_inclination: use provided value, or default to 0.
+        # Resolve target_inclination: use provided value, or default to the
+        # minimum reachable inclination from the launch latitude (|latitude|),
+        # which gives the lowest-energy eastward launch.
         raw_inclination = param_values["target_inclination"]
         if raw_inclination is not None:
             self._target_inclination: float = float(raw_inclination)
         else:
-            self._target_inclination = state.orbit_inclination
+            self._target_inclination = abs(state.position_latitude)
 
         # Resolve turn_start_altitude: use provided value, or default to
         # 50m above the initial altitude (just enough to clear the pad).
@@ -254,7 +256,7 @@ class LaunchAction(Action):
 
         # Check if finished
         if state.orbit_apoapsis >= self._target_altitude - self.tolerance_altitude:
-            return ActionResult(status=ActionStatus.SUCCEEDED, message="Target apoapsis reached")
+            return ActionResult(status=ActionStatus.SUCCEEDED, message=f"Target apoapsis reached ({state.orbit_apoapsis:,.1f} m)")
 
         # Check if remaining thrust
         if state.thrust_available <= 0:
