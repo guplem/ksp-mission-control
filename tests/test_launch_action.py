@@ -133,17 +133,3 @@ class TestLaunchActionAutoStage:
         action = self._start(auto_stage=True)
         result = action.tick(self._make_state(thrust_available=0.0, engines_inactive=0), VesselCommands(), 0.5, ActionLogger())
         assert result.status == ActionStatus.FAILED
-
-    def test_low_thrust_stages_with_auto_stage(self) -> None:
-        action = self._start(auto_stage=True)
-        state = self._make_state(thrust_available=0.5, engines_inactive=1)
-        commands = VesselCommands()
-        action.tick(state, commands, 0.5, ActionLogger())
-        assert commands.stage is True
-
-    def test_low_thrust_does_not_stage_without_auto_stage(self) -> None:
-        action = self._start(auto_stage=False)
-        state = self._make_state(thrust_available=0.5, engines_inactive=1)
-        commands = VesselCommands()
-        action.tick(state, commands, 0.5, ActionLogger())
-        assert commands.stage is None

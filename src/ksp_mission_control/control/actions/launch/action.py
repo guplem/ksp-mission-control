@@ -297,14 +297,6 @@ class LaunchAction(Action):
         # Throttle control
         commands.throttle = 1.0  # full throttle until apoapsis reaches target_altitude
 
-        if self._auto_stage and state.thrust_available <= 1:
-            commands.stage = True
-            log.info(f"Staging stage {state.stage_current} due to insufficient thrust ({state.thrust_available:,.1f}N)")
-
-        if self._auto_stage and state.engine_flameout_count > 0:
-            commands.stage = True
-            log.info(f"Staging: {state.engine_flameout_count} engine(s) have flamed out")
-
         log.debug(f"Dynamic pressure: {(state.pressure_dynamic / 1000):.1f}kPa ")
 
         return ActionResult(status=ActionStatus.RUNNING)

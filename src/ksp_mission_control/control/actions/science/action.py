@@ -139,9 +139,7 @@ class ExecuteScienceAction(Action):
             return False
         if self._name_tag is not None and experiment.name_tag != self._name_tag:
             return False
-        if self._has_data_filter is not None and experiment.has_data != self._has_data_filter:
-            return False
-        return True
+        return not (self._has_data_filter is not None and experiment.has_data != self._has_data_filter)
 
     def _filter_summary(self) -> str:
         parts: list[str] = []
