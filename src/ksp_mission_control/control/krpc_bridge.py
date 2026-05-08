@@ -514,6 +514,7 @@ def read_vessel_state(conn: object) -> State:
         body_atmosphere_depth=orbit.body.atmosphere_depth if orbit.body.has_atmosphere else 0.0,
         body_gm=orbit.body.gravitational_parameter,
         body_soi=orbit.body.sphere_of_influence,
+        position_biome=vessel.biome,
         position_latitude=flight.latitude,
         position_longitude=flight.longitude,
         orientation_pitch=surface_flight.pitch,

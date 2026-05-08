@@ -350,6 +350,7 @@ def _make_mock_conn(
             auto_pilot=auto_pilot,
             met=120.0,
             name="Test Vessel",
+            biome="Shores",
             situation=situation,
             mass=5000.0,
             dry_mass=2000.0,
@@ -558,6 +559,13 @@ class TestReadVesselState:
         state = read_vessel_state(conn)
         assert state.body_has_atmosphere is False
         assert state.body_atmosphere_depth == 0.0
+
+    def test_reads_position(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        assert state.position_biome == "Shores"
+        assert state.position_latitude == -0.1
+        assert state.position_longitude == 74.5
 
     def test_reads_comms(self) -> None:
         conn = _make_mock_conn()

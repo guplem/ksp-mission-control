@@ -99,6 +99,14 @@ class WaitForAction(Action):
             param_type=ParamType.FLOAT,
             default=None,
         ),
+        ActionParam(
+            param_id="biome",
+            label="Biome",
+            description="Wait until the vessel is in this biome before proceeding.",
+            required=False,
+            param_type=ParamType.STR,
+            default=None,
+        ),
     ]
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
@@ -119,6 +127,7 @@ class WaitForAction(Action):
         raw_time = param_values["time"]
         self._time: float | None = float(raw_time) if raw_time is not None else None
         self._start_action_time: float = state.universal_time
+        self._biome: str | None = param_values["biome"]
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
 
@@ -168,6 +177,12 @@ class WaitForAction(Action):
             return ActionResult(
                 status=ActionStatus.RUNNING,
                 message=(f"Waiting for time > {self._time:.1f}s (elapsed: {state.universal_time - self._start_action_time:.1f}s)"),
+            )
+
+        if self._biome is not None and state.position_biome != self._biome:
+            return ActionResult(
+                status=ActionStatus.RUNNING,
+                message=(f"Waiting for biome {self._biome!r} (current: {state.position_biome!r})"),
             )
 
         return ActionResult(status=ActionStatus.SUCCEEDED, message="All conditions met. Wait finished.")

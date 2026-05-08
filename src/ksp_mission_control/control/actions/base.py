@@ -647,6 +647,8 @@ class State:
     """Gravitational parameter (GM) of the orbited body, in m^3/s^2."""
     body_soi: float = 0.0
     """Sphere of influence radius of the orbited body, in meters."""
+    position_biome: str = ""
+    """Current biome (e.g. 'Grasslands', 'Midlands', 'Highlands')."""
     position_latitude: float = 0.0
     """Geographic latitude on the body surface, in degrees. -90 to 90."""
     position_longitude: float = 0.0

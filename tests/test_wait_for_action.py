@@ -14,7 +14,7 @@ from ksp_mission_control.control.actions.wait_for.action import WaitForAction
 
 # Default param dict matching ActionParam defaults. Tests override only the
 # params they care about, keeping each test focused on a single condition.
-_DEFAULT_PARAMS: dict[str, float | bool | None] = {
+_DEFAULT_PARAMS: dict[str, float | bool | str | None] = {
     "apoapsis": False,
     "periapsis": False,
     "above_altitude": None,
@@ -24,10 +24,11 @@ _DEFAULT_PARAMS: dict[str, float | bool | None] = {
     "apoapsis_above": None,
     "above_dynamic_pressure": None,
     "time": None,
+    "biome": None,
 }
 
 
-def _params(**overrides: float | bool | None) -> dict[str, Any]:
+def _params(**overrides: float | bool | str | None) -> dict[str, Any]:
     """Return a full param dict with overrides applied."""
     return {**_DEFAULT_PARAMS, **overrides}
 
@@ -128,3 +129,41 @@ class TestDefaultParams:
         commands = VesselCommands()
         result = action.tick(state, commands, 0.5, ActionLogger())
         assert result.status == ActionStatus.SUCCEEDED
+
+    def test_biome_defaults_to_none(self) -> None:
+        action = WaitForAction()
+        state = State(position_biome="")
+        action.start(state, _params(biome=None))
+        commands = VesselCommands()
+        result = action.tick(state, commands, 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+
+class TestBiome:
+    """Tests for the biome parameter."""
+
+    def test_waits_when_biome_does_not_match(self) -> None:
+        action = WaitForAction()
+        state = State(position_biome="Shores")
+        action.start(state, _params(biome="Highlands"))
+        commands = VesselCommands()
+        result = action.tick(state, commands, 0.5, ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+        assert "Highlands" in result.message
+        assert "Shores" in result.message
+
+    def test_succeeds_when_biome_matches(self) -> None:
+        action = WaitForAction()
+        state = State(position_biome="Highlands")
+        action.start(state, _params(biome="Highlands"))
+        commands = VesselCommands()
+        result = action.tick(state, commands, 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+    def test_biome_is_case_sensitive(self) -> None:
+        action = WaitForAction()
+        state = State(position_biome="highlands")
+        action.start(state, _params(biome="Highlands"))
+        commands = VesselCommands()
+        result = action.tick(state, commands, 0.5, ActionLogger())
+        assert result.status == ActionStatus.RUNNING

@@ -297,6 +297,7 @@ def _format_flight(state: State, colors: dict[AlertLevel, str]) -> str:
             "",
             "[b]Position[/b]",
             f"Body:            {state.body_name}",
+            f"Biome:           {state.position_biome or '-'}",
             f"Latitude:        {state.position_latitude:.4f} deg",
             f"Longitude:       {state.position_longitude:.4f} deg",
             "",
