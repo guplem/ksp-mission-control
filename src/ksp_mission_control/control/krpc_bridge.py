@@ -762,9 +762,14 @@ def list_launchable_vessels(conn: object) -> list[str]:
 def launch_vessel_from_vab(conn: object, craft_name: str) -> None:
     """Launch a VAB craft to the launch pad via kRPC.
 
-    Recovers any existing vessel at the pad before launching.
+    Recovers any pre-launch vessel before spawning so their crew is returned
+    to the astronaut complex rather than going missing.
     """
-    conn.space_center.launch_vessel_from_vab(craft_name)  # type: ignore[attr-defined]
+    sc = conn.space_center  # type: ignore[attr-defined]
+    for vessel in list(sc.vessels):
+        if "pre_launch" in str(vessel.situation).lower():
+            vessel.recover()
+    sc.launch_vessel_from_vab(craft_name)
 
 
 def get_active_vessel_name(conn: object) -> str:

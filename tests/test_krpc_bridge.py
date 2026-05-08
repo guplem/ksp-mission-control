@@ -19,6 +19,7 @@ from ksp_mission_control.control.krpc_bridge import (
     NoActiveVesselError,
     apply_controls,
     filter_commands,
+    launch_vessel_from_vab,
     read_vessel_state,
 )
 
@@ -1303,3 +1304,54 @@ class TestReadVesselStateParts:
         del conn.space_center.active_vessel.parts.fairings
         state = read_vessel_state(conn)
         assert state.parts.fairings == ()
+
+
+# ---------------------------------------------------------------------------
+# launch_vessel_from_vab
+# ---------------------------------------------------------------------------
+
+
+class TestLaunchVesselFromVab:
+    def _make_mock_vessel(self, situation: str) -> SimpleNamespace:
+        recovered: list[bool] = []
+        return SimpleNamespace(
+            situation=situation,
+            recover=lambda: recovered.append(True),
+            _recovered=recovered,
+        )
+
+    def _make_spawn_conn(self, vessels: list[SimpleNamespace]) -> SimpleNamespace:
+        launched: list[str] = []
+        sc = SimpleNamespace(
+            vessels=vessels,
+            launch_vessel_from_vab=lambda name: launched.append(name),
+            _launched=launched,
+        )
+        return SimpleNamespace(space_center=sc)
+
+    def test_recovers_prelaunch_vessel_before_spawning(self) -> None:
+        pad_vessel = self._make_mock_vessel("VesselSituation.pre_launch")
+        conn = self._make_spawn_conn([pad_vessel])
+        launch_vessel_from_vab(conn, "fart-1")
+        assert pad_vessel._recovered == [True]
+        assert conn.space_center._launched == ["fart-1"]
+
+    def test_does_not_recover_flying_vessel(self) -> None:
+        flying_vessel = self._make_mock_vessel("VesselSituation.flying")
+        conn = self._make_spawn_conn([flying_vessel])
+        launch_vessel_from_vab(conn, "fart-1")
+        assert flying_vessel._recovered == []
+        assert conn.space_center._launched == ["fart-1"]
+
+    def test_recovers_only_prelaunch_among_multiple_vessels(self) -> None:
+        pad_vessel = self._make_mock_vessel("VesselSituation.pre_launch")
+        orbiting_vessel = self._make_mock_vessel("VesselSituation.orbiting")
+        conn = self._make_spawn_conn([pad_vessel, orbiting_vessel])
+        launch_vessel_from_vab(conn, "fart-2")
+        assert pad_vessel._recovered == [True]
+        assert orbiting_vessel._recovered == []
+
+    def test_spawns_when_no_vessels_present(self) -> None:
+        conn = self._make_spawn_conn([])
+        launch_vessel_from_vab(conn, "fart-1")
+        assert conn.space_center._launched == ["fart-1"]
