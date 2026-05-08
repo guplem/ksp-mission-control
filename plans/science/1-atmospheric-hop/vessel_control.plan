@@ -1,0 +1,11 @@
+wait_for time=5
+launch
+
+# Get rid of the solid booster once it's out of fuel
+wait_for below_current_thrust=0
+stage
+
+# Avoid aopening the parachutes on ascent
+wait_for   apoapsis=True
+
+parachutes

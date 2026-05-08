@@ -1,0 +1,8 @@
+@craft fart-1
+# REQUIREMENTS:
+# - Engineering 101
+
+# Atmospheric launch to collect data flying in kerbal to collect science "Flying Low" and in the "Water" biome.
+
+@parallel science/1-atmospheric-hop/vessel_control.plan
+@parallel science/1-atmospheric-hop/science_control.plan
