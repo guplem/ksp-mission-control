@@ -1,5 +1,5 @@
 wait_for time=5
-launch auto_stage=True
+launch auto_stage=True target_altitude=6_000 turn_end_altitude=4_500
 
 # Get rid of the solid booster once it's out of fuel
 wait_for below_current_thrust=0
