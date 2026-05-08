@@ -115,7 +115,7 @@ class LandAction(Action):
         if state.altitude_surface < 50.0 and not self._gear_deployed:
             self._gear_deployed = True
             commands.gear = True
-            log.info(f"Deployed landing gear at altitude {state.altitude_surface:.1f}m")
+            log.info(f"Deployed landing gear at altitude {state.altitude_surface:,.1f}m")
 
         if state.situation == VesselSituation.LANDED:
             log.info("Landed successfully")

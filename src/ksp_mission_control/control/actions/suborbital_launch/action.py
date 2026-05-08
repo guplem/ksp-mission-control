@@ -107,31 +107,31 @@ class SuborbitalLaunchAction(Action):
                 else:
                     return ActionResult(
                         status=ActionStatus.FAILED,
-                        message=f"Failed: no thrust available. Current apoapsis is {state.orbit_apoapsis:.1f}m, target altitude is {self._target_altitude:.1f}m",  # noqa: E501
+                        message=f"Failed: no thrust available. Current apoapsis is {state.orbit_apoapsis:,.1f}m, target altitude is {self._target_altitude:,.1f}m",  # noqa: E501
                     )
             else:
                 return ActionResult(
                     status=ActionStatus.FAILED,
-                    message=f"Failed: no thrust available and staging disabled. Current apoapsis is {state.orbit_apoapsis:.1f}m, target altitude is {self._target_altitude:.1f}m",  # noqa: E501
+                    message=f"Failed: no thrust available and staging disabled. Current apoapsis is {state.orbit_apoapsis:,.1f}m, target altitude is {self._target_altitude:,.1f}m",  # noqa: E501
                 )
 
         # Throttle control
         if state.orbit_apoapsis < self._target_altitude:
             if state.pressure_dynamic > self._max_dynamic_pressure:
                 # Throtle down to avoid excessive dynamic pressure
-                log.debug(f"Dynamic pressure {state.pressure_dynamic:.1f} Pa exceeds max {self._max_dynamic_pressure} Pa, throttling down ⬇️")
+                log.debug(f"Dynamic pressure {state.pressure_dynamic:,.1f} Pa exceeds max {self._max_dynamic_pressure:,.0f} Pa, throttling down ⬇️")
                 commands.throttle = max(self._min_throttle, state.control_throttle - 0.1)
             elif state.control_throttle < 1.0:
                 # If we're below max dynamic pressure and not already at full throttle, increase throttle
                 if state.control_throttle < 1.0:
-                    log.debug(f"Dynamic pressure {state.pressure_dynamic:.1f} Pa below max {self._max_dynamic_pressure} Pa, throttling up ⬆️")
+                    log.debug(f"Dynamic pressure {state.pressure_dynamic:,.1f} Pa below max {self._max_dynamic_pressure:,.0f} Pa, throttling up ⬆️")
                 commands.throttle = min(1.0, state.control_throttle + 0.1)
 
             return ActionResult(
                 status=ActionStatus.RUNNING,
-                message=f"Ascending: current apoapsis {state.orbit_apoapsis:.1f}m / target {self._target_altitude:.1f}m",
+                message=f"Ascending: current apoapsis {state.orbit_apoapsis:,.1f}m / target {self._target_altitude:,.1f}m",
             )
-        return ActionResult(status=ActionStatus.SUCCEEDED, message=f"Target apoapsis set: {state.orbit_apoapsis:.1f}m")
+        return ActionResult(status=ActionStatus.SUCCEEDED, message=f"Target apoapsis set: {state.orbit_apoapsis:,.1f}m")
 
     def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
         commands.throttle = 0.0

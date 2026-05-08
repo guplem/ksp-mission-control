@@ -49,7 +49,7 @@ class StageAction(Action):
         if self._wait_for_no_thrust and state.thrust_available > 0:
             return ActionResult(
                 status=ActionStatus.RUNNING,
-                message=f"Waiting for no thrust before staging (current thrust: {state.thrust_available:.1f}kN)",
+                message=f"Waiting for no thrust before staging (current thrust: {state.thrust_available:,.1f}kN)",
             )
 
         commands.stage = True

@@ -227,7 +227,7 @@ class TranslateAction(Action):
 
         # ── 3. Are we there yet? ────────────────────────────────────────────
         if remaining_distance < _ARRIVAL_DISTANCE and actual_speed < _ARRIVAL_SPEED:
-            log.info(f"Target reached: traveled N={traveled_north:.1f}m E={traveled_east:.1f}m")
+            log.info(f"Target reached: traveled N={traveled_north:,.1f}m E={traveled_east:,.1f}m")
             return ActionResult(status=ActionStatus.SUCCEEDED)
 
         # ── 4. Altitude hold ────────────────────────────────────────────────
@@ -281,9 +281,9 @@ class TranslateAction(Action):
 
         # ── 9. Debug log ───────────────────────────────────────────────────
         log.debug(
-            f"translate: remaining N={remaining_north:+.1f}m E={remaining_east:+.1f}m "
-            f"dist={remaining_distance:.1f}m  "
-            f"speed={actual_speed:.1f}/{desired_speed:.1f}m/s  "
+            f"translate: remaining N={remaining_north:+,.1f}m E={remaining_east:+,.1f}m "
+            f"dist={remaining_distance:,.1f}m  "
+            f"speed={actual_speed:,.1f}/{desired_speed:,.1f}m/s  "
             f"fwd={commands.translate_forward:+.2f} right={commands.translate_right:+.2f} "
             f"up={commands.translate_up:+.2f}  "
             f"alt_err={altitude_error:+.1f}m throttle={commands.throttle:.3f}"

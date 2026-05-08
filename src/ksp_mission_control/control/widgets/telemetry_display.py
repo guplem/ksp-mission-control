@@ -227,8 +227,8 @@ class TelemetryDisplayWidget(Static):
 def _format_altitude(meters: float) -> str:
     """Format altitude/distance with appropriate unit (m or km)."""
     if abs(meters) >= 100_000:
-        return f"{meters / 1000:.1f} km"
-    return f"{meters:.0f} m"
+        return f"{meters / 1000:,.1f} km"
+    return f"{meters:,.0f} m"
 
 
 def _format_time(seconds: float) -> str:
@@ -256,15 +256,15 @@ def _magnitude(vector: tuple[float, float, float]) -> float:
 def _format_force(newtons: float) -> str:
     """Format force in N or kN."""
     if newtons >= 1000:
-        return f"{newtons / 1000:.1f} kN"
-    return f"{newtons:.1f} N"
+        return f"{newtons / 1000:,.1f} kN"
+    return f"{newtons:,.1f} N"
 
 
 def _format_mass(kg: float) -> str:
     """Format mass in kg or t."""
     if kg >= 1000:
-        return f"{kg / 1000:.2f} t"
-    return f"{kg:.1f} kg"
+        return f"{kg / 1000:,.2f} t"
+    return f"{kg:,.1f} kg"
 
 
 def _color(text: str, level: AlertLevel, colors: dict[AlertLevel, str]) -> str:
@@ -290,10 +290,10 @@ def _format_flight(state: State, colors: dict[AlertLevel, str]) -> str:
             f"Time to impact:  {_color(_format_time(state.altitude_time_to_impact), evaluate_time_to_impact(state), colors)}",
             "",
             "[b]Speed[/b]",
-            f"Vertical:        {state.speed_vertical:+.1f} m/s",
-            f"Horizontal:      {state.speed_horizontal:.1f} m/s",
-            f"Surface:         {state.speed_surface:.1f} m/s",
-            f"Orbital:         {state.speed_orbital:.1f} m/s",
+            f"Vertical:        {state.speed_vertical:+,.1f} m/s",
+            f"Horizontal:      {state.speed_horizontal:,.1f} m/s",
+            f"Surface:         {state.speed_surface:,.1f} m/s",
+            f"Orbital:         {state.speed_orbital:,.1f} m/s",
             "",
             "[b]Position[/b]",
             f"Body:            {state.body_name}",
@@ -307,7 +307,7 @@ def _format_flight(state: State, colors: dict[AlertLevel, str]) -> str:
             f"Static press.:   {state.pressure_static / 1000:.2f} kPa",
             f"Mach:            {state.aero_mach:.2f}",
             f"AoA:             {state.aero_angle_of_attack:.1f} deg",
-            f"Terminal vel.:   {state.aero_terminal_velocity:.1f} m/s",
+            f"Terminal vel.:   {state.aero_terminal_velocity:,.1f} m/s",
             f"Drag:            {_format_force(_magnitude(state.aero_drag))}",
             f"Lift:            {_format_force(_magnitude(state.aero_lift))}",
         ]
@@ -340,7 +340,7 @@ def _format_orbit(state: State, colors: dict[AlertLevel, str]) -> str:
             "",
             "[b]Propulsion[/b]",
             f"TWR:             {_color(f'{state.twr:.2f}', evaluate_twr(state), colors)} / {state.max_twr:.2f}",
-            f"Delta-v:         {state.delta_v:.0f} m/s",
+            f"Delta-v:         {state.delta_v:,.0f} m/s",
             f"Thrust:          {_format_force(state.thrust)} / {_format_force(state.thrust_peak)}",
             f"Mass:            {_format_mass(state.mass)}",
             f"Isp:             {state.engine_impulse_specific:.1f} s",
@@ -356,7 +356,7 @@ def _format_orbit(state: State, colors: dict[AlertLevel, str]) -> str:
 
 def _format_resource(amount: float, fraction: float) -> str:
     """Format a resource as 'amount units (percent%)'."""
-    return f"{amount:.1f} ({fraction * 100:.0f}%)"
+    return f"{amount:,.1f} ({fraction * 100:.0f}%)"
 
 
 def _color_resource(label: str, amount: float, fraction: float, level: AlertLevel, colors: dict[AlertLevel, str]) -> str:

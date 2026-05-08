@@ -110,7 +110,7 @@ class AerobreakAction(Action):
         if state.altitude_surface <= self._target_altitude and state.speed_surface <= self._target_speed:
             return ActionResult(
                 status=ActionStatus.SUCCEEDED,
-                message=f"Target reached: {state.speed_surface:.1f}m/s at {state.altitude_surface:.0f}m",
+                message=f"Target reached: {state.speed_surface:,.1f}m/s at {state.altitude_surface:,.0f}m",
             )
 
         # Check if we have thrust available. If not, either auto-stage or fail.
@@ -125,12 +125,12 @@ class AerobreakAction(Action):
                 else:
                     return ActionResult(
                         status=ActionStatus.FAILED,
-                        message=f"Failed: no thrust available. Speed {state.speed_surface:.1f}m/s, target {self._target_speed:.1f}m/s",  # noqa: E501
+                        message=f"Failed: no thrust available. Speed {state.speed_surface:,.1f}m/s, target {self._target_speed:,.1f}m/s",  # noqa: E501
                     )
             else:
                 return ActionResult(
                     status=ActionStatus.FAILED,
-                    message=f"Failed: no thrust available and staging disabled. Speed {state.speed_surface:.1f}m/s, target {self._target_speed:.1f}m/s",  # noqa: E501
+                    message=f"Failed: no thrust available and staging disabled. Speed {state.speed_surface:,.1f}m/s, target {self._target_speed:,.1f}m/s",  # noqa: E501
                 )
 
         # --- Braking distance calculation ---
@@ -164,16 +164,16 @@ class AerobreakAction(Action):
             if not self._engine_brake_started:
                 self._engine_brake_started = True
                 log.info(
-                    f"Engine brake started at {state.altitude_surface:.0f}m "
-                    f"(braking distance {braking_distance:.0f}m, altitude remaining {altitude_remaining:.0f}m)"
+                    f"Engine brake started at {state.altitude_surface:,.0f}m "
+                    f"(braking distance {braking_distance:,.0f}m, altitude remaining {altitude_remaining:,.0f}m)"
                 )
             commands.throttle = 1.0
 
             return ActionResult(
                 status=ActionStatus.RUNNING,
                 message=(
-                    f"Engine brake: {state.speed_surface:.1f}m/s -> {self._target_speed:.1f}m/s, "
-                    f"alt {state.altitude_surface:.0f}m -> {self._target_altitude:.0f}m"
+                    f"Engine brake: {state.speed_surface:,.1f}m/s -> {self._target_speed:,.1f}m/s, "
+                    f"alt {state.altitude_surface:,.0f}m -> {self._target_altitude:,.0f}m"
                 ),
             )
         else:
@@ -185,18 +185,18 @@ class AerobreakAction(Action):
 
             if state.pressure_dynamic > self._max_dynamic_pressure:
                 log.debug(
-                    f"Dynamic pressure {state.pressure_dynamic:.1f}Pa exceeds {self._max_dynamic_pressure:.0f}Pa, throttling up to brake"  # noqa: E501
+                    f"Dynamic pressure {state.pressure_dynamic:,.1f}Pa exceeds {self._max_dynamic_pressure:,.0f}Pa, throttling up to brake"  # noqa: E501
                 )
                 commands.throttle = min(1.0, state.control_throttle + 0.1)
             elif state.control_throttle > min_throttle:
-                log.debug(f"Dynamic pressure {state.pressure_dynamic:.1f}Pa below {self._max_dynamic_pressure:.0f}Pa, easing off")
+                log.debug(f"Dynamic pressure {state.pressure_dynamic:,.1f}Pa below {self._max_dynamic_pressure:,.0f}Pa, easing off")
                 commands.throttle = max(min_throttle, state.control_throttle - 0.1)
 
             return ActionResult(
                 status=ActionStatus.RUNNING,
                 message=(
-                    f"Aero brake: {state.speed_surface:.1f}m/s, alt {state.altitude_surface:.0f}m "
-                    f"(engine brake in {altitude_remaining - braking_distance * _BRAKE_MARGIN:.0f}m)"
+                    f"Aero brake: {state.speed_surface:,.1f}m/s, alt {state.altitude_surface:,.0f}m "
+                    f"(engine brake in {altitude_remaining - braking_distance * _BRAKE_MARGIN:,.0f}m)"
                 ),
             )
 

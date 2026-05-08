@@ -80,7 +80,7 @@ class ParachutesAction(Action):
         if self._min_altitude is not None and state.altitude_surface > self._min_altitude:
             return ActionResult(
                 status=ActionStatus.RUNNING,
-                message=(f"Waiting for altitude <= {self._min_altitude:.0f}m (current: {state.altitude_surface:.1f}m)"),
+                message=(f"Waiting for altitude <= {self._min_altitude:,.0f}m (current: {state.altitude_surface:,.1f}m)"),
             )
 
         # Stage if needed
@@ -106,7 +106,7 @@ class ParachutesAction(Action):
         commands.deployable_parachutes = True
         return ActionResult(
             status=ActionStatus.SUCCEEDED,
-            message=f"Triggering the deployment of {state.parts.parachutes_count([state.stage_current])} parachutes at {state.altitude_surface:.1f}m",
+            message=f"Triggering the deployment of {state.parts.parachutes_count([state.stage_current])} parachutes at {state.altitude_surface:,.1f}m",
         )
 
     def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:

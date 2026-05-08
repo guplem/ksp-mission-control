@@ -126,16 +126,16 @@ class HoverAction(Action):
 
         # --- Landing gear: retract above 3m
         if state.altitude_surface > 3.0 and state.control_gear:
-            log.debug(f"Closed landing gear at altitude {state.altitude_surface:.1f}m")
+            log.debug(f"Closed landing gear at altitude {state.altitude_surface:,.1f}m")
             commands.gear = False
 
         # --- Target reached detection (within 5m) ---
         if not self._reached_target and abs(difference) < 5.0:
             self._reached_target = True
             if self._hover_duration > 0:
-                log.info(f"Reached target altitude: {self._target_altitude:.0f}m, hovering for {self._hover_duration:.0f}s")
+                log.info(f"Reached target altitude: {self._target_altitude:,.0f}m, hovering for {self._hover_duration:.0f}s")
             else:
-                log.info(f"Reached target altitude: {self._target_altitude:.0f}m")
+                log.info(f"Reached target altitude: {self._target_altitude:,.0f}m")
 
         # --- Hover duration countdown (only after reaching target) ---
         if self._reached_target and self._hover_duration > 0:
@@ -149,11 +149,11 @@ class HoverAction(Action):
         # Warn if drifting too far from target (25% of target alt, min 10m)
         deviation_threshold = max(10.0, self._target_altitude * 0.25)
         if self._reached_target and abs(difference) > deviation_threshold:
-            log.warn(f"Large altitude deviation: {difference:+.0f}m from target (threshold {deviation_threshold:.0f}m)")
+            log.warn(f"Large altitude deviation: {difference:+,.0f}m from target (threshold {deviation_threshold:,.0f}m)")
 
         # Emergency: falling fast near the ground
         if state.altitude_surface < 100.0 and state.speed_vertical < -5.0:
-            log.error(f"Dangerous descent: alt={state.altitude_surface:.0f}m vspd={state.speed_vertical:.1f}m/s")
+            log.error(f"Dangerous descent: alt={state.altitude_surface:,.0f}m vspd={state.speed_vertical:,.1f}m/s")
 
         # --- Landed detection: back at starting altitude and on the ground ---
         if self._reached_target and state.altitude_surface <= (self._initial_altitude + 1.0) and state.situation == VesselSituation.LANDED:

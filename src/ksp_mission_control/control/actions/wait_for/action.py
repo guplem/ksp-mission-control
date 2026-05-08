@@ -152,57 +152,57 @@ class WaitForAction(Action):
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
 
         if self._apoapsis and not state.orbit_apoapsis_passed:
-            return ActionResult(status=ActionStatus.RUNNING, message=f"Waiting for apoapsis ({state.orbit_apoapsis_time_to:.0f}s)")
+            return ActionResult(status=ActionStatus.RUNNING, message=f"Waiting for apoapsis ({state.orbit_apoapsis_time_to:,.0f}s)")
 
         if self._periapsis and not state.orbit_periapsis_passed:
-            return ActionResult(status=ActionStatus.RUNNING, message=f"Waiting for periapsis ({state.orbit_periapsis_time_to:.0f}s)")
+            return ActionResult(status=ActionStatus.RUNNING, message=f"Waiting for periapsis ({state.orbit_periapsis_time_to:,.0f}s)")
 
         if self._above_altitude is not None and state.altitude_surface < self._above_altitude:
             return ActionResult(
                 status=ActionStatus.RUNNING,
-                message=(f"Waiting for altitude > {self._above_altitude:.0f}m (current: {state.altitude_surface:.1f}m)"),
+                message=(f"Waiting for altitude > {self._above_altitude:,.0f}m (current: {state.altitude_surface:,.1f}m)"),
             )
 
         if self._below_altitude is not None and state.altitude_surface > self._below_altitude:
             return ActionResult(
                 status=ActionStatus.RUNNING,
-                message=(f"Waiting for altitude < {self._below_altitude:.0f}m (current: {state.altitude_surface:.1f}m)"),
+                message=(f"Waiting for altitude < {self._below_altitude:,.0f}m (current: {state.altitude_surface:,.1f}m)"),
             )
 
         if self._above_available_thrust is not None and state.thrust_available < self._above_available_thrust:
             return ActionResult(
                 status=ActionStatus.RUNNING,
-                message=(f"Waiting for available thrust > {self._above_available_thrust:.1f}kN (current: {state.thrust_available:.1f}kN)"),
+                message=(f"Waiting for available thrust > {self._above_available_thrust:,.1f}kN (current: {state.thrust_available:,.1f}kN)"),
             )
 
         if self._below_available_thrust is not None and state.thrust_available > self._below_available_thrust:
             return ActionResult(
                 status=ActionStatus.RUNNING,
-                message=(f"Waiting for available thrust < {self._below_available_thrust:.1f}kN (current: {state.thrust_available:.1f}kN)"),
+                message=(f"Waiting for available thrust < {self._below_available_thrust:,.1f}kN (current: {state.thrust_available:,.1f}kN)"),
             )
 
         if self._above_current_thrust is not None and state.thrust < self._above_current_thrust:
             return ActionResult(
                 status=ActionStatus.RUNNING,
-                message=(f"Waiting for current thrust > {self._above_current_thrust:.1f}kN (current: {state.thrust:.1f}kN)"),
+                message=(f"Waiting for current thrust > {self._above_current_thrust:,.1f}kN (current: {state.thrust:,.1f}kN)"),
             )
 
         if self._below_current_thrust is not None and state.thrust > self._below_current_thrust:
             return ActionResult(
                 status=ActionStatus.RUNNING,
-                message=(f"Waiting for current thrust < {self._below_current_thrust:.1f}kN (current: {state.thrust:.1f}kN)"),
+                message=(f"Waiting for current thrust < {self._below_current_thrust:,.1f}kN (current: {state.thrust:,.1f}kN)"),
             )
 
         if self._apoapsis_above is not None and state.orbit_apoapsis < self._apoapsis_above:
             return ActionResult(
                 status=ActionStatus.RUNNING,
-                message=(f"Waiting for apoapsis > {self._apoapsis_above:.0f}m (current: {state.orbit_apoapsis:.0f}m)"),
+                message=(f"Waiting for apoapsis > {self._apoapsis_above:,.0f}m (current: {state.orbit_apoapsis:,.0f}m)"),
             )
 
         if self._above_dynamic_pressure is not None and state.pressure_dynamic < self._above_dynamic_pressure:
             return ActionResult(
                 status=ActionStatus.RUNNING,
-                message=(f"Waiting for dynamic pressure > {self._above_dynamic_pressure:.1f}Pa (current: {state.pressure_dynamic:.1f}Pa)"),
+                message=(f"Waiting for dynamic pressure > {self._above_dynamic_pressure:,.1f}Pa (current: {state.pressure_dynamic:,.1f}Pa)"),
             )
 
         if self._time is not None and (state.universal_time - self._start_action_time) < self._time:
