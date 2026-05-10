@@ -5,8 +5,6 @@ wait_for   below_current_thrust=0
 sas        mode=prograde
 stage
 
-# Avoid aopening the parachutes on ascent
-wait_for   apoapsis=True
 
 wait_for   biome=Water
 sas        mode=retrograde
