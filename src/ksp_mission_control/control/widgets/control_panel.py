@@ -146,8 +146,8 @@ class ControlPanelWidget(Static):
         """Latest status per step, used to skip clicks on PENDING entries."""
         self._visible_step_keys: list[StepKey | None] = []
         """Maps each ListView item index to a step key, or None for headers."""
-        self._following: bool = True
-        """Whether the panel is in live-follow mode (no historical step pinned)."""
+        self._selected_tick: int | None = None
+        """Mirror of the screen-level selected tick. None means follow live."""
 
     def compose(self) -> ComposeResult:
         yield Static("[b]Control[/b]", id="control-panel-title")
@@ -280,21 +280,37 @@ class ControlPanelWidget(Static):
             if key not in self._step_start_ticks:
                 self._step_start_ticks[key] = tick_id
 
-    def set_following(self, following: bool) -> None:
-        """Clear the step selection when the screen returns to live-follow mode."""
-        if self._following == following:
-            return
-        self._following = following
-        if not following:
-            return
+    def set_selected_tick(self, tick_id: int | None) -> None:
+        """Sync the step list selection to the screen-level selected tick.
+
+        When None, clears the selection. When a tick matches the start
+        tick of a visible step, highlights that step so clicks elsewhere
+        (e.g. on a log line at a step's start) reflect in the panel.
+        Otherwise leaves the selection untouched so the user's last
+        explicit step selection is preserved.
+        """
+        self._selected_tick = tick_id
         try:
             list_view = self.query_one("#plan-steps-list", ListView)
         except NoMatches:
             return
-        list_view.index = None
+        if tick_id is None:
+            list_view.index = None
+            return
+        for step_key, start_tick in self._step_start_ticks.items():
+            if start_tick != tick_id:
+                continue
+            if step_key in self._visible_step_keys:
+                list_view.index = self._visible_step_keys.index(step_key)
+                return
 
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
-        """Post StepClicked when a started step is highlighted; ignore headers and pending."""
+        """Post StepClicked when a started step is highlighted; ignore headers and pending.
+
+        Suppresses the post when the resulting tick already matches the
+        screen-level selected tick, so programmatic selection from
+        ``set_selected_tick`` doesn't echo back as a navigation request.
+        """
         if event.list_view.id != "plan-steps-list":
             return
         index = event.list_view.index
@@ -307,7 +323,7 @@ class ControlPanelWidget(Static):
         if status is None or status == StepStatus.PENDING:
             return
         tick_id = self._step_start_ticks.get(key)
-        if tick_id is None:
+        if tick_id is None or tick_id == self._selected_tick:
             return
         self.post_message(self.StepClicked(tick_id))
 

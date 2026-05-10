@@ -120,7 +120,74 @@ class TestMessageDisplay:
             # Currently viewing tick 2 (following mode)
             message_static = pilot.app.query_one("#command-history-message", Static)
             assert "Target apoapsis reached" in message_static.render().plain
-            # Navigate back to tick 1
-            widget._navigate(-1)
+            # Navigate back to tick 1 (simulates the screen calling
+            # set_selected_tick after a TickChanged button request).
+            widget.set_selected_tick(1)
             await pilot.pause()
             assert "Ascending" in message_static.render().plain
+
+
+class TestSetSelectedTick:
+    """set_selected_tick syncs the displayed record and follow flag."""
+
+    @pytest.mark.asyncio
+    async def test_pinning_tick_disables_following(self) -> None:
+        async with CommandHistoryApp().run_test(size=(120, 40)) as pilot:
+            widget = pilot.app.query_one("#command-history", CommandHistoryWidget)
+            _record(widget, tick_id=1)
+            _record(widget, tick_id=2)
+            await pilot.pause()
+            assert widget._following is True
+
+            widget.set_selected_tick(1)
+            await pilot.pause()
+            assert widget._following is False
+            assert widget._index == 0
+
+    @pytest.mark.asyncio
+    async def test_none_resumes_following_and_jumps_to_latest(self) -> None:
+        async with CommandHistoryApp().run_test(size=(120, 40)) as pilot:
+            widget = pilot.app.query_one("#command-history", CommandHistoryWidget)
+            _record(widget, tick_id=1)
+            _record(widget, tick_id=2)
+            await pilot.pause()
+
+            widget.set_selected_tick(1)
+            await pilot.pause()
+            assert widget._index == 0
+
+            widget.set_selected_tick(None)
+            await pilot.pause()
+            assert widget._following is True
+            assert widget._index == 1  # last record
+
+    @pytest.mark.asyncio
+    async def test_unknown_tick_leaves_index_but_marks_not_following(self) -> None:
+        async with CommandHistoryApp().run_test(size=(120, 40)) as pilot:
+            widget = pilot.app.query_one("#command-history", CommandHistoryWidget)
+            _record(widget, tick_id=1)
+            _record(widget, tick_id=3)  # tick 2 has no command record
+            await pilot.pause()
+            assert widget._index == 1
+
+            widget.set_selected_tick(2)  # no record matches
+            await pilot.pause()
+            assert widget._following is False
+            assert widget._index == 1  # unchanged
+
+    @pytest.mark.asyncio
+    async def test_record_commands_advances_only_when_following(self) -> None:
+        async with CommandHistoryApp().run_test(size=(120, 40)) as pilot:
+            widget = pilot.app.query_one("#command-history", CommandHistoryWidget)
+            _record(widget, tick_id=1)
+            _record(widget, tick_id=2)
+            await pilot.pause()
+            assert widget._index == 1
+
+            widget.set_selected_tick(1)
+            await pilot.pause()
+            assert widget._index == 0
+
+            _record(widget, tick_id=3)
+            await pilot.pause()
+            assert widget._index == 0  # still pinned to tick 1

@@ -152,8 +152,8 @@ class LogRegistryWidget(Static):
         self._level_colors: dict[LogLevel, str] | None = None
         self._all_logs: list[_TimestampedLog] = []
         self._enabled_levels: set[LogLevel] = set(LogLevel)
-        self._highlighted_tick: int | None = None
-        self._following: bool = True
+        self._selected_tick: int | None = None
+        """The screen-level selected tick, or None when following live."""
         self._visible_tick_ids: list[int] = []
         """Maps each visible ListItem index to its tick_id."""
 
@@ -166,10 +166,19 @@ class LogRegistryWidget(Static):
         yield ListView(id="log-registry-log")
 
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
-        """Post tick ID when a log group is highlighted (single click or keyboard)."""
+        """Post tick ID when a log group is highlighted (single click or keyboard).
+
+        Suppresses the post when the highlighted tick already matches
+        ``_selected_tick``, so programmatic selection from the screen
+        doesn't ping-pong back as a navigation request.
+        """
         item_index = event.list_view.index
-        if item_index is not None and 0 <= item_index < len(self._visible_tick_ids):
-            self.post_message(self.LogLineClicked(self._visible_tick_ids[item_index]))
+        if item_index is None or not (0 <= item_index < len(self._visible_tick_ids)):
+            return
+        clicked_tick = self._visible_tick_ids[item_index]
+        if clicked_tick == self._selected_tick:
+            return
+        self.post_message(self.LogLineClicked(clicked_tick))
 
     def on_switch_changed(self, event: Switch.Changed) -> None:
         """Re-render the log when a category filter is toggled."""
@@ -192,14 +201,23 @@ class LogRegistryWidget(Static):
             self._level_colors = resolve_theme_colors(self.app, _LEVEL_COLOR)
         return self._level_colors
 
-    def set_following(self, following: bool) -> None:
-        """Control whether the log auto-scrolls to new entries."""
-        self._following = following
+    def set_selected_tick(self, tick_id: int | None) -> None:
+        """Pin the log to *tick_id* (or follow live when None).
+
+        When None, clears the highlight and scrolls to the latest entry,
+        and ``append_logs`` will keep auto-scrolling. When given a tick
+        that's currently visible, highlights its ListItem; otherwise
+        leaves the highlight as-is so a filtered-out tick doesn't move
+        the selection unexpectedly.
+        """
+        self._selected_tick = tick_id
         list_view = self.query_one("#log-registry-log", ListView)
-        if following:
-            self._highlighted_tick = None
+        if tick_id is None:
             list_view.index = None
             list_view.scroll_end(animate=False)
+            return
+        if tick_id in self._visible_tick_ids:
+            list_view.index = self._visible_tick_ids.index(tick_id)
 
     def append_logs(self, logs: list[LogEntry], *, met: float, tick_id: int) -> None:
         """Append new log entries grouped by tick."""
@@ -226,12 +244,8 @@ class LogRegistryWidget(Static):
             list_view.append(ListItem(Static(markup, markup=True)))
             self._visible_tick_ids.append(tick_id)
 
-        if self._following:
+        if self._selected_tick is None:
             list_view.scroll_end(animate=False)
-
-    def highlight_tick(self, tick_id: int) -> None:
-        """Mark a tick as highlighted (no scroll)."""
-        self._highlighted_tick = tick_id
 
     def _format_filtered_lines(self, logs: list[LogEntry], met: float) -> list[tuple[LogEntry, float]]:
         """Return (entry, met) pairs for entries passing the level filter."""

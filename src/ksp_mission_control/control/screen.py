@@ -84,6 +84,10 @@ class ControlScreen(Screen[None]):
         self._tick_counter: int = 0
         self._pending_plan: FlightPlan | None = pending_plan
         self._pending_plan_synced: bool = False
+        self._selected_tick: int | None = None
+        """Single source of truth for which tick the history-aware widgets
+        are pinned to. ``None`` means follow live; any int pins all
+        widgets (logs, commands, plan steps, telemetry) to that tick."""
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -184,40 +188,38 @@ class ControlScreen(Screen[None]):
         )
 
     def on_log_registry_widget_log_line_clicked(self, event: LogRegistryWidget.LogLineClicked) -> None:
-        """Navigate command history to the tick of the clicked log line."""
-        self._navigate_to_tick(event.tick_id)
+        """Pin all history-aware widgets to the tick of the clicked log line."""
+        self._set_selected_tick(event.tick_id)
 
     def on_control_panel_widget_step_clicked(self, event: ControlPanelWidget.StepClicked) -> None:
-        """Navigate command history to the tick where the clicked step started."""
-        self._navigate_to_tick(event.tick_id)
-
-    def _navigate_to_tick(self, tick_id: int) -> None:
-        """Pin all history-aware widgets to *tick_id* and stop live-following."""
-        log_registry = self.query_one("#log-registry", LogRegistryWidget)
-        log_registry.set_following(False)
-        log_registry.highlight_tick(tick_id)
-        command_history = self.query_one("#command-history", CommandHistoryWidget)
-        command_history.jump_to_tick(tick_id)
-        self._show_historical_telemetry(tick_id)
+        """Pin all history-aware widgets to the tick where the clicked step started."""
+        self._set_selected_tick(event.tick_id)
 
     def on_command_history_widget_tick_changed(self, event: CommandHistoryWidget.TickChanged) -> None:
-        """Highlight logs matching the previewed command, or clear highlighting."""
-        console = self.query_one("#log-registry", LogRegistryWidget)
-        console.set_following(event.following)
-        console.highlight_tick(event.tick_id)
-        self.query_one("#control-panel", ControlPanelWidget).set_following(event.following)
-        telemetry = self.query_one("#telemetry-display", TelemetryDisplayWidget)
-        if event.following:
-            telemetry.resume_live()
-        else:
-            self._show_historical_telemetry(event.tick_id)
+        """Apply a navigation request from the command-history nav buttons."""
+        self._set_selected_tick(event.tick_id)
 
-    def _show_historical_telemetry(self, tick_id: int) -> None:
-        """Update the telemetry display with the state snapshot from *tick_id*."""
-        record = self._tick_index.get(tick_id)
-        if record is None:
+    def _set_selected_tick(self, tick_id: int | None) -> None:
+        """Single source of truth for tick navigation.
+
+        Updates ``self._selected_tick`` and broadcasts to every
+        history-aware widget. ``tick_id=None`` means follow live; any
+        int pins logs, command history, plan steps, and telemetry to
+        that tick. Telemetry needs the historical State snapshot, which
+        is resolved from ``_tick_index`` here so the widget itself stays
+        ignorant of how state is stored.
+        """
+        self._selected_tick = tick_id
+        self.query_one("#log-registry", LogRegistryWidget).set_selected_tick(tick_id)
+        self.query_one("#command-history", CommandHistoryWidget).set_selected_tick(tick_id)
+        self.query_one("#control-panel", ControlPanelWidget).set_selected_tick(tick_id)
+        telemetry = self.query_one("#telemetry-display", TelemetryDisplayWidget)
+        if tick_id is None:
+            telemetry.resume_live()
             return
-        self.query_one("#telemetry-display", TelemetryDisplayWidget).show_historical_state(record.state, record.met)
+        record = self._tick_index.get(tick_id)
+        if record is not None:
+            telemetry.show_historical_state(record.state, record.met)
 
     def on_control_panel_widget_start_action_requested(self, event: ControlPanelWidget.StartActionRequested) -> None:
         """Open the action picker dialog."""

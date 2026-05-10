@@ -204,3 +204,53 @@ class TestEmptyLogsIgnored:
             widget.append_logs([], met=0.0, tick_id=1)
             await pilot.pause()
             assert _item_count(pilot.app) == 0
+
+
+class TestSetSelectedTick:
+    """set_selected_tick syncs the highlighted ListItem to the screen-level tick."""
+
+    @pytest.mark.asyncio
+    async def test_visible_tick_gets_highlighted(self) -> None:
+        async with LogRegistryApp().run_test(size=(120, 40)) as pilot:
+            widget = pilot.app.query_one("#log-registry", LogRegistryWidget)
+            widget.append_logs(_make_logs(LogLevel.LOG_INFO), met=1.0, tick_id=1)
+            widget.append_logs(_make_logs(LogLevel.LOG_INFO), met=2.0, tick_id=2)
+            widget.append_logs(_make_logs(LogLevel.LOG_INFO), met=3.0, tick_id=3)
+            await pilot.pause()
+
+            list_view = pilot.app.query_one("#log-registry-log", ListView)
+            widget.set_selected_tick(2)
+            await pilot.pause()
+            assert list_view.index == 1
+
+    @pytest.mark.asyncio
+    async def test_none_clears_highlight(self) -> None:
+        async with LogRegistryApp().run_test(size=(120, 40)) as pilot:
+            widget = pilot.app.query_one("#log-registry", LogRegistryWidget)
+            widget.append_logs(_make_logs(LogLevel.LOG_INFO), met=1.0, tick_id=1)
+            widget.append_logs(_make_logs(LogLevel.LOG_INFO), met=2.0, tick_id=2)
+            await pilot.pause()
+
+            list_view = pilot.app.query_one("#log-registry-log", ListView)
+            widget.set_selected_tick(1)
+            await pilot.pause()
+            assert list_view.index == 0
+
+            widget.set_selected_tick(None)
+            await pilot.pause()
+            assert list_view.index is None
+
+    @pytest.mark.asyncio
+    async def test_unknown_tick_leaves_highlight_alone(self) -> None:
+        async with LogRegistryApp().run_test(size=(120, 40)) as pilot:
+            widget = pilot.app.query_one("#log-registry", LogRegistryWidget)
+            widget.append_logs(_make_logs(LogLevel.LOG_INFO), met=1.0, tick_id=1)
+            await pilot.pause()
+
+            list_view = pilot.app.query_one("#log-registry-log", ListView)
+            list_view.index = 0
+            await pilot.pause()
+
+            widget.set_selected_tick(999)  # tick not in visible list
+            await pilot.pause()
+            assert list_view.index == 0  # highlight preserved

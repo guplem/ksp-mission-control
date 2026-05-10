@@ -202,11 +202,11 @@ class TestMultiTrackHeaders:
             assert pilot.app.captured_step_clicks == [33]
 
 
-class TestSetFollowing:
-    """set_following(True) clears the step selection."""
+class TestSetSelectedTick:
+    """set_selected_tick(None) clears the step selection; tick matching a step start highlights it."""
 
     @pytest.mark.asyncio
-    async def test_set_following_true_clears_selection(self) -> None:
+    async def test_none_clears_selection(self) -> None:
         async with ControlPanelApp().run_test(size=(120, 40)) as pilot:
             widget = pilot.app.query_one("#control-panel", ControlPanelWidget)
             plan_snap, multi_snap = _single_track_snap([StepStatus.RUNNING])
@@ -222,10 +222,50 @@ class TestSetFollowing:
             await pilot.pause()
             assert list_view.index == 0
 
-            widget.set_following(False)  # navigation began
-            widget.set_following(True)  # user returned to live
+            widget.set_selected_tick(None)
             await pilot.pause()
             assert list_view.index is None
+
+    @pytest.mark.asyncio
+    async def test_matching_step_start_tick_highlights_step(self) -> None:
+        async with ControlPanelApp().run_test(size=(120, 40)) as pilot:
+            widget = pilot.app.query_one("#control-panel", ControlPanelWidget)
+            plan_snap, multi_snap = _single_track_snap([StepStatus.SUCCEEDED, StepStatus.RUNNING])
+            widget.update_plan(plan_snap, multi_snap=multi_snap)
+            widget.record_logs(
+                [LogEntry(level=LogLevel.ACTION_START, message="s1", plan_step=1)],
+                tick_id=10,
+            )
+            widget.record_logs(
+                [LogEntry(level=LogLevel.ACTION_START, message="s2", plan_step=2)],
+                tick_id=25,
+            )
+            await pilot.pause()
+
+            list_view = pilot.app.query_one("#plan-steps-list", ListView)
+            widget.set_selected_tick(25)
+            await pilot.pause()
+            assert list_view.index == 1
+
+    @pytest.mark.asyncio
+    async def test_non_step_tick_leaves_selection_alone(self) -> None:
+        async with ControlPanelApp().run_test(size=(120, 40)) as pilot:
+            widget = pilot.app.query_one("#control-panel", ControlPanelWidget)
+            plan_snap, multi_snap = _single_track_snap([StepStatus.RUNNING])
+            widget.update_plan(plan_snap, multi_snap=multi_snap)
+            widget.record_logs(
+                [LogEntry(level=LogLevel.ACTION_START, message="s1", plan_step=1)],
+                tick_id=10,
+            )
+            await pilot.pause()
+
+            list_view = pilot.app.query_one("#plan-steps-list", ListView)
+            list_view.index = 0
+            await pilot.pause()
+
+            widget.set_selected_tick(999)  # tick that no step started at
+            await pilot.pause()
+            assert list_view.index == 0  # selection preserved
 
 
 class TestMultiTrackRerendersWhenNonPrimaryTrackChanges:

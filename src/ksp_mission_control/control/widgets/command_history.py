@@ -50,14 +50,17 @@ class CommandHistoryWidget(VerticalScroll, can_focus=True):
     """Paginated history of VesselCommands sent to the ship."""
 
     class TickChanged(Message):
-        """Posted when the viewed command record changes."""
+        """Posted when the user requests a different tick via the nav buttons.
 
-        def __init__(self, tick_id: int, *, following: bool) -> None:
+        ``tick_id`` is the requested tick, or None to return to live-follow
+        mode. The widget does not change its own state in response to a
+        button press; it waits for the screen to call ``set_selected_tick``
+        as part of the broadcast, keeping all history-aware widgets in sync.
+        """
+
+        def __init__(self, tick_id: int | None) -> None:
             super().__init__()
             self.tick_id = tick_id
-            """The tick ID of the currently viewed record."""
-            self.following = following
-            """Whether the history is following (auto-advancing to latest)."""
 
     DEFAULT_CSS = """
     #command-history-title {
@@ -89,9 +92,15 @@ class CommandHistoryWidget(VerticalScroll, can_focus=True):
         super().__init__(id=id)
         self._history: list[CommandRecord] = []
         self._index: int = -1
-        self._following: bool = True
+        self._selected_tick: int | None = None
+        """Mirror of the screen-level selected tick. None means follow live."""
         self._status_colors: dict[ActionStatus, str] | None = None
         self._accent_color: str | None = None
+
+    @property
+    def _following(self) -> bool:
+        """True when in live-follow mode (no historical tick pinned)."""
+        return self._selected_tick is None
 
     def compose(self) -> ComposeResult:
         yield Static("[b]Command History[/b]", id="command-history-title")
@@ -145,50 +154,58 @@ class CommandHistoryWidget(VerticalScroll, can_focus=True):
 
         if self._following:
             self._index = len(self._history) - 1
-            self.post_message(self.TickChanged(tick_id, following=True))
         self._render_current()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "cmd-first":
-            self._jump(0)
-        elif event.button.id == "cmd-prev":
-            self._navigate(-1)
-        elif event.button.id == "cmd-next":
-            self._navigate(1)
-        elif event.button.id == "cmd-last":
-            self._jump(len(self._history) - 1)
+        """Translate nav button presses into ``TickChanged`` requests.
 
-    def jump_to_tick(self, tick_id: int) -> None:
-        """Jump to the command record matching the given tick ID.
-
-        Always breaks out of following mode since this is triggered by
-        explicit user interaction (e.g. clicking a log entry).  If the
-        exact tick has no command record, following is still stopped so
-        the next poll tick does not undo the user's selection.
+        The widget does not change its own ``_index`` here; the screen
+        will broadcast the resulting selection back via
+        ``set_selected_tick``, keeping all history-aware widgets aligned.
         """
-        self._following = False
+        if event.button.id == "cmd-first":
+            self._request_index(0)
+        elif event.button.id == "cmd-prev":
+            self._request_index(self._index - 1)
+        elif event.button.id == "cmd-next":
+            self._request_index(self._index + 1)
+        elif event.button.id == "cmd-last":
+            self.post_message(self.TickChanged(None))
+
+    def _request_index(self, target_index: int) -> None:
+        """Post a ``TickChanged`` for the record at *target_index*.
+
+        Lands on the latest record translates to "follow live"
+        (``tick_id=None``) so the screen can resume auto-advance.
+        """
+        if not self._history or not (0 <= target_index < len(self._history)):
+            return
+        if target_index == len(self._history) - 1:
+            self.post_message(self.TickChanged(None))
+        else:
+            self.post_message(self.TickChanged(self._history[target_index].tick_id))
+
+    def set_selected_tick(self, tick_id: int | None) -> None:
+        """Sync the displayed record to the screen-level selected tick.
+
+        When None, snaps to the latest record and resumes follow mode.
+        When a tick_id is given, finds the matching record and displays
+        it. If no record matches the tick (e.g. the tick had no
+        commands), the displayed record is left as-is but the widget
+        marks itself as not-following so the next live tick won't snap
+        the view forward.
+        """
+        self._selected_tick = tick_id
+        if tick_id is None:
+            if self._history:
+                self._index = len(self._history) - 1
+            self._render_current()
+            return
         for index, record in enumerate(self._history):
             if record.tick_id == tick_id:
                 self._index = index
-                self._render_current()
-                self.post_message(self.TickChanged(tick_id, following=False))
-                return
-        # No command record for this tick; update nav buttons to reflect
-        # that following stopped (the "last" button becomes enabled).
+                break
         self._render_current()
-
-    def _navigate(self, delta: int) -> None:
-        new_index = self._index + delta
-        if 0 <= new_index < len(self._history):
-            self._jump(new_index)
-
-    def _jump(self, index: int) -> None:
-        if not self._history or not (0 <= index < len(self._history)):
-            return
-        self._index = index
-        self._following = self._index == len(self._history) - 1
-        self._render_current()
-        self.post_message(self.TickChanged(self._history[self._index].tick_id, following=self._following))
 
     def _resolve_colors(self) -> dict[ActionStatus, str]:
         """Resolve theme CSS variables to hex colors, cached after first call."""
