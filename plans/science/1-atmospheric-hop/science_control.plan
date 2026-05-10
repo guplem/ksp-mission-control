@@ -8,5 +8,5 @@ science    action=run  count=1  name=mysteryGoo
 
 wait_for   biome=Water
 
-# run everything left
+# run everything left on the water biome
 science   action=run  

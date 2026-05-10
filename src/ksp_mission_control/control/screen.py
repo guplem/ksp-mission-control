@@ -147,6 +147,7 @@ class ControlScreen(Screen[None]):
         control_panel = self.query_one("#control-panel", ControlPanelWidget)
         control_panel.update_running(runner_state.action_id)
         control_panel.update_plan(plan_snap, multi_snap=multi_snap)
+        control_panel.record_logs(logs, tick_id=self._tick_counter)
         self.query_one("#command-history", CommandHistoryWidget).record_commands(
             commands,
             applied_fields=applied_fields,
@@ -184,18 +185,27 @@ class ControlScreen(Screen[None]):
 
     def on_log_registry_widget_log_line_clicked(self, event: LogRegistryWidget.LogLineClicked) -> None:
         """Navigate command history to the tick of the clicked log line."""
+        self._navigate_to_tick(event.tick_id)
+
+    def on_control_panel_widget_step_clicked(self, event: ControlPanelWidget.StepClicked) -> None:
+        """Navigate command history to the tick where the clicked step started."""
+        self._navigate_to_tick(event.tick_id)
+
+    def _navigate_to_tick(self, tick_id: int) -> None:
+        """Pin all history-aware widgets to *tick_id* and stop live-following."""
         log_registry = self.query_one("#log-registry", LogRegistryWidget)
         log_registry.set_following(False)
-        log_registry.highlight_tick(event.tick_id)
+        log_registry.highlight_tick(tick_id)
         command_history = self.query_one("#command-history", CommandHistoryWidget)
-        command_history.jump_to_tick(event.tick_id)
-        self._show_historical_telemetry(event.tick_id)
+        command_history.jump_to_tick(tick_id)
+        self._show_historical_telemetry(tick_id)
 
     def on_command_history_widget_tick_changed(self, event: CommandHistoryWidget.TickChanged) -> None:
         """Highlight logs matching the previewed command, or clear highlighting."""
         console = self.query_one("#log-registry", LogRegistryWidget)
         console.set_following(event.following)
         console.highlight_tick(event.tick_id)
+        self.query_one("#control-panel", ControlPanelWidget).set_following(event.following)
         telemetry = self.query_one("#telemetry-display", TelemetryDisplayWidget)
         if event.following:
             telemetry.resume_live()

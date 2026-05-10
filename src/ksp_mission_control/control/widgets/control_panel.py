@@ -4,7 +4,10 @@ When idle, shows buttons: "Start Action", "Load Flight Plan", and "Manual Comman
 When a plan is pending but not running, shows a pending-plan tray with
 "Launch", "Manual Command", and "Cancel" buttons.
 When a single action is running, shows its status.
-When a flight plan is active, shows each step with its status as Rich markup.
+When a flight plan is active, shows each step as a clickable list item.
+Clicking a step that has already started posts a ``StepClicked`` message with
+the tick at which that step's ``ACTION_START`` log was recorded, so the screen
+can navigate logs, command history, and historical telemetry to that point.
 When every track has finished (all step statuses terminal), the Stop button
 is replaced by a "Finish" button so the user can acknowledge completion and
 return the panel to idle.
@@ -15,13 +18,17 @@ from __future__ import annotations
 from textual.app import ComposeResult
 from textual.css.query import NoMatches
 from textual.message import Message
-from textual.widgets import Button, Static
+from textual.widgets import Button, ListItem, ListView, Static
 
+from ksp_mission_control.control.actions.base import LogEntry, LogLevel
 from ksp_mission_control.control.actions.flight_plan import FlightPlan
 from ksp_mission_control.control.actions.multi_track_executor import MultiTrackSnapshot
 from ksp_mission_control.control.actions.plan_executor import PlanSnapshot, StepStatus
 from ksp_mission_control.control.actions.registry import get_available_actions
 from ksp_mission_control.control.formatting import resolve_theme_colors
+
+StepKey = tuple[str | None, int]
+"""Identifies a step within a (possibly multi-track) plan: (track_name, plan_step)."""
 
 _STATUS_VARIABLE: dict[StepStatus, str] = {
     StepStatus.PENDING: "foreground-darken-2",
@@ -52,8 +59,31 @@ class ControlPanelWidget(Static):
         height: auto;
     }
 
-    #plan-steps-content {
+    #plan-steps-list {
         height: auto;
+        background: transparent;
+    }
+
+    #plan-steps-list ListItem {
+        height: auto;
+        padding: 0 0 0 1;
+        background: transparent;
+        border-left: solid $surface-lighten-2;
+    }
+
+    #plan-steps-list ListItem.-highlight {
+        background: $block-hover-background;
+        border-left: solid $primary;
+    }
+
+    #plan-steps-list:focus ListItem.-highlight {
+        background: $block-hover-background;
+        border-left: solid $primary;
+    }
+
+    #plan-steps-list ListItem Static {
+        height: auto;
+        padding: 0;
     }
 
     #pending-plan-info {
@@ -89,6 +119,18 @@ class ControlPanelWidget(Static):
     class FinishRunRequested(Message):
         """Posted when the user clicks Finish after every track has completed."""
 
+    class StepClicked(Message):
+        """Posted when the user clicks a started step in the plan steps list.
+
+        ``tick_id`` is the tick at which the step's ``ACTION_START`` log was
+        recorded, so the screen can navigate the log registry, command
+        history, and historical telemetry to that point.
+        """
+
+        def __init__(self, tick_id: int) -> None:
+            super().__init__()
+            self.tick_id = tick_id
+
     def __init__(self, *, id: str | None = None) -> None:  # noqa: A002
         super().__init__(id=id)
         self._running_action_id: str | None = None
@@ -98,11 +140,19 @@ class ControlPanelWidget(Static):
         self._last_plan_snapshot: PlanSnapshot | None = None
         self._last_multi_snapshot: MultiTrackSnapshot | None = None
         self._status_colors: dict[StepStatus, str] | None = None
+        self._step_start_ticks: dict[StepKey, int] = {}
+        """Tick ID at which each step's ACTION_START log was first observed."""
+        self._step_statuses: dict[StepKey, StepStatus] = {}
+        """Latest status per step, used to skip clicks on PENDING entries."""
+        self._visible_step_keys: list[StepKey | None] = []
+        """Maps each ListView item index to a step key, or None for headers."""
+        self._following: bool = True
+        """Whether the panel is in live-follow mode (no historical step pinned)."""
 
     def compose(self) -> ComposeResult:
         yield Static("[b]Control[/b]", id="control-panel-title")
         yield Static("", id="action-status-content")
-        yield Static("", id="plan-steps-content")
+        yield ListView(id="plan-steps-list")
         yield Static("", id="pending-plan-info")
         yield Button("Launch", id="pending-launch-btn", variant="primary", classes="action-btn")
         yield Button("Manual Command", id="pending-manual-btn", classes="action-btn")
@@ -116,7 +166,7 @@ class ControlPanelWidget(Static):
     def on_mount(self) -> None:
         """Hide dynamic content areas, the pending-plan tray, and the Finish button initially."""
         self.query_one("#action-status-content", Static).display = False
-        self.query_one("#plan-steps-content", Static).display = False
+        self.query_one("#plan-steps-list", ListView).display = False
         self.query_one("#finish-run-btn", Button).display = False
         self._set_pending_visibility(False)
 
@@ -202,7 +252,7 @@ class ControlPanelWidget(Static):
             title = self.query_one("#control-panel-title", Static)
             info = self.query_one("#pending-plan-info", Static)
             status_content = self.query_one("#action-status-content", Static)
-            plan_content = self.query_one("#plan-steps-content", Static)
+            plan_content = self.query_one("#plan-steps-list", ListView)
         except NoMatches:
             return
 
@@ -216,6 +266,51 @@ class ControlPanelWidget(Static):
             info.update("")
             title.update("[b]Control[/b]")
             self._update_button_visibility()
+
+    def record_logs(self, logs: list[LogEntry], tick_id: int) -> None:
+        """Record the tick of each plan step's ``ACTION_START`` log entry.
+
+        Called from the screen's poll loop with every tick's logs. The
+        first ``ACTION_START`` for a given (track, step) wins so the
+        click target is the original start tick, not any later restart.
+        """
+        for entry in logs:
+            if entry.level != LogLevel.ACTION_START or entry.plan_step is None:
+                continue
+            key: StepKey = (entry.track_name, entry.plan_step)
+            if key not in self._step_start_ticks:
+                self._step_start_ticks[key] = tick_id
+
+    def set_following(self, following: bool) -> None:
+        """Clear the step selection when the screen returns to live-follow mode."""
+        if self._following == following:
+            return
+        self._following = following
+        if not following:
+            return
+        try:
+            list_view = self.query_one("#plan-steps-list", ListView)
+        except NoMatches:
+            return
+        list_view.index = None
+
+    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
+        """Post StepClicked when a started step is highlighted; ignore headers and pending."""
+        if event.list_view.id != "plan-steps-list":
+            return
+        index = event.list_view.index
+        if index is None or not (0 <= index < len(self._visible_step_keys)):
+            return
+        key = self._visible_step_keys[index]
+        if key is None:
+            return
+        status = self._step_statuses.get(key)
+        if status is None or status == StepStatus.PENDING:
+            return
+        tick_id = self._step_start_ticks.get(key)
+        if tick_id is None:
+            return
+        self.post_message(self.StepClicked(tick_id))
 
     def _set_pending_visibility(self, visible: bool) -> None:
         """Show or hide the pending-plan tray (info + 3 buttons)."""
@@ -267,9 +362,9 @@ class ControlPanelWidget(Static):
         return self._status_colors
 
     def _show_plan_mode(self, plan_snap: PlanSnapshot) -> None:
-        """Switch to plan mode, rendering steps as Rich markup."""
+        """Switch to plan mode, rendering each step as a clickable list item."""
         try:
-            plan_content = self.query_one("#plan-steps-content", Static)
+            list_view = self.query_one("#plan-steps-list", ListView)
             status_content = self.query_one("#action-status-content", Static)
             title = self.query_one("#control-panel-title", Static)
         except NoMatches:
@@ -277,7 +372,7 @@ class ControlPanelWidget(Static):
 
         if not self._plan_active:
             status_content.display = False
-            plan_content.display = True
+            list_view.display = True
             self._plan_active = True
             self._update_button_visibility()
 
@@ -285,21 +380,60 @@ class ControlPanelWidget(Static):
             return
         self._last_plan_snapshot = plan_snap
 
-        colors = self._resolve_status_colors()
-        action_lookup = {a.action_id: a for a in get_available_actions()}
-        lines: list[str] = []
-
         current = plan_snap.current_step_index + 1
         total = plan_snap.total_steps
         title.update(f"[b]Flight Plan: {plan_snap.plan_name}[/b]  [dim]{current}/{total}[/dim]")
 
+        items = self._build_step_items_for_track(plan_snap, track_name=None)
+        self._render_step_items(items, list_view)
+
+    def _show_multi_track_mode(self, multi_snap: MultiTrackSnapshot) -> None:
+        """Render multiple tracks, each as a header item followed by step items."""
+        try:
+            list_view = self.query_one("#plan-steps-list", ListView)
+            status_content = self.query_one("#action-status-content", Static)
+            title = self.query_one("#control-panel-title", Static)
+        except NoMatches:
+            return
+
+        if not self._plan_active:
+            status_content.display = False
+            list_view.display = True
+            self._plan_active = True
+            self._update_button_visibility()
+
+        primary = multi_snap.primary
+        if primary == self._last_plan_snapshot and multi_snap == self._last_multi_snapshot:
+            return
+        self._last_plan_snapshot = primary
+
+        primary_name = primary.plan_name or "plan"
+        title.update(f"[b]Flight Plan: {primary_name}[/b]")
+
+        items: list[tuple[StepKey | None, str]] = []
+        for track_snap in multi_snap.tracks:
+            plan = track_snap.plan_snapshot
+            if plan.plan_name is None:
+                continue
+            items.append((None, f"[b dim]\\[{track_snap.track_name}][/b dim]"))
+            items.extend(self._build_step_items_for_track(plan, track_name=track_snap.track_name))
+        self._render_step_items(items, list_view)
+
+    def _build_step_items_for_track(
+        self,
+        plan_snap: PlanSnapshot,
+        track_name: str | None,
+    ) -> list[tuple[StepKey | None, str]]:
+        """Build (key, markup) items for one track's steps, updating cached statuses."""
+        colors = self._resolve_status_colors()
+        action_lookup = {a.action_id: a for a in get_available_actions()}
+        items: list[tuple[StepKey | None, str]] = []
         for index, step_status in enumerate(plan_snap.step_statuses):
             action_id = plan_snap.step_action_ids[index]
             action_entry = action_lookup.get(action_id)
             label_text = action_entry.label if action_entry else action_id
             color = colors[step_status]
             status_tag = _STATUS_LABELS[step_status]
-
             step_number = index + 1
             status_part = f"[{color}]{status_tag:>{_STATUS_LABEL_WIDTH}}[/{color}]"
 
@@ -310,73 +444,58 @@ class ControlPanelWidget(Static):
             else:
                 name_part = f"Step {step_number}: {label_text}"
 
-            lines.append(f"{status_part}  {name_part}")
+            key: StepKey = (track_name, step_number)
+            self._step_statuses[key] = step_status
+            items.append((key, f"{status_part}  {name_part}"))
+        return items
 
-        plan_content.update("\n".join(lines))
-
-    def _show_multi_track_mode(self, multi_snap: MultiTrackSnapshot) -> None:
-        """Render multiple tracks, each as a labeled section with step lines."""
-        try:
-            plan_content = self.query_one("#plan-steps-content", Static)
-            status_content = self.query_one("#action-status-content", Static)
-            title = self.query_one("#control-panel-title", Static)
-        except NoMatches:
+    def _render_step_items(
+        self,
+        items: list[tuple[StepKey | None, str]],
+        list_view: ListView,
+    ) -> None:
+        """Update the ListView, preserving selection when the structure is unchanged."""
+        new_keys = [key for key, _ in items]
+        if new_keys == self._visible_step_keys and len(list_view.children) == len(items):
+            for index, (_, markup) in enumerate(items):
+                static = list_view.children[index].query_one(Static)
+                static.update(markup)
             return
 
-        if not self._plan_active:
-            status_content.display = False
-            plan_content.display = True
-            self._plan_active = True
-            self._update_button_visibility()
+        current_index = list_view.index
+        selected_key: StepKey | None = None
+        if current_index is not None and 0 <= current_index < len(self._visible_step_keys):
+            selected_key = self._visible_step_keys[current_index]
 
-        primary = multi_snap.primary
-        if primary == self._last_plan_snapshot and multi_snap == self._last_multi_snapshot:
-            return
-        self._last_plan_snapshot = primary
+        list_view.clear()
+        for key, markup in items:
+            item = ListItem(Static(markup, markup=True))
+            if key is None:
+                item.disabled = True
+            list_view.append(item)
 
-        colors = self._resolve_status_colors()
-        action_lookup = {a.action_id: a for a in get_available_actions()}
-        all_lines: list[str] = []
+        self._visible_step_keys = new_keys
 
-        primary_name = primary.plan_name or "plan"
-        title.update(f"[b]Flight Plan: {primary_name}[/b]")
-
-        for track_snap in multi_snap.tracks:
-            plan = track_snap.plan_snapshot
-            if plan.plan_name is None:
-                continue
-            all_lines.append(f"\n[b dim]\\[{track_snap.track_name}][/b dim]")
-            for index, step_status in enumerate(plan.step_statuses):
-                action_id = plan.step_action_ids[index]
-                action_entry = action_lookup.get(action_id)
-                label_text = action_entry.label if action_entry else action_id
-                color = colors[step_status]
-                status_tag = _STATUS_LABELS[step_status]
-                step_number = index + 1
-                status_part = f"[{color}]{status_tag:>{_STATUS_LABEL_WIDTH}}[/{color}]"
-
-                if step_status == StepStatus.RUNNING:
-                    name_part = f"[bold]Step {step_number}: {label_text}[/bold]"
-                elif step_status == StepStatus.PENDING:
-                    name_part = f"[dim]Step {step_number}: {label_text}[/dim]"
-                else:
-                    name_part = f"Step {step_number}: {label_text}"
-
-                all_lines.append(f"{status_part}  {name_part}")
-
-        plan_content.update("\n".join(all_lines).lstrip("\n"))
+        if selected_key is not None and selected_key in new_keys:
+            list_view.index = new_keys.index(selected_key)
+        else:
+            list_view.index = None
 
     def _show_idle_mode(self) -> None:
         """Switch back to idle mode (no plan, no action)."""
         try:
-            plan_content = self.query_one("#plan-steps-content", Static)
+            list_view = self.query_one("#plan-steps-list", ListView)
             title = self.query_one("#control-panel-title", Static)
         except NoMatches:
             return
 
-        plan_content.display = False
+        list_view.display = False
+        list_view.clear()
+        self._visible_step_keys = []
         self._plan_active = False
         self._all_finished = False
         self._last_plan_snapshot = None
+        self._step_statuses.clear()
+        self._step_start_ticks.clear()
         self._update_button_visibility()
         title.update("[b]Control[/b]")

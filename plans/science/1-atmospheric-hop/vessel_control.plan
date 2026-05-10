@@ -1,13 +1,15 @@
-wait_for time=5
 launch auto_stage=True target_altitude=6_000
 
 # Get rid of the solid booster once it's out of fuel
 wait_for   below_current_thrust=0
 sas        mode=prograde
-stage
+# stage - I do not think it is necessary
 
 # Avoid aopening the parachutes on ascent
 wait_for   apoapsis=True
-wait_for   below_altitude=1_000
 
+wait_for   below_altitude=2_000
+sas        mode=retrograde
+
+wait_for   below_altitude=1_000
 parachutes
