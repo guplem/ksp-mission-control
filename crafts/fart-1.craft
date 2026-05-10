@@ -2,7 +2,7 @@ ship = Fart - 1
 version = 1.12.5
 description = 
 type = VAB
-size = 1.73050714,3.20723343,1.26701784
+size = 1.73050725,3.20723343,1.26701784
 steamPublishedFileId = 0
 persistentId = 2695285276
 rot = 0,0,0,0
@@ -627,7 +627,7 @@ PART
 		EngineIgnited = False
 		engineShutdown = False
 		currentThrottle = 0
-		thrustPercentage = 60
+		thrustPercentage = 40
 		manuallyOverridden = False
 		includeinDVCalcs = False
 		stagingEnabled = True
