@@ -300,6 +300,7 @@ Format: `adr/NNNN-short-title.md` with Context, Decision, Consequences sections.
 | [0008](adr/0008-vessel-state-naming-convention.md) | State/VesselCommands field naming convention | Adding or renaming fields on State or VesselCommands |
 | [0009](adr/0009-action-lifecycle-contract.md) | Action lifecycle contract (start/tick/stop) | Adding new actions or modifying existing action lifecycle methods |
 | [0010](adr/0010-vocabulary-and-verbs.md) | Vocabulary and verbs (craft/vessel, export/load/spawn, launch/start/stop) | Naming any new module, button, log message, or dialog string |
+| [0011](adr/0011-atomic-actions-and-wait-for.md) | Atomic actions; preconditions belong in `wait_for` | Adding params to actions, deciding whether a gate belongs on the action or in a separate plan step |
 
 When to create a new ADR: any decision involving trade-offs between alternatives, especially around dependencies, architecture boundaries, or data flow.
 

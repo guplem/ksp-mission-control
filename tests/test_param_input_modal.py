@@ -120,9 +120,9 @@ class BoolParamAction(Action):
             unit="m",
         ),
         ActionParam(
-            param_id="land_at_end",
-            label="Land at End",
-            description="Whether to land",
+            param_id="enabled",
+            label="Enabled",
+            description="Toggle the action on or off",
             required=False,
             param_type=ParamType.BOOL,
             default=False,
@@ -527,14 +527,14 @@ class TestParamInputModalBoolParams:
     async def test_bool_param_renders_as_switch(self) -> None:
         async with BoolParamTestApp().run_test() as pilot:
             await pilot.pause()
-            switch = pilot.app.screen.query_one("#param-land_at_end", Switch)
+            switch = pilot.app.screen.query_one("#param-enabled", Switch)
             assert switch is not None
 
     @pytest.mark.asyncio
     async def test_bool_param_default_false(self) -> None:
         async with BoolParamTestApp().run_test() as pilot:
             await pilot.pause()
-            switch = pilot.app.screen.query_one("#param-land_at_end", Switch)
+            switch = pilot.app.screen.query_one("#param-enabled", Switch)
             assert switch.value is False
 
     @pytest.mark.asyncio
@@ -544,19 +544,19 @@ class TestParamInputModalBoolParams:
             await pilot.pause()
             await pilot.click("#confirm-btn")
             await pilot.pause()
-            assert app.dismissed_value == {"altitude": 100.0, "land_at_end": False}
+            assert app.dismissed_value == {"altitude": 100.0, "enabled": False}
 
     @pytest.mark.asyncio
     async def test_confirm_with_toggled_bool(self) -> None:
         app = BoolParamTestApp()
         async with app.run_test(size=(80, 40)) as pilot:
             await pilot.pause()
-            switch = pilot.app.screen.query_one("#param-land_at_end", Switch)
+            switch = pilot.app.screen.query_one("#param-enabled", Switch)
             switch.value = True
             await pilot.pause()
             await pilot.click("#confirm-btn")
             await pilot.pause()
-            assert app.dismissed_value == {"altitude": 100.0, "land_at_end": True}
+            assert app.dismissed_value == {"altitude": 100.0, "enabled": True}
 
 
 # ---------------------------------------------------------------------------

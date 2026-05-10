@@ -53,8 +53,6 @@ class TestHoverActionTick:
             {
                 "target_altitude": target,
                 "hover_duration": 0.0,
-                "horizontal_control": 0.0,
-                "land_at_end": False,
             },
         )
         return action
@@ -169,8 +167,6 @@ class TestHoverActionDuration:
             {
                 "target_altitude": target,
                 "hover_duration": duration,
-                "horizontal_control": 0.0,
-                "land_at_end": False,
             },
         )
         return action
@@ -216,8 +212,6 @@ class TestHoverActionStop:
             {
                 "target_altitude": 100.0,
                 "hover_duration": 0.0,
-                "horizontal_control": 0.0,
-                "land_at_end": False,
             },
         )
         controls = VesselCommands()

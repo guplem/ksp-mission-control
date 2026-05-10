@@ -61,30 +61,11 @@ class HoverAction(Action):
             default=0.0,
             unit="s",
         ),
-        ActionParam(
-            param_id="horizontal_control",
-            label="Horizontal Travel",
-            description="Distance to travel horizontally while maintaining altitude (0 for none)",
-            required=False,
-            param_type=ParamType.FLOAT,
-            default=0.0,
-            unit="m",
-        ),
-        ActionParam(
-            param_id="land_at_end",
-            label="Land at End",
-            description="This is old and will be removed in favour of flight plans",
-            required=False,
-            param_type=ParamType.BOOL,
-            default=False,
-        ),
     ]
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
         self._target_altitude: float = float(param_values["target_altitude"])
         self._hover_duration: float = float(param_values["hover_duration"])
-        self._horizontal_control: float = float(param_values["horizontal_control"])
-        self._land_at_end: bool = bool(param_values["land_at_end"])
         self._ticks: int = 0
         self._first_tick: bool = True
         self._reached_target: bool = False

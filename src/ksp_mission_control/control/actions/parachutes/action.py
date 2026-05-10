@@ -29,17 +29,6 @@ class ParachutesAction(Action):
     description: ClassVar[str] = "Deploy parachutes"
     params: ClassVar[list[ActionParam]] = [
         ActionParam(
-            param_id="min_altitude",
-            label="Minimum Altitude",
-            description=(
-                "Minimum altitude to deploy parachutes. Parachutes will only deploy "
-                "once the vessel is at or below this altitude. Leave empty to deploy immediately."
-            ),
-            required=False,
-            param_type=ParamType.FLOAT,
-            default=10_000,
-        ),
-        ActionParam(
             param_id="stage_for_parachutes",
             label="Stage for Parachutes",
             description=(
@@ -66,8 +55,6 @@ class ParachutesAction(Action):
     ]
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
-        raw_min_altitude = param_values["min_altitude"]
-        self._min_altitude: float | None = float(raw_min_altitude) if raw_min_altitude is not None else None
         self._stage_for_parachutes: bool = bool(param_values["stage_for_parachutes"])
         self._wait_for_safe: bool = bool(param_values["wait_for_safe"])
 
@@ -75,13 +62,6 @@ class ParachutesAction(Action):
         # Check if parachutes are present
         if state.parts.parachutes_count() == 0:
             return ActionResult(status=ActionStatus.FAILED, message="Failed: no parachutes found on the vessel")
-
-        # Wait for altitude gate
-        if self._min_altitude is not None and state.altitude_surface > self._min_altitude:
-            return ActionResult(
-                status=ActionStatus.RUNNING,
-                message=(f"Waiting for altitude <= {self._min_altitude:,.0f}m (current: {state.altitude_surface:,.1f}m)"),
-            )
 
         # Stage if needed
         if state.parts.parachutes_count([state.stage_current]) == 0:
@@ -104,9 +84,10 @@ class ParachutesAction(Action):
 
         # Deploy
         commands.deployable_parachutes = True
+        chute_count = state.parts.parachutes_count([state.stage_current])
         return ActionResult(
             status=ActionStatus.SUCCEEDED,
-            message=f"Triggering the deployment of {state.parts.parachutes_count([state.stage_current])} parachutes at {state.altitude_surface:,.1f}m",
+            message=f"Triggering the deployment of {chute_count} parachutes at {state.altitude_surface:,.1f}m",
         )
 
     def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:

@@ -1,12 +1,12 @@
+# Science "Launchpad"
 science    action=run  count=2  name=temperatureScan
 
+# Science "Flying Low" 
 wait_for   above_altitude=1_000
-
 science    action=run  name=crewReport
 science    action=run  count=2  name=temperatureScan
 science    action=run  count=1  name=mysteryGoo
 
+# Science "Water"
 wait_for   biome=Water
-
-# run everything left on the water biome
 science   action=run  

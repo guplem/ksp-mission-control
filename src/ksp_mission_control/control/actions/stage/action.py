@@ -13,7 +13,6 @@ from ksp_mission_control.control.actions.base import (
     ActionParam,
     ActionResult,
     ActionStatus,
-    ParamType,
     State,
     VesselCommands,
 )
@@ -25,31 +24,16 @@ class StageAction(Action):
     action_id: ClassVar[str] = "stage"
     label: ClassVar[str] = "Stage"
     description: ClassVar[str] = "Stage the vessel"
-    params: ClassVar[list[ActionParam]] = [
-        ActionParam(
-            param_id="wait_for_no_thrust",
-            label="Wait for No Thrust",
-            description="Wait until there is no thrust before staging.",
-            required=False,
-            param_type=ParamType.BOOL,
-            default=False,
-        ),
-    ]
+    params: ClassVar[list[ActionParam]] = []
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
-        self._wait_for_no_thrust: bool = bool(param_values["wait_for_no_thrust"])
+        pass
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         if state.stage_current <= 0:
             return ActionResult(
                 status=ActionStatus.FAILED,
                 message="Failed: already at stage 0",
-            )
-
-        if self._wait_for_no_thrust and state.thrust_available > 0:
-            return ActionResult(
-                status=ActionStatus.RUNNING,
-                message=f"Waiting for no thrust before staging (current thrust: {state.thrust_available:,.1f}kN)",
             )
 
         commands.stage = True
