@@ -45,7 +45,7 @@ class TestApoapsisAbove:
         commands = VesselCommands()
         result = action.tick(state, commands, 0.5, ActionLogger())
         assert result.status == ActionStatus.RUNNING
-        assert "70000" in result.message
+        assert "70,000" in result.message
 
     def test_succeeds_when_apoapsis_above_threshold(self) -> None:
         action = WaitForAction()
@@ -74,7 +74,7 @@ class TestAboveDynamicPressure:
         commands = VesselCommands()
         result = action.tick(state, commands, 0.5, ActionLogger())
         assert result.status == ActionStatus.RUNNING
-        assert "1000" in result.message
+        assert "1,000" in result.message
 
     def test_succeeds_when_pressure_above_threshold(self) -> None:
         action = WaitForAction()
@@ -232,7 +232,7 @@ class TestAboveAltitude:
         action.start(state, _params(above_altitude=1000.0))
         result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
         assert result.status == ActionStatus.RUNNING
-        assert "1000" in result.message
+        assert "1,000" in result.message
 
     def test_succeeds_when_above_altitude(self) -> None:
         action = WaitForAction()
@@ -258,7 +258,7 @@ class TestBelowAltitude:
         action.start(state, _params(below_altitude=1000.0))
         result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
         assert result.status == ActionStatus.RUNNING
-        assert "1000" in result.message
+        assert "1,000" in result.message
 
     def test_succeeds_when_below_altitude(self) -> None:
         action = WaitForAction()
