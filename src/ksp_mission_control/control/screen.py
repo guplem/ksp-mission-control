@@ -25,7 +25,7 @@ from ksp_mission_control.control.actions.base import (
     VesselCommands,
 )
 from ksp_mission_control.control.actions.flight_plan import FlightPlan
-from ksp_mission_control.control.actions.multi_track_executor import MultiTrackSnapshot
+from ksp_mission_control.control.actions.multi_track_executor import MultiTrackSnapshot, TrackSnapshot
 from ksp_mission_control.control.actions.runner import RunnerSnapshot
 from ksp_mission_control.control.confirm_exit_dialog import ConfirmExitDialog
 from ksp_mission_control.control.flight_plan_picker import FlightPlanPicker
@@ -134,8 +134,7 @@ class ControlScreen(Screen[None]):
             tick_number=self._tick_counter,
             met=state.met,
             state=state,
-            action_label=runner_state.action_label,
-            action_status=runner_state.status,
+            multi_snap=multi_snap,
             logs=list(logs),
             commands=commands,
             applied_fields=applied_fields,
@@ -496,81 +495,153 @@ def _format_field_value_xml(value: object) -> str:
     return str(value)
 
 
-def _build_vessel_state_element(parent: Element, state: State, previous_state: State | None) -> None:
-    """Add vessel state fields that changed since *previous_state* under *parent*.
+def _build_vessel_state_element(
+    parent: Element,
+    state: State,
+    previous_formatted: dict[str, str] | None,
+) -> dict[str, str]:
+    """Emit a ``<state>`` child for fields whose formatted value changed.
 
-    If *previous_state* is ``None`` (first tick), all fields are included.
+    Comparing on the formatted string (rather than raw float) eliminates
+    ghost deltas caused by sub-precision float jitter on values like
+    ``comms_signal_strength`` that round to the same string in both ticks.
+    Returns the full formatted-value map for the next tick to compare against.
     """
+    current_formatted: dict[str, str] = {}
     changed_fields: list[tuple[str, str]] = []
     for field in fields(state):
         value = getattr(state, field.name)
-        if previous_state is not None and getattr(previous_state, field.name) == value:
+        formatted = _format_field_value_xml(value)
+        current_formatted[field.name] = formatted
+        if previous_formatted is not None and previous_formatted.get(field.name) == formatted:
             continue
-        changed_fields.append((field.name, _format_field_value_xml(value)))
+        changed_fields.append((field.name, formatted))
 
-    if not changed_fields:
-        return
+    if changed_fields:
+        state_el = SubElement(parent, "state")
+        for name, text in changed_fields:
+            child = SubElement(state_el, name)
+            child.text = text
 
-    state_el = SubElement(parent, "state")
-    for name, text in changed_fields:
-        child = SubElement(state_el, name)
-        child.text = text
+    return current_formatted
+
+
+_TrackSummary = tuple[str, int | None, str | None, str | None]
+"""(track_name, step_1_based, action_id, status). step/action/status may be None."""
+
+
+def _track_summary(track_snap: TrackSnapshot) -> _TrackSummary:
+    """Reduce a TrackSnapshot to (name, step, action_id, status) for change detection.
+
+    While an action is running on a track, reports the runner's current
+    action and status. Once the runner clears (e.g. last plan step
+    succeeded with no follow-up), reports the terminal status of the
+    last step so plan completion is captured as a track-state change.
+    """
+    snap = track_snap.plan_snapshot
+    runner = snap.runner
+    name = track_snap.track_name
+
+    if runner.action_id is not None:
+        step = (snap.current_step_index + 1) if snap.plan_name is not None else None
+        status = runner.status.value if runner.status is not None else "running"
+        return (name, step, runner.action_id, status)
+
+    if snap.plan_name is not None and snap.step_statuses:
+        idx = snap.current_step_index
+        if 0 <= idx < len(snap.step_statuses):
+            action_id = snap.step_action_ids[idx] if idx < len(snap.step_action_ids) else None
+            return (name, idx + 1, action_id, snap.step_statuses[idx].value)
+
+    return (name, None, None, None)
+
+
+def _emit_tracks_element(parent: Element, summaries: tuple[_TrackSummary, ...]) -> None:
+    """Append a ``<tracks>`` block listing each track's current activity."""
+    tracks_el = SubElement(parent, "tracks")
+    for name, step, action_id, status in summaries:
+        track_el = SubElement(tracks_el, "track", name=name)
+        if step is not None:
+            track_el.set("step", str(step))
+        if action_id is not None:
+            track_el.set("action", action_id)
+        if status is not None:
+            track_el.set("status", status)
 
 
 def _format_tick_history(ticks: list[TickRecord]) -> str:
     """Format all tick records as XML for clipboard export.
 
-    State fields are delta-compressed: only fields that changed since the
-    previous tick are included. Commands already omit ``None`` fields.
-    Logs are always included in full.
+    The export trims duplicate information aggressively while keeping the
+    plan/action/step context that the control room shows live:
+
+    * State fields appear only when their formatted value changes between
+      ticks (eliminates float jitter that rounds to the same string).
+    * ``<tracks>`` is emitted only when the per-track activity changes,
+      so it acts as a state-machine timeline rather than a per-tick dump.
+    * ``<log>`` entries carry ``track`` / ``action`` / ``step`` attributes
+      whenever those fields are populated on the LogEntry, mirroring the
+      live log registry.
+    * Command fields are pruned: a field is emitted when its value or
+      delivery category (``sent`` vs ``redundant``) changes versus the
+      immediately preceding tick. A gap (field absent for a tick) forces
+      the next emission so resumed commands are visible.
     """
     root = Element("ticks")
 
-    previous_state: State | None = None
-    for tick in ticks:
+    previous_state_formatted: dict[str, str] | None = None
+    previous_tracks: tuple[_TrackSummary, ...] | None = None
+    last_command: dict[str, tuple[int, str, str]] = {}
+
+    for tick_index, tick in enumerate(ticks):
         tick_el = SubElement(root, "tick", number=str(tick.tick_number), met=format_met(tick.met))
 
-        action_text = tick.action_label or "No action"
-        if tick.action_status is not None:
-            action_text += f" ({tick.action_status.value})"
-        tick_el.set("action", action_text)
+        previous_state_formatted = _build_vessel_state_element(tick_el, tick.state, previous_state_formatted)
 
-        # Vessel state (delta from previous tick)
-        _build_vessel_state_element(tick_el, tick.state, previous_state)
-        previous_state = tick.state
+        current_tracks = tuple(_track_summary(track) for track in tick.multi_snap.tracks)
+        if current_tracks != previous_tracks:
+            if current_tracks:
+                _emit_tracks_element(tick_el, current_tracks)
+            previous_tracks = current_tracks
 
-        # Logs
         if tick.logs:
             logs_el = SubElement(tick_el, "logs")
             for entry in tick.logs:
                 log_el = SubElement(logs_el, "log", level=entry.level.value)
+                if entry.track_name is not None:
+                    log_el.set("track", entry.track_name)
+                if entry.action_id is not None:
+                    log_el.set("action", entry.action_id)
+                if entry.plan_step is not None:
+                    log_el.set("step", str(entry.plan_step))
                 log_el.text = entry.message
 
-        # Commands
-        has_sent = False
-        has_redundant = False
         sent_el: Element | None = None
         redundant_el: Element | None = None
-
         for field in fields(tick.commands):
             value = getattr(tick.commands, field.name)
             if value is None or value == ():
                 continue
             formatted = format_field_value(field.name, value)
-            if field.name in tick.applied_fields:
-                if not has_sent:
+            category = "sent" if field.name in tick.applied_fields else "redundant"
+            previous = last_command.get(field.name)
+            unchanged_since_previous_tick = (
+                previous is not None and previous[0] == tick_index - 1 and previous[1] == formatted and previous[2] == category
+            )
+            last_command[field.name] = (tick_index, formatted, category)
+            if unchanged_since_previous_tick:
+                continue
+            if category == "sent":
+                if sent_el is None:
                     sent_el = SubElement(tick_el, "commands", type="sent")
-                    has_sent = True
-                cmd_el = SubElement(sent_el, field.name)  # type: ignore[arg-type]
-                cmd_el.text = formatted
+                cmd_el = SubElement(sent_el, field.name)
             else:
-                if not has_redundant:
+                if redundant_el is None:
                     redundant_el = SubElement(tick_el, "commands", type="redundant")
-                    has_redundant = True
-                cmd_el = SubElement(redundant_el, field.name)  # type: ignore[arg-type]
-                cmd_el.text = formatted
+                cmd_el = SubElement(redundant_el, field.name)
+            cmd_el.text = formatted
 
-        if not tick.logs and not has_sent and not has_redundant:
+        if len(tick_el) == 0:
             SubElement(tick_el, "idle")
 
     indent(root, space="  ")
