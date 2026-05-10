@@ -2,7 +2,11 @@
 # REQUIREMENTS:
 # - Engineering 101
 
-# Atmospheric launch to collect data flying in kerbal to collect science "Flying Low" and in the "Water" biome.
+# Atmospheric launch to collect data flying in kerbal.
+# Objectives:
+# - Collect "Launchpad" science for the Temp
+# - Collect "Flying Low" science for Goo, Temp and Crew
+# - Collect "Water" science for Goo and Temp
 
 @parallel science/1-atmospheric-hop/science_control.plan
 

@@ -1,4 +1,7 @@
 @craft fart-0
 
-# Just perform a crew report at the launchpad before takeoff
+# Not even a launch - just a rollout
+# Objectives:
+# - Collect "Launchpad" science for the Goo and Crew
+
 science    action=run  
