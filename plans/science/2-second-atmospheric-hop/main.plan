@@ -1,15 +1,18 @@
-@craft fart-1
+@craft fart-2
 # REQUIREMENTS:
 # - Engineering 101
+# - Survivability
+# - Basic Rocketry
 
 # Atmospheric launch to collect data flying in kerbal.
 # Objectives:
-# - Collect "Launchpad" science for the Temp
-# - Collect "Flying Low" science for Goo, Temp and Crew
-# - Collect "Water" science for Goo and Temp
+# - Science "Landed" in "Shores": AtmPres
+# - Science "Flying Low": AtmPres
+# - Science "Flying High": Goo x2, Temp, Crew and AtmPres
+# - Science "Splashed" in "Water": Goo x2, Temp and AtmPres
 
-@parallel science/1-atmospheric-hop/science_control.plan
+@parallel science/2-second-atmospheric-hop/science_control.plan
 
 # Wait before launch, to ensure science is fully collected
 wait_for time=5
-@parallel science/1-atmospheric-hop/vessel_control.plan
+@parallel science/2-second-atmospheric-hop/vessel_control.plan

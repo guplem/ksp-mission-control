@@ -4,12 +4,12 @@
 
 # Atmospheric launch to collect data flying in kerbal.
 # Objectives:
-# - Collect "Launchpad" science for the Temp
-# - Collect "Flying Low" science for Goo, Temp and Crew
-# - Collect "Water" science for Goo and Temp
+# - Science "Landed" in "Shores": Temp x2 (one is unnecessary)
+# - Science "Flying Low" in "Shores": Goo - Temp x2 (one is unnecessary) - Crew
+# - Science "Flying Low" in "Water": Goo - Temp x2 (one is unnecessary) *note: delaying goo here is unnecessary since Goo "Flying Low" is global. Both could be executed while "Flying Low" in "Shores"
 
-@parallel science/1-atmospheric-hop/science_control.plan
+@parallel science/1-first-atmospheric-hop/science_control.plan
 
 # Wait before launch, to ensure science is fully collected
 wait_for time=5
-@parallel science/1-atmospheric-hop/vessel_control.plan
+@parallel science/1-first-atmospheric-hop/vessel_control.plan
