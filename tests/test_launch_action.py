@@ -50,7 +50,6 @@ class TestLaunchActionDefaultInclination:
                 "target_altitude": None,
                 "target_inclination": None,
                 "turn_start_altitude": None,
-                "turn_end_altitude": None,
                 "auto_stage": auto_stage,
             },
         )
@@ -111,7 +110,6 @@ class TestLaunchActionAutoStage:
                 "target_altitude": None,
                 "target_inclination": None,
                 "turn_start_altitude": None,
-                "turn_end_altitude": None,
                 "auto_stage": auto_stage,
             },
         )

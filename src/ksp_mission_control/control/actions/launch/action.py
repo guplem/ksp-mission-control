@@ -4,34 +4,27 @@ Launches the vessel from the pad (or ground) and performs a gravity turn
 to reach a target apoapsis altitude. Cuts engines once the apoapsis is
 reached, leaving circularization to a separate action.
 
-Altitudes vs apoapsis
+Gravity turn approach
 ---------------------
-``target_altitude`` and ``turn_end_altitude`` measure different things and
-the turn finishes well before the vessel reaches ``target_altitude``
-(default 70% of it). For readers new to orbital mechanics:
+Pitch is driven by ``orbit_apoapsis`` progress toward ``target_altitude``,
+not by current altitude. This guarantees the turn always finishes exactly
+when the target is met, regardless of the rocket's thrust profile:
 
-- ``target_altitude`` is the apoapsis (high point) of the resulting orbit
-  the vessel ends up on, not the altitude at engine cutoff.
-- ``turn_end_altitude`` is the *current* altitude at which the commanded
-  pitch reaches horizontal.
-- After the turn, the vessel keeps rising for two reasons. First, it still
-  has vertical velocity from the climb. Second, once pitched horizontal at
-  full throttle the engines add tangential (sideways) speed; in orbital
-  mechanics, faster horizontal motion stretches the orbit and lifts the
-  apoapsis ahead of the vessel even while the vessel itself is still well
-  below it.
-- The action completes when ``orbit_apoapsis`` (not current altitude)
-  reaches ``target_altitude``.
+  progress = orbit_apoapsis / target_altitude   (clamped to [0, 1])
+  pitch    = cos(progress * 90 deg) * 90 deg
+
+At apoapsis = 0 the pitch is 90 deg (straight up). At apoapsis =
+target_altitude the pitch reaches 0 deg (horizontal), at which point the
+action also completes.
 
 Phases
 ------
-1. **Vertical ascent**: Full throttle straight up until turn_start_altitude.
-2. **Gravity turn**: Gradually pitch from 90 deg toward the horizon between
-   turn_start_altitude and turn_end_altitude, following the target
-   inclination heading.
-3. **Horizontal burn**: Once pitch reaches 0, hold horizontal at full
-   throttle. Tangential thrust raises the apoapsis ahead of the vessel.
-4. **Complete**: Cut engines when apoapsis reaches target_altitude.
+1. **Vertical ascent**: Full throttle straight up until sea altitude
+   reaches turn_start_altitude.
+2. **Gravity turn**: Pitch is updated every tick based on apoapsis
+   progress toward target_altitude, following the target inclination
+   heading.
+3. **Complete**: Cut engines when apoapsis reaches target_altitude.
 
 Parameter defaults
 ------------------
@@ -39,10 +32,8 @@ All parameters are nullable. When None, they are inferred from the current
 body's properties at start():
 
 - target_altitude: body_atmosphere_depth * 1.1 (or 50km if no atmosphere)
-- target_inclination: current orbit inclination (matches the launch
-  latitude on the pad, i.e. the lowest-energy eastward launch)
+- target_inclination: abs(latitude) (lowest-energy eastward launch)
 - turn_start_altitude: initial altitude + 50m (just enough to clear the pad)
-- turn_end_altitude: 0.7 * target_altitude
 """
 
 from __future__ import annotations
@@ -67,10 +58,9 @@ from ksp_mission_control.control.actions.base import (
 # ---------------------------------------------------------------------------
 
 _APOAPSIS_TOLERANCE_MULTIPLIER = 0.002  # fraction of target altitude to consider "close enough" to apoapsis
-_GRAVITY_TURN_CLEARANCE = 50  # meters: altitude to start gravity turn to avoid ground collision
+_GRAVITY_TURN_CLEARANCE = 50  # meters: default vertical climb above the launch altitude before the turn begins
 _DEFAULT_ALTITUDE_ATMOSPHERE_MULTIPLIER = 1.1  # multiplier: default target = atmosphere_depth * this
 _DEFAULT_ALTITUDE_AIRLESS_BODY = 50_000.0  # meters: default target when body has no atmosphere
-_DEFAULT_TURN_END_FRACTION = 0.7  # fraction of target altitude where pitch reaches horizontal
 
 
 # ---------------------------------------------------------------------------
@@ -146,16 +136,7 @@ class LaunchAction(Action):
         ActionParam(
             param_id="turn_start_altitude",
             label="Turn Start Altitude",
-            description=f"Altitude to begin gravity turn (default: {_GRAVITY_TURN_CLEARANCE}m above initial altitude)",
-            required=False,
-            param_type=ParamType.FLOAT,
-            default=None,
-            unit="m",
-        ),
-        ActionParam(
-            param_id="turn_end_altitude",
-            label="Turn End Altitude",
-            description=f"Altitude where pitch reaches horizontal (default: {_DEFAULT_TURN_END_FRACTION:.0%} of target)",
+            description=f"Sea altitude at which the gravity turn begins (default: initial altitude + {_GRAVITY_TURN_CLEARANCE}m)",
             required=False,
             param_type=ParamType.FLOAT,
             default=None,
@@ -171,37 +152,9 @@ class LaunchAction(Action):
         ),
     ]
 
-    def _pitch_for_altitude(
-        self,
-        altitude: float,
-        turn_start: float,
-        turn_end: float,
-    ) -> float:
-        """Compute the target pitch angle for the current altitude.
-
-        Returns 90 (straight up) below turn_start, 0 (horizontal) above
-        turn_end, and a smooth interpolation in between.
-
-        Parameters
-        ----------
-        altitude : current altitude above sea level
-        turn_start : altitude where the gravity turn begins
-        turn_end : altitude where pitch reaches ~0 (horizontal)
-
-        Returns a pitch angle in degrees [0, 90].
-        """
-        progress = (altitude - turn_start) / (turn_end - turn_start)  # percent of turn completed
-        progress = max(0.0, min(1.0, progress))  # clamp to [0, 1]
-        # Quarter-cosine curve: 90 deg at progress=0, 0 deg at progress=1.
-        # Slow drop early (climb through dense atmosphere), fast drop late.
-        return cos(radians(progress * 90.0)) * 90.0
-
     # -- Lifecycle ------------------------------------------------------------
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
-        # Snapshot initial altitude so _pitch_for_altitude can reference it.
-        self._initial_altitude: float = state.altitude_sea
-
         # Resolve target_altitude: use provided value, or infer from body.
         raw_altitude = param_values["target_altitude"]
         if raw_altitude is not None:
@@ -210,9 +163,6 @@ class LaunchAction(Action):
             self._target_altitude = state.body_atmosphere_depth * _DEFAULT_ALTITUDE_ATMOSPHERE_MULTIPLIER
         else:
             self._target_altitude = _DEFAULT_ALTITUDE_AIRLESS_BODY
-
-        # Compute tolerance for considering apoapsis "close enough" to target.
-        self.tolerance_altitude = self._target_altitude * _APOAPSIS_TOLERANCE_MULTIPLIER
 
         # Resolve target_inclination: use provided value, or default to the
         # minimum reachable inclination from the launch latitude (|latitude|),
@@ -229,21 +179,16 @@ class LaunchAction(Action):
         if raw_turn_start is not None:
             self._turn_start_altitude: float = float(raw_turn_start)
         else:
-            self._turn_start_altitude = self._initial_altitude + _GRAVITY_TURN_CLEARANCE
+            self._turn_start_altitude = state.altitude_sea + _GRAVITY_TURN_CLEARANCE
 
-        # Resolve turn_end_altitude: use provided value, or default to 70% of target.
-        raw_turn_end = param_values["turn_end_altitude"]
-        if raw_turn_end is not None:
-            self._turn_end_altitude: float = float(raw_turn_end)
-        else:
-            self._turn_end_altitude = self._target_altitude * _DEFAULT_TURN_END_FRACTION
+        self._auto_stage: bool = bool(param_values["auto_stage"])
+
+        # Compute tolerance for considering apoapsis "close enough" to target.
+        self._tolerance_altitude: float = self._target_altitude * _APOAPSIS_TOLERANCE_MULTIPLIER
 
         # Validate that the requested inclination is geometrically reachable
         # from the current latitude. The minimum reachable inclination from
-        # latitude phi is |phi|; the maximum is 180 - |phi|. Anything outside
-        # that range cannot be reached without an off-plane burn.
-        self._auto_stage: bool = bool(param_values["auto_stage"])
-
+        # latitude phi is |phi|; the maximum is 180 - |phi|.
         self._fail_message: str | None = None
         abs_inc = abs(self._target_inclination)
         abs_lat = abs(state.position_latitude)
@@ -263,11 +208,11 @@ class LaunchAction(Action):
         if self._fail_message is not None:
             return ActionResult(status=ActionStatus.FAILED, message=self._fail_message)
 
-        # Check if finished
-        if state.orbit_apoapsis >= self._target_altitude - self.tolerance_altitude:
+        # Check if finished.
+        if state.orbit_apoapsis >= self._target_altitude - self._tolerance_altitude:
             return ActionResult(status=ActionStatus.SUCCEEDED, message=f"Target apoapsis reached ({state.orbit_apoapsis:,.1f} m)")
 
-        # Check if remaining thrust
+        # Check if remaining thrust.
         if state.thrust_available <= 0:
             if self._auto_stage:
                 if state.parts.engines_inactive() > 0:
@@ -277,26 +222,24 @@ class LaunchAction(Action):
                 return ActionResult(status=ActionStatus.FAILED, message="No thrust available and no inactive engines to stage")
             return ActionResult(status=ActionStatus.FAILED, message="No thrust available")
 
-        # General Configuration
-        commands.ui_speed_mode = SpeedMode.ORBIT  # show orbital speed on navball
+        commands.ui_speed_mode = SpeedMode.ORBIT
         commands.autopilot = True
+        commands.throttle = 1.0
 
         # Heading is the launch azimuth (constant throughout the ascent); the
         # autopilot rolls the vessel implicitly to align the body pitch axis
         # with the orbital plane, so the gravity turn only varies pitch.
         commands.autopilot_heading = self._launch_heading
 
-        # Pitch: vertical until we have cleared the pad, then schedule the
-        # gravity turn against altitude.
-        if state.altitude_surface < _GRAVITY_TURN_CLEARANCE:
+        # Pitch: vertical until the vessel reaches turn_start_altitude, then
+        # track apoapsis progress toward target_altitude.
+        if state.altitude_sea < self._turn_start_altitude:
             commands.autopilot_pitch = 90.0
         else:
-            commands.autopilot_pitch = self._pitch_for_altitude(state.altitude_sea, self._turn_start_altitude, self._turn_end_altitude)
+            progress = max(0.0, min(1.0, state.orbit_apoapsis / self._target_altitude))
+            commands.autopilot_pitch = cos(radians(progress * 90.0)) * 90.0
 
-        # Throttle control
-        commands.throttle = 1.0  # full throttle until apoapsis reaches target_altitude
-
-        log.debug(f"Dynamic pressure: {(state.pressure_dynamic / 1000):.1f}kPa ")
+        log.debug(f"Dynamic pressure: {(state.pressure_dynamic / 1000):.1f}kPa")
 
         return ActionResult(status=ActionStatus.RUNNING)
 
