@@ -382,7 +382,7 @@ PART
 	RESOURCE
 	{
 		name = MonoPropellant
-		amount = 10
+		amount = 0
 		maxAmount = 10
 		flowState = True
 		isTweakable = True
