@@ -228,6 +228,67 @@ class TestSetFollowing:
             assert list_view.index is None
 
 
+class TestMultiTrackRerendersWhenNonPrimaryTrackChanges:
+    """Regression: a stale primary snapshot must not block re-rendering when
+    a non-primary track advances. Previously the panel cached
+    ``_last_multi_snapshot`` before comparing it, so the comparison was
+    always True and the re-render was skipped whenever the primary track
+    sat idle (e.g. the main plan finished while sub-tracks kept running)."""
+
+    @pytest.mark.asyncio
+    async def test_secondary_track_progress_renders(self) -> None:
+        async with ControlPanelApp().run_test(size=(120, 40)) as pilot:
+            widget = pilot.app.query_one("#control-panel", ControlPanelWidget)
+
+            # Frozen primary track, secondary track has step 1 RUNNING.
+            primary = PlanSnapshot(
+                plan_name="main",
+                current_step_index=0,
+                total_steps=1,
+                step_statuses=(StepStatus.SUCCEEDED,),
+                step_action_ids=("hover",),
+                step_action_labels=("Hover",),
+            )
+            side_pending = PlanSnapshot(
+                plan_name="side",
+                current_step_index=0,
+                total_steps=2,
+                step_statuses=(StepStatus.RUNNING, StepStatus.PENDING),
+                step_action_ids=("hover", "hover"),
+                step_action_labels=("Hover", "Hover"),
+            )
+            multi_a = MultiTrackSnapshot(
+                tracks=(
+                    TrackSnapshot(track_name="main", plan_snapshot=primary),
+                    TrackSnapshot(track_name="side", plan_snapshot=side_pending),
+                ),
+            )
+            widget.update_plan(primary, multi_snap=multi_a)
+            await pilot.pause()
+
+            # Primary unchanged, secondary advances: step 1 SUCCEEDED, step 2 RUNNING.
+            side_advanced = PlanSnapshot(
+                plan_name="side",
+                current_step_index=1,
+                total_steps=2,
+                step_statuses=(StepStatus.SUCCEEDED, StepStatus.RUNNING),
+                step_action_ids=("hover", "hover"),
+                step_action_labels=("Hover", "Hover"),
+            )
+            multi_b = MultiTrackSnapshot(
+                tracks=(
+                    TrackSnapshot(track_name="main", plan_snapshot=primary),
+                    TrackSnapshot(track_name="side", plan_snapshot=side_advanced),
+                ),
+            )
+            widget.update_plan(primary, multi_snap=multi_b)
+            await pilot.pause()
+
+            # The panel should reflect side's first step as SUCCEEDED, second as RUNNING.
+            assert widget._step_statuses[("side", 1)] == StepStatus.SUCCEEDED
+            assert widget._step_statuses[("side", 2)] == StepStatus.RUNNING
+
+
 class TestStatusUpdatesPreserveSelection:
     """Updating only step statuses does not rebuild the ListView."""
 

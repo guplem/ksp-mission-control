@@ -224,7 +224,6 @@ class ControlPanelWidget(Static):
         labeled section. For single-track plans, renders identically to
         the previous behavior (no section headers).
         """
-        self._last_multi_snapshot = multi_snap
         if plan_snap.plan_name is not None:
             if multi_snap is not None and multi_snap.is_multi_track:
                 self._show_multi_track_mode(multi_snap)
@@ -402,9 +401,10 @@ class ControlPanelWidget(Static):
             self._plan_active = True
             self._update_button_visibility()
 
-        primary = multi_snap.primary
-        if primary == self._last_plan_snapshot and multi_snap == self._last_multi_snapshot:
+        if multi_snap == self._last_multi_snapshot:
             return
+        self._last_multi_snapshot = multi_snap
+        primary = multi_snap.primary
         self._last_plan_snapshot = primary
 
         primary_name = primary.plan_name or "plan"
@@ -492,6 +492,7 @@ class ControlPanelWidget(Static):
         self._plan_active = False
         self._all_finished = False
         self._last_plan_snapshot = None
+        self._last_multi_snapshot = None
         self._step_statuses.clear()
         self._step_start_ticks.clear()
         self._update_button_visibility()
