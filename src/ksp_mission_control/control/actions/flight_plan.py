@@ -6,6 +6,10 @@ space-separated key=value parameters. Example:
     # Hover then land
     hover  target_altitude=100  hover_duration=30
     land   target_speed=2
+
+A line of the form ``@parallel <relative-path>`` becomes a ``ParallelStep``
+in its position. When the executor reaches it, it spawns the referenced
+sub-plan as a parallel track and immediately advances to the next step.
 """
 
 from __future__ import annotations
@@ -20,23 +24,42 @@ from ksp_mission_control.control.actions.registry import get_available_actions
 
 @dataclass(frozen=True)
 class FlightPlanStep:
-    """Single step in a flight plan: an action paired with its param values."""
+    """Step that runs an action."""
 
     action_id: str
     param_values: dict[str, Any]
 
 
 @dataclass(frozen=True)
-class FlightPlan:
-    """Ordered sequence of action steps to execute.
+class ParallelStep:
+    """Step that spawns a parallel sub-plan track when reached.
 
-    ``parallel_plans`` lists relative paths to .plan files that should
-    run as parallel tracks alongside this plan's sequential steps.
+    ``plan_path`` is a path relative to the ``plans/`` directory.
+    """
+
+    plan_path: str
+
+    @property
+    def plan_name(self) -> str:
+        """Stem of the referenced .plan file (used as the track name)."""
+        return Path(self.plan_path).stem
+
+
+PlanStep = FlightPlanStep | ParallelStep
+"""Either an action step or a parallel-spawn step."""
+
+
+@dataclass(frozen=True)
+class FlightPlan:
+    """Ordered sequence of plan steps to execute.
+
+    Steps execute strictly in order. ``ParallelStep`` entries spawn
+    sub-plans as parallel tracks at the moment they are reached, then
+    advance immediately to the next step.
     """
 
     name: str
-    steps: tuple[FlightPlanStep, ...]
-    parallel_plans: tuple[str, ...] = ()
+    steps: tuple[PlanStep, ...]
     craft: str | None = None
 
 
@@ -97,14 +120,14 @@ def _parse_line_params(tokens: list[str], action: Action) -> dict[str, Any]:
 def parse_flight_plan(path: Path) -> FlightPlan:
     """Parse a .plan file into a FlightPlan.
 
-    Lines starting with ``@parallel <path>`` declare sub-plans to run
-    as parallel tracks. Paths are relative to the ``plans/`` directory.
+    Lines starting with ``@parallel <path>`` become ``ParallelStep`` entries
+    at their position in the step list. Paths are relative to the
+    ``plans/`` directory.
 
     Raises ValueError on unknown actions, invalid params, or empty plans.
     """
     actions = get_available_actions()
-    steps: list[FlightPlanStep] = []
-    parallel_plans: list[str] = []
+    steps: list[PlanStep] = []
     craft: str | None = None
 
     text = path.read_text(encoding="utf-8")
@@ -117,7 +140,7 @@ def parse_flight_plan(path: Path) -> FlightPlan:
             parallel_path = line[len("@parallel") :].strip()
             if not parallel_path:
                 raise ValueError(f"Line {line_number}: @parallel requires a file path")
-            parallel_plans.append(parallel_path)
+            steps.append(ParallelStep(plan_path=parallel_path))
             continue
 
         if line == "@craft" or line.startswith("@craft "):
@@ -139,13 +162,12 @@ def parse_flight_plan(path: Path) -> FlightPlan:
 
         steps.append(FlightPlanStep(action_id=action_id, param_values=param_values))
 
-    if not steps and not parallel_plans:
+    if not steps:
         raise ValueError(f"Flight plan {path.name} has no steps")
 
     plan_name = path.stem
     return FlightPlan(
         name=plan_name,
         steps=tuple(steps),
-        parallel_plans=tuple(parallel_plans),
         craft=craft,
     )

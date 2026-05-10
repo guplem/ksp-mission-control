@@ -426,12 +426,9 @@ class ControlPanelWidget(Static):
     ) -> list[tuple[StepKey | None, str]]:
         """Build (key, markup) items for one track's steps, updating cached statuses."""
         colors = self._resolve_status_colors()
-        action_lookup = {a.action_id: a for a in get_available_actions()}
         items: list[tuple[StepKey | None, str]] = []
         for index, step_status in enumerate(plan_snap.step_statuses):
-            action_id = plan_snap.step_action_ids[index]
-            action_entry = action_lookup.get(action_id)
-            label_text = action_entry.label if action_entry else action_id
+            label_text = plan_snap.step_action_labels[index]
             color = colors[step_status]
             status_tag = _STATUS_LABELS[step_status]
             step_number = index + 1

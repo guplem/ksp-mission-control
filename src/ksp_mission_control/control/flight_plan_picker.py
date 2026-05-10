@@ -9,7 +9,12 @@ from textual.containers import Horizontal, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, ListItem, ListView, Static
 
-from ksp_mission_control.control.actions.flight_plan import FlightPlan, parse_flight_plan
+from ksp_mission_control.control.actions.flight_plan import (
+    FlightPlan,
+    FlightPlanStep,
+    ParallelStep,
+    parse_flight_plan,
+)
 
 _PLANS_DIR_NAME = "plans"
 
@@ -125,11 +130,11 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
 
         for name, plan in self._parsed_plans.items():
             summary_parts: list[str] = []
-            step_count = len(plan.steps)
-            if step_count > 0:
-                step_word = "step" if step_count == 1 else "steps"
-                summary_parts.append(f"{step_count} {step_word}")
-            parallel_count = len(plan.parallel_plans)
+            action_count = sum(1 for step in plan.steps if isinstance(step, FlightPlanStep))
+            parallel_count = sum(1 for step in plan.steps if isinstance(step, ParallelStep))
+            if action_count > 0:
+                step_word = "step" if action_count == 1 else "steps"
+                summary_parts.append(f"{action_count} {step_word}")
             if parallel_count > 0:
                 sub_word = "sub-plan" if parallel_count == 1 else "sub-plans"
                 summary_parts.append(f"{parallel_count} {sub_word}")

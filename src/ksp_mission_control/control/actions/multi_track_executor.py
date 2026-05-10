@@ -1,7 +1,11 @@
 """MultiTrackExecutor - orchestrates parallel flight plan tracks.
 
 Wraps multiple PlanExecutor instances (one per track) and merges their
-VesselCommands each tick. Supports recursive @parallel sub-plan loading.
+VesselCommands each tick. Sub-plans referenced via ``@parallel`` are
+spawned on demand: when a PlanExecutor reaches a ``ParallelStep`` it
+invokes the spawn callback registered here, which parses the sub-plan,
+appends a new PlanExecutor track, and threads the same callback into it
+so nested ``@parallel`` directives keep working.
 
 When only one track is active, behaves identically to a bare PlanExecutor.
 """
@@ -26,7 +30,8 @@ from ksp_mission_control.control.actions.plan_executor import PlanExecutor, Plan
 from ksp_mission_control.control.actions.runner import StepResult
 
 _MAX_PARALLEL_DEPTH = 10
-"""Maximum recursion depth for nested @parallel directives."""
+"""Maximum recursion depth for nested @parallel directives. Guards against
+plans that reference themselves (directly or via a cycle)."""
 
 
 @dataclass(frozen=True)
@@ -119,11 +124,15 @@ class MultiTrackExecutor:
 
     Wraps multiple PlanExecutor instances. Each tick, all tracks are stepped
     sequentially and their VesselCommands merged into one definitive buffer.
+    Tracks for ``@parallel`` sub-plans are spawned on demand when a parent
+    track reaches the corresponding ``ParallelStep``.
     """
 
     def __init__(self) -> None:
         self._tracks: list[tuple[str, PlanExecutor]] = []
         self._root_plan_name: str | None = None
+        self._plans_dir: Path | None = None
+        self._spawn_depth: int = 0
 
     def start_action(
         self,
@@ -144,41 +153,53 @@ class MultiTrackExecutor:
         plans_dir: Path | None = None,
         actions: list[Action] | None = None,
     ) -> None:
-        """Start a flight plan, recursively loading @parallel sub-plans.
+        """Start a flight plan.
 
-        If actions is provided (for testing), only the root plan uses them
-        and no parallel sub-plans are loaded.
+        ``ParallelStep`` entries within ``plan`` (or any sub-plan reached
+        from it) are spawned as additional tracks the moment they are
+        executed by their parent track. When *actions* is provided
+        (typically for testing) no spawning happens, since the plan is
+        not loaded from a file.
         """
         self._tracks.clear()
         self._root_plan_name = plan.name
+        self._plans_dir = plans_dir
+        self._spawn_depth = 0
+
+        spawn_callback = self._spawn_parallel_track if (actions is None and plans_dir is not None) else None
 
         if plan.steps:
             root_executor = PlanExecutor()
-            root_executor.start_plan(plan, state, actions=actions)
             self._tracks.append((plan.name, root_executor))
+            root_executor.start_plan(plan, state, actions=actions, spawn_parallel=spawn_callback)
 
-        if actions is None and plans_dir is not None:
-            self._load_parallel_plans(plan, state, plans_dir, depth=0)
+    def _spawn_parallel_track(self, plan_path: str, state: State) -> None:
+        """Parse *plan_path* (relative to plans_dir) and append it as a new track.
 
-    def _load_parallel_plans(
-        self,
-        plan: FlightPlan,
-        state: State,
-        plans_dir: Path,
-        depth: int,
-    ) -> None:
-        """Recursively load @parallel sub-plans and flatten into tracks."""
-        if depth >= _MAX_PARALLEL_DEPTH:
+        Threads the same spawn callback into the new PlanExecutor so its
+        own ``@parallel`` directives also spawn on demand. Recursive
+        spawning is bounded by ``_MAX_PARALLEL_DEPTH``.
+        """
+        if self._plans_dir is None:
             return
-        for parallel_path in plan.parallel_plans:
-            sub_plan = parse_flight_plan(plans_dir / parallel_path)
+        if self._spawn_depth >= _MAX_PARALLEL_DEPTH:
+            return
+        self._spawn_depth += 1
+        try:
+            sub_plan = parse_flight_plan(self._plans_dir / plan_path)
             executor = PlanExecutor()
-            executor.start_plan(sub_plan, state)
             self._tracks.append((sub_plan.name, executor))
-            self._load_parallel_plans(sub_plan, state, plans_dir, depth + 1)
+            executor.start_plan(sub_plan, state, spawn_parallel=self._spawn_parallel_track)
+        finally:
+            self._spawn_depth -= 1
 
     def step(self, vessel_state: State, dt: float) -> StepResult:
-        """Tick all tracks, merge commands, aggregate logs."""
+        """Tick all tracks, merge commands, aggregate logs.
+
+        Iterates a snapshot of the current track list so tracks spawned
+        during this tick (via a parallel step) do not also tick this round.
+        They will tick on the next call to ``step()``.
+        """
         merged_commands = VesselCommands()
         all_logs: list[LogEntry] = []
         field_owners: dict[str, tuple[str, object]] = {}
@@ -186,9 +207,7 @@ class MultiTrackExecutor:
         finished_status: ActionStatus | None = None
         is_multi = len(self._tracks) > 1
 
-        completed_tracks: list[str] = []
-
-        for track_name, executor in self._tracks:
+        for track_name, executor in list(self._tracks):
             result = executor.step(vessel_state, dt)
             _merge_commands(
                 merged_commands,
@@ -212,16 +231,9 @@ class MultiTrackExecutor:
             else:
                 all_logs.extend(result.logs)
 
-            # Check if this track's plan is fully completed
-            snap = executor.snapshot()
-            if snap.plan_name is not None and snap.runner.action_id is None:
-                all_succeeded = all(s.value == "succeeded" for s in snap.step_statuses)
-                if all_succeeded:
-                    completed_tracks.append(track_name)
-
         # Primary track (first) determines the overall finished_status
         if self._tracks:
-            primary_name, primary_executor = self._tracks[0]
+            _, primary_executor = self._tracks[0]
             primary_result = primary_executor.snapshot()
             if primary_result.runner.action_id is None and primary_result.plan_name is not None:
                 all_succeeded = all(s.value == "succeeded" for s in primary_result.step_statuses)

@@ -9,6 +9,7 @@ import pytest
 from ksp_mission_control.control.actions.flight_plan import (
     FlightPlan,
     FlightPlanStep,
+    ParallelStep,
     parse_flight_plan,
 )
 
@@ -138,31 +139,52 @@ class TestParseFlightPlan:
 class TestParseParallelDirective:
     """Tests for @parallel directive parsing in .plan files."""
 
-    def test_parallel_directive_parsed(self, tmp_path: Path) -> None:
+    def test_parallel_directive_becomes_inline_step(self, tmp_path: Path) -> None:
         plan_file = tmp_path / "with_parallel.plan"
         plan_file.write_text("@parallel science/collect.plan\nhover\n")
         plan = parse_flight_plan(plan_file)
-        assert plan.parallel_plans == ("science/collect.plan",)
-        assert len(plan.steps) == 1
+        assert len(plan.steps) == 2
+        assert plan.steps[0] == ParallelStep(plan_path="science/collect.plan")
+        assert isinstance(plan.steps[1], FlightPlanStep)
+        assert plan.steps[1].action_id == "hover"
 
-    def test_multiple_parallel_directives(self, tmp_path: Path) -> None:
+    def test_multiple_parallel_directives_preserve_order(self, tmp_path: Path) -> None:
         plan_file = tmp_path / "multi_parallel.plan"
         plan_file.write_text("@parallel science/collect.plan\n@parallel comms/relay.plan\nhover\n")
         plan = parse_flight_plan(plan_file)
-        assert plan.parallel_plans == ("science/collect.plan", "comms/relay.plan")
+        assert plan.steps == (
+            ParallelStep(plan_path="science/collect.plan"),
+            ParallelStep(plan_path="comms/relay.plan"),
+            FlightPlanStep(action_id="hover", param_values={}),
+        )
+
+    def test_parallel_position_preserved_between_actions(self, tmp_path: Path) -> None:
+        plan_file = tmp_path / "interleaved.plan"
+        plan_file.write_text("@parallel a.plan\nhover  target_altitude=100\n@parallel b.plan\nland\n")
+        plan = parse_flight_plan(plan_file)
+        assert len(plan.steps) == 4
+        assert isinstance(plan.steps[0], ParallelStep)
+        assert plan.steps[0].plan_path == "a.plan"
+        assert isinstance(plan.steps[1], FlightPlanStep)
+        assert plan.steps[1].action_id == "hover"
+        assert isinstance(plan.steps[2], ParallelStep)
+        assert plan.steps[2].plan_path == "b.plan"
+        assert isinstance(plan.steps[3], FlightPlanStep)
+        assert plan.steps[3].action_id == "land"
 
     def test_parallel_with_steps_and_comments(self, tmp_path: Path) -> None:
         plan_file = tmp_path / "mixed.plan"
         plan_file.write_text("# Main flight plan\n@parallel science/hop.plan\n\nhover  target_altitude=100\nland\n")
         plan = parse_flight_plan(plan_file)
-        assert plan.parallel_plans == ("science/hop.plan",)
-        assert len(plan.steps) == 2
+        assert len(plan.steps) == 3
+        assert isinstance(plan.steps[0], ParallelStep)
+        assert plan.steps[0].plan_path == "science/hop.plan"
 
-    def test_no_parallel_defaults_to_empty(self, tmp_path: Path) -> None:
+    def test_no_parallel_yields_only_action_steps(self, tmp_path: Path) -> None:
         plan_file = tmp_path / "no_parallel.plan"
         plan_file.write_text("hover\n")
         plan = parse_flight_plan(plan_file)
-        assert plan.parallel_plans == ()
+        assert all(isinstance(step, FlightPlanStep) for step in plan.steps)
 
     def test_parallel_empty_path_raises(self, tmp_path: Path) -> None:
         plan_file = tmp_path / "bad_parallel.plan"
@@ -174,14 +196,17 @@ class TestParseParallelDirective:
         plan_file = tmp_path / "only_parallel.plan"
         plan_file.write_text("@parallel science/collect.plan\n")
         plan = parse_flight_plan(plan_file)
-        assert plan.steps == ()
-        assert plan.parallel_plans == ("science/collect.plan",)
+        assert plan.steps == (ParallelStep(plan_path="science/collect.plan"),)
 
     def test_plan_with_no_steps_and_no_parallel_raises(self, tmp_path: Path) -> None:
         plan_file = tmp_path / "truly_empty.plan"
         plan_file.write_text("# Just comments\n")
         with pytest.raises(ValueError, match="has no steps"):
             parse_flight_plan(plan_file)
+
+    def test_parallel_step_plan_name_strips_extension(self) -> None:
+        step = ParallelStep(plan_path="science/1-atmospheric-hop/vessel_control.plan")
+        assert step.plan_name == "vessel_control"
 
 
 class TestParseCraftDirective:
@@ -223,8 +248,10 @@ class TestParseCraftDirective:
         plan_file.write_text("@craft fart-2\n@parallel science/collect.plan\nhover\n")
         plan = parse_flight_plan(plan_file)
         assert plan.craft == "fart-2"
-        assert plan.parallel_plans == ("science/collect.plan",)
-        assert len(plan.steps) == 1
+        assert plan.steps == (
+            ParallelStep(plan_path="science/collect.plan"),
+            FlightPlanStep(action_id="hover", param_values={}),
+        )
 
     def test_craft_only_no_steps_raises(self, tmp_path: Path) -> None:
         plan_file = tmp_path / "craft_only.plan"
@@ -237,4 +264,4 @@ class TestParseCraftDirective:
         plan_file.write_text("@craft fart-1\n@parallel science/collect.plan\n")
         plan = parse_flight_plan(plan_file)
         assert plan.craft == "fart-1"
-        assert plan.parallel_plans == ("science/collect.plan",)
+        assert plan.steps == (ParallelStep(plan_path="science/collect.plan"),)

@@ -469,8 +469,12 @@ class TestMultiTrackRecursiveLoading:
         snap = executor.snapshot()
         assert snap.tracks[1].track_name == "collect"
 
-    def test_meta_plan_with_only_parallel_no_steps(self, tmp_path: Path) -> None:
-        """A plan with only @parallel directives and no steps should work."""
+    def test_meta_plan_spawns_all_parallel_tracks(self, tmp_path: Path) -> None:
+        """A plan whose only steps are @parallel directives spawns each as a track.
+
+        The root track itself is still added; its parallel steps all complete
+        in the first tick and the root's steps end up SUCCEEDED.
+        """
         sub_a = tmp_path / "a.plan"
         sub_a.write_text("hover\n")
         sub_b = tmp_path / "b.plan"
@@ -486,12 +490,14 @@ class TestMultiTrackRecursiveLoading:
         executor = MultiTrackExecutor()
         executor.start_plan(plan, State(), plans_dir=tmp_path)
 
-        # Root has no steps, so only the two sub-plans become tracks
-        assert executor.track_count == 2
+        assert executor.track_count == 3
         snap = executor.snapshot()
-        assert snap.tracks[0].track_name == "a"
-        assert snap.tracks[1].track_name == "b"
+        assert [t.track_name for t in snap.tracks] == ["meta", "a", "b"]
         assert snap.is_multi_track is True
+        # Root's two parallel steps are immediately SuCCEEDED
+        from ksp_mission_control.control.actions.plan_executor import StepStatus
+
+        assert all(s == StepStatus.SUCCEEDED for s in snap.tracks[0].plan_snapshot.step_statuses)
 
     def test_all_tracks_tick_together(self, tmp_path: Path) -> None:
         sub_plan = tmp_path / "sub.plan"
@@ -514,3 +520,81 @@ class TestMultiTrackRecursiveLoading:
         snap = executor.snapshot()
         assert snap.tracks[0].plan_snapshot.runner.action_id is not None
         assert snap.tracks[1].plan_snapshot.runner.action_id is not None
+
+
+class TestParallelStepSequentialSpawn:
+    """Tests that @parallel directives spawn tracks at the position they appear,
+    not all upfront at start_plan time."""
+
+    def test_parallel_after_action_spawns_only_when_reached(self, tmp_path: Path) -> None:
+        """A @parallel placed after an action only spawns once that action succeeds."""
+        sub_plan = tmp_path / "sub.plan"
+        sub_plan.write_text("hover\n")
+
+        # main: hover (long) -> @parallel sub
+        main_plan = tmp_path / "main.plan"
+        main_plan.write_text("hover\n@parallel sub.plan\n")
+
+        from ksp_mission_control.control.actions.flight_plan import parse_flight_plan
+
+        plan = parse_flight_plan(main_plan)
+
+        executor = MultiTrackExecutor()
+        executor.start_plan(plan, State(), plans_dir=tmp_path)
+
+        # At start time only the root track exists; sub has not been reached yet.
+        assert executor.track_count == 1
+        assert executor.snapshot().tracks[0].track_name == "main"
+
+    def test_parallel_between_actions_respects_position(self, tmp_path: Path) -> None:
+        """For a plan [action_a, @parallel sub, action_b], sub spawns only after action_a finishes."""
+        sub_plan = tmp_path / "sub.plan"
+        sub_plan.write_text("hover\n")
+
+        main_plan = tmp_path / "main.plan"
+        main_plan.write_text("hover\n@parallel sub.plan\nland\n")
+
+        from ksp_mission_control.control.actions.flight_plan import parse_flight_plan
+
+        plan = parse_flight_plan(main_plan)
+        executor = MultiTrackExecutor()
+        executor.start_plan(plan, State(), plans_dir=tmp_path)
+
+        # Before action_a finishes, only the root exists.
+        assert executor.track_count == 1
+
+    def test_parallel_at_start_spawns_immediately(self, tmp_path: Path) -> None:
+        """A @parallel as the first step spawns the sub-plan during start_plan."""
+        sub_plan = tmp_path / "sub.plan"
+        sub_plan.write_text("hover\n")
+
+        main_plan = tmp_path / "main.plan"
+        main_plan.write_text("@parallel sub.plan\nhover\n")
+
+        from ksp_mission_control.control.actions.flight_plan import parse_flight_plan
+
+        plan = parse_flight_plan(main_plan)
+        executor = MultiTrackExecutor()
+        executor.start_plan(plan, State(), plans_dir=tmp_path)
+
+        # Both tracks present after start_plan (sub spawns inline).
+        assert executor.track_count == 2
+        assert [t.track_name for t in executor.snapshot().tracks] == ["main", "sub"]
+
+    def test_parallel_step_marked_succeeded_after_spawn(self, tmp_path: Path) -> None:
+        """The ParallelStep itself becomes SUCCEEDED in the same advance pass."""
+        sub_plan = tmp_path / "sub.plan"
+        sub_plan.write_text("hover\n")
+
+        main_plan = tmp_path / "main.plan"
+        main_plan.write_text("@parallel sub.plan\nhover\n")
+
+        from ksp_mission_control.control.actions.flight_plan import parse_flight_plan
+
+        plan = parse_flight_plan(main_plan)
+        executor = MultiTrackExecutor()
+        executor.start_plan(plan, State(), plans_dir=tmp_path)
+
+        snap = executor.snapshot().tracks[0].plan_snapshot
+        assert snap.step_statuses[0] == StepStatus.SUCCEEDED  # the @parallel
+        assert snap.step_statuses[1] == StepStatus.RUNNING  # the hover

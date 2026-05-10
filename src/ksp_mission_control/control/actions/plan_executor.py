@@ -3,10 +3,16 @@
 Manages executing a FlightPlan step-by-step. When the current action
 succeeds, automatically starts the next step. On failure, logs a warning
 and auto-continues to the next step.
+
+``ParallelStep`` entries are processed inline: when reached, the executor
+invokes ``spawn_parallel`` (provided by the caller, typically the
+``MultiTrackExecutor``), marks the step ``SUCCEEDED`` immediately, and
+advances to the next step within the same tick.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -18,13 +24,20 @@ from ksp_mission_control.control.actions.base import (
     LogLevel,
     State,
 )
-from ksp_mission_control.control.actions.flight_plan import FlightPlan
+from ksp_mission_control.control.actions.flight_plan import (
+    FlightPlan,
+    FlightPlanStep,
+    ParallelStep,
+)
 from ksp_mission_control.control.actions.registry import get_available_actions
 from ksp_mission_control.control.actions.runner import (
     ActionRunner,
     RunnerSnapshot,
     StepResult,
 )
+
+PARALLEL_ACTION_ID = "@parallel"
+"""Synthetic action_id used for parallel-spawn steps in snapshots and logs."""
 
 
 class StepStatus(Enum):
@@ -60,10 +73,16 @@ class PlanExecutor:
     def __init__(self) -> None:
         self._runner: ActionRunner = ActionRunner()
         self._plan: FlightPlan | None = None
-        self._step_actions: list[Action] = []
+        self._step_actions: list[Action | None] = []
         self._step_index: int = 0
         self._step_statuses: list[StepStatus] = []
         self._emit_plan_started: bool = False
+        self._spawn_parallel: Callable[[str, State], None] | None = None
+        self._queued_logs: list[LogEntry] = []
+        """Logs produced outside of runner ticks (parallel spawns, PLAN_END from
+        a plan that ends in parallel steps). Drained on the next step()."""
+        self._plan_ended: bool = False
+        """True once PLAN_END has been queued or emitted, to prevent duplicates."""
 
     def start_action(
         self,
@@ -80,29 +99,93 @@ class PlanExecutor:
         plan: FlightPlan,
         state: State,
         actions: list[Action] | None = None,
+        spawn_parallel: Callable[[str, State], None] | None = None,
     ) -> None:
         """Start executing a flight plan from the first step.
 
-        If *actions* is provided, use those instances for each step
-        (must match plan.steps length). Otherwise resolve from the registry.
+        If *actions* is provided, use those instances for each action step
+        in order (must match the number of action steps). Otherwise resolve
+        from the registry. ``ParallelStep`` entries do not consume an entry
+        from *actions*.
+
+        *spawn_parallel* is invoked with the relative plan path each time
+        a ``ParallelStep`` is reached. When None, parallel steps are still
+        marked SUCCEEDED but no track is spawned.
         """
         if not plan.steps:
             raise ValueError("Flight plan has no steps")
 
-        if actions is not None:
-            if len(actions) != len(plan.steps):
-                raise ValueError("Actions list length must match plan steps")
-            self._step_actions = list(actions)
-        else:
-            self._step_actions = [self._resolve_action(step.action_id) for step in plan.steps]
+        self._step_actions = self._build_step_actions(plan, actions)
 
         self._plan = plan
+        self._spawn_parallel = spawn_parallel
         self._step_index = 0
         self._step_statuses = [StepStatus.PENDING] * len(plan.steps)
         self._emit_plan_started = True
+        self._queued_logs = []
+        self._plan_ended = False
 
-        self._step_statuses[0] = StepStatus.RUNNING
-        self._runner.start_action(self._step_actions[0], state, plan.steps[0].param_values)
+        self._begin_from(state, 0)
+
+    def _build_step_actions(
+        self,
+        plan: FlightPlan,
+        actions: list[Action] | None,
+    ) -> list[Action | None]:
+        """Build the per-step Action list, with None for ParallelStep slots.
+
+        When *actions* is provided, it must contain one Action per
+        FlightPlanStep in order; ParallelStep slots are filled with None.
+        """
+        if actions is None:
+            return [self._resolve_action(step.action_id) if isinstance(step, FlightPlanStep) else None for step in plan.steps]
+
+        action_step_count = sum(1 for step in plan.steps if isinstance(step, FlightPlanStep))
+        if len(actions) != action_step_count:
+            raise ValueError(f"Actions list length ({len(actions)}) must match the number of FlightPlanSteps in the plan ({action_step_count})")
+
+        action_iter = iter(actions)
+        return [next(action_iter) if isinstance(step, FlightPlanStep) else None for step in plan.steps]
+
+    def _begin_from(self, state: State, index: int) -> None:
+        """Advance through ParallelStep entries starting at *index*.
+
+        Spawns each parallel sub-plan and marks its step SUCCEEDED until
+        either an action step is reached (which starts on the runner) or
+        the plan ends (which queues PLAN_END).
+        """
+        assert self._plan is not None
+        steps = self._plan.steps
+
+        while index < len(steps):
+            step = steps[index]
+            if isinstance(step, ParallelStep):
+                self._step_index = index
+                self._step_statuses[index] = StepStatus.SUCCEEDED
+                self._queued_logs.append(
+                    LogEntry(
+                        level=LogLevel.LOG_INFO,
+                        message=f"Spawned parallel track: {step.plan_name}",
+                        action_id=PARALLEL_ACTION_ID,
+                        plan_step=index + 1,
+                    )
+                )
+                if self._spawn_parallel is not None:
+                    self._spawn_parallel(step.plan_path, state)
+                index += 1
+                continue
+
+            action = self._step_actions[index]
+            assert action is not None
+            self._step_index = index
+            self._step_statuses[index] = StepStatus.RUNNING
+            self._runner.start_action(action, state, step.param_values)
+            return
+
+        self._step_index = len(steps) - 1
+        if not self._plan_ended:
+            self._plan_ended = True
+            self._queued_logs.append(LogEntry(level=LogLevel.PLAN_END, message=self._plan.name))
 
     def step(self, vessel_state: State, dt: float) -> StepResult:
         """Tick the runner. If a plan is active, handle step transitions."""
@@ -113,20 +196,9 @@ class PlanExecutor:
             self._emit_plan_started = False
             result.logs.insert(0, LogEntry(level=LogLevel.PLAN_START, message=self._plan.name))
 
-        # Annotate all runner logs with action_id and plan step
-        if self._plan is not None and result.logs:
-            action_id = self._plan.steps[self._step_index].action_id if self._step_index < len(self._plan.steps) else None
-            plan_step = self._step_index + 1
-            result.logs[:] = [
-                LogEntry(
-                    level=entry.level,
-                    message=entry.message,
-                    track_name=entry.track_name,
-                    action_id=action_id or entry.action_id,
-                    plan_step=plan_step if entry.plan_step is None else entry.plan_step,
-                )
-                for entry in result.logs
-            ]
+        if self._plan is not None and self._queued_logs:
+            result.logs.extend(self._queued_logs)
+            self._queued_logs = []
 
         if self._plan is None:
             return result
@@ -137,33 +209,34 @@ class PlanExecutor:
         if had_action and not has_action:
             if result.finished_status == ActionStatus.SUCCEEDED:
                 self._step_statuses[self._step_index] = StepStatus.SUCCEEDED
-
-                # Advance to next step if available
-                if self._step_index + 1 < len(self._plan.steps):
-                    self._step_index += 1
-                    self._step_statuses[self._step_index] = StepStatus.RUNNING
-                    self._runner.start_action(
-                        self._step_actions[self._step_index],
-                        vessel_state,
-                        self._plan.steps[self._step_index].param_values,
-                    )
-                else:
-                    # Plan complete
-                    result.logs.append(LogEntry(level=LogLevel.PLAN_END, message=self._plan.name))
             else:
-                # Action failed - auto-continue to next step
                 self._step_statuses[self._step_index] = StepStatus.FAILED
 
-                if self._step_index + 1 < len(self._plan.steps):
-                    self._step_index += 1
-                    self._step_statuses[self._step_index] = StepStatus.RUNNING
-                    self._runner.start_action(
-                        self._step_actions[self._step_index],
-                        vessel_state,
-                        self._plan.steps[self._step_index].param_values,
-                    )
-                else:
-                    result.logs.append(LogEntry(level=LogLevel.PLAN_END, message=self._plan.name))
+            self._begin_from(vessel_state, self._step_index + 1)
+            if self._queued_logs:
+                result.logs.extend(self._queued_logs)
+                self._queued_logs = []
+
+        # Annotate logs with the current step's action_id and plan_step
+        if result.logs:
+            current_step = self._plan.steps[self._step_index] if 0 <= self._step_index < len(self._plan.steps) else None
+            if isinstance(current_step, FlightPlanStep):
+                fallback_action_id: str | None = current_step.action_id
+            elif isinstance(current_step, ParallelStep):
+                fallback_action_id = PARALLEL_ACTION_ID
+            else:
+                fallback_action_id = None
+            plan_step = self._step_index + 1
+            result.logs[:] = [
+                LogEntry(
+                    level=entry.level,
+                    message=entry.message,
+                    track_name=entry.track_name,
+                    action_id=entry.action_id or fallback_action_id,
+                    plan_step=entry.plan_step if entry.plan_step is not None else plan_step,
+                )
+                for entry in result.logs
+            ]
 
         return result
 
@@ -176,7 +249,9 @@ class PlanExecutor:
         clicks Finish after a plan has already finished on its own.
         """
         plan_name = self._plan.name if self._plan is not None else None
-        already_done = self._plan is not None and all(s in (StepStatus.SUCCEEDED, StepStatus.FAILED) for s in self._step_statuses)
+        already_done = self._plan_ended or (
+            self._plan is not None and all(s in (StepStatus.SUCCEEDED, StepStatus.FAILED) for s in self._step_statuses)
+        )
         result = self._runner.stop()
         if plan_name is not None and not already_done:
             result.logs.append(LogEntry(level=LogLevel.PLAN_END, message=plan_name))
@@ -192,11 +267,24 @@ class PlanExecutor:
                 current_step_index=self._step_index,
                 total_steps=len(self._plan.steps),
                 step_statuses=tuple(self._step_statuses),
-                step_action_ids=tuple(s.action_id for s in self._plan.steps),
-                step_action_labels=tuple(a.label for a in self._step_actions),
+                step_action_ids=tuple(self._step_action_id(step) for step in self._plan.steps),
+                step_action_labels=tuple(self._step_label(index, step) for index, step in enumerate(self._plan.steps)),
                 runner=runner_snap,
             )
         return PlanSnapshot(runner=runner_snap)
+
+    def _step_action_id(self, step: FlightPlanStep | ParallelStep) -> str:
+        """Discriminator for step_action_ids in snapshots."""
+        if isinstance(step, ParallelStep):
+            return PARALLEL_ACTION_ID
+        return step.action_id
+
+    def _step_label(self, index: int, step: FlightPlanStep | ParallelStep) -> str:
+        """Display label for step_action_labels in snapshots."""
+        if isinstance(step, ParallelStep):
+            return f"→ {step.plan_name}"
+        action = self._step_actions[index]
+        return action.label if action is not None else step.action_id
 
     def _clear_plan(self) -> None:
         """Reset all plan state."""
@@ -204,6 +292,9 @@ class PlanExecutor:
         self._step_actions = []
         self._step_index = 0
         self._step_statuses = []
+        self._spawn_parallel = None
+        self._queued_logs = []
+        self._plan_ended = False
 
     def _resolve_action(self, action_id: str) -> Action:
         """Get a fresh action instance by ID from the registry."""
