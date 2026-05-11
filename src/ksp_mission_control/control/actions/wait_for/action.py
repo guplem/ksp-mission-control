@@ -109,6 +109,17 @@ class WaitForAction(Action):
             default=None,
         ),
         ActionParam(
+            param_id="below_time_to_impact",
+            label="Below Time to Impact",
+            description=(
+                "Wait until the estimated seconds until surface impact (assuming constant descent rate) "
+                "are below this threshold. Only triggers while the vessel is descending."
+            ),
+            required=False,
+            param_type=ParamType.FLOAT,
+            default=None,
+        ),
+        ActionParam(
             param_id="time",
             label="Time",
             description="Wait for a specified amount of time (seconds) before proceeding.",
@@ -153,6 +164,8 @@ class WaitForAction(Action):
         self._apoapsis_above: float | None = float(raw_apoapsis_above) if raw_apoapsis_above is not None else None
         raw_above_dynamic_pressure = param_values["above_dynamic_pressure"]
         self._above_dynamic_pressure: float | None = float(raw_above_dynamic_pressure) if raw_above_dynamic_pressure is not None else None
+        raw_below_time_to_impact = param_values["below_time_to_impact"]
+        self._below_time_to_impact: float | None = float(raw_below_time_to_impact) if raw_below_time_to_impact is not None else None
         raw_time = param_values["time"]
         self._time: float | None = float(raw_time) if raw_time is not None else None
         self._start_action_time: float = state.universal_time
@@ -214,6 +227,12 @@ class WaitForAction(Action):
             return ActionResult(
                 status=ActionStatus.RUNNING,
                 message=(f"Waiting for dynamic pressure > {self._above_dynamic_pressure:,.1f}Pa (current: {state.pressure_dynamic:,.1f}Pa)"),
+            )
+
+        if self._below_time_to_impact is not None and state.altitude_time_to_impact > self._below_time_to_impact:
+            return ActionResult(
+                status=ActionStatus.RUNNING,
+                message=(f"Waiting for time to impact < {self._below_time_to_impact:,.1f}s (current: {state.altitude_time_to_impact:,.1f}s)"),
             )
 
         if self._time is not None and (state.universal_time - self._start_action_time) < self._time:
