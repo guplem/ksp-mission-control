@@ -57,7 +57,7 @@ from ksp_mission_control.control.actions.base import (
 # Tuning constants
 # ---------------------------------------------------------------------------
 
-_APOAPSIS_TOLERANCE_MULTIPLIER = 0.002  # fraction of target altitude to consider "close enough" to apoapsis
+_APOAPSIS_TOLERANCE_MULTIPLIER = 0.001  # fraction of target altitude to consider "close enough" to apoapsis
 _GRAVITY_TURN_CLEARANCE = 50  # meters: default vertical climb above the launch altitude before the turn begins
 _DEFAULT_ALTITUDE_ATMOSPHERE_MULTIPLIER = 1.1  # multiplier: default target = atmosphere_depth * this
 _DEFAULT_ALTITUDE_AIRLESS_BODY = 50_000.0  # meters: default target when body has no atmosphere
@@ -240,9 +240,11 @@ class LaunchAction(Action):
             commands.autopilot_pitch = cos(radians(progress * 90.0)) * 90.0
 
         log.debug(f"Dynamic pressure: {(state.pressure_dynamic / 1000):.1f}kPa")
-        log.debug(f"Apoapsis: {state.orbit_apoapsis:,.1f} m / {self._target_altitude:,.1f} m (progress: {progress:.1%})")
 
-        return ActionResult(status=ActionStatus.RUNNING)
+        return ActionResult(
+            status=ActionStatus.RUNNING,
+            message=f"Apoapsis: {state.orbit_apoapsis:,.1f} m / {self._target_altitude:,.1f} m (progress: {progress:.1%})",
+        )
 
     def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
         # Cut engines and disengage autopilot on stop/abort.
