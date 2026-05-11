@@ -25,8 +25,10 @@ _DEFAULT_PARAMS: dict[str, float | bool | str | None] = {
     "below_current_thrust": None,
     "apoapsis_above": None,
     "above_dynamic_pressure": None,
+    "below_time_to_impact": None,
     "time": None,
     "biome": None,
+    "situation": None,
 }
 
 
@@ -90,6 +92,48 @@ class TestAboveDynamicPressure:
         action.start(state, _params(above_dynamic_pressure=1000.0))
         commands = VesselCommands()
         result = action.tick(state, commands, 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+
+class TestBelowTimeToImpact:
+    """Tests for the below_time_to_impact parameter."""
+
+    def test_waits_when_time_to_impact_above_threshold(self) -> None:
+        action = WaitForAction()
+        state = State(altitude_surface=1000.0, speed_vertical=-50.0)  # 20s to impact
+        action.start(state, _params(below_time_to_impact=10.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+        assert "10" in result.message
+        assert "20" in result.message
+
+    def test_succeeds_when_time_to_impact_below_threshold(self) -> None:
+        action = WaitForAction()
+        state = State(altitude_surface=200.0, speed_vertical=-50.0)  # 4s to impact
+        action.start(state, _params(below_time_to_impact=10.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+    def test_succeeds_when_time_to_impact_equals_threshold(self) -> None:
+        action = WaitForAction()
+        state = State(altitude_surface=500.0, speed_vertical=-50.0)  # 10s to impact
+        action.start(state, _params(below_time_to_impact=10.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+    def test_waits_when_not_descending(self) -> None:
+        # altitude_time_to_impact is inf when vessel is not descending.
+        action = WaitForAction()
+        state = State(altitude_surface=1000.0, speed_vertical=10.0)
+        action.start(state, _params(below_time_to_impact=10.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+
+    def test_defaults_to_none(self) -> None:
+        action = WaitForAction()
+        state = State(altitude_surface=1000.0, speed_vertical=-50.0)
+        action.start(state, _params(below_time_to_impact=None))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
         assert result.status == ActionStatus.SUCCEEDED
 
 
