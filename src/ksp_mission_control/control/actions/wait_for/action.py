@@ -157,7 +157,8 @@ class WaitForAction(Action):
         self._time: float | None = float(raw_time) if raw_time is not None else None
         self._start_action_time: float = state.universal_time
         self._biome: str | None = param_values["biome"]
-        self._situation: VesselSituation | None = param_values["situation"]
+        raw_situation = param_values["situation"]
+        self._situation: VesselSituation | None = VesselSituation(raw_situation.lower()) if raw_situation is not None else None
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
 
@@ -230,7 +231,7 @@ class WaitForAction(Action):
         if self._situation is not None and state.situation != self._situation:
             return ActionResult(
                 status=ActionStatus.RUNNING,
-                message=(f"Waiting for situation {self._situation!r} (current: {state.situation!r})"),
+                message=(f"Waiting for situation {self._situation.value!r} (current: {state.situation.value!r})"),
             )
 
         return ActionResult(status=ActionStatus.SUCCEEDED, message="All conditions met. Wait finished.")
