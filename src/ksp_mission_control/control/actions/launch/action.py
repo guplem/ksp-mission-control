@@ -233,10 +233,10 @@ class LaunchAction(Action):
 
         # Pitch: vertical until the vessel reaches turn_start_altitude, then
         # track apoapsis progress toward target_altitude.
+        progress = max(0.0, min(1.0, state.orbit_apoapsis / self._target_altitude))
         if state.altitude_sea < self._turn_start_altitude:
             commands.autopilot_pitch = 90.0
         else:
-            progress = max(0.0, min(1.0, state.orbit_apoapsis / self._target_altitude))
             commands.autopilot_pitch = cos(radians(progress * 90.0)) * 90.0
 
         log.debug(f"Dynamic pressure: {(state.pressure_dynamic / 1000):.1f}kPa")
