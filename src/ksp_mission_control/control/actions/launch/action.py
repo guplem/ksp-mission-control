@@ -11,11 +11,13 @@ not by current altitude. This guarantees the turn always finishes exactly
 when the target is met, regardless of the rocket's thrust profile:
 
   progress = orbit_apoapsis / target_altitude   (clamped to [0, 1])
-  pitch    = cos(progress * 90 deg) * 90 deg
+  pitch    = cos(progress * 90 deg) * (90 - final_pitch) + final_pitch
 
 At apoapsis = 0 the pitch is 90 deg (straight up). At apoapsis =
-target_altitude the pitch reaches 0 deg (horizontal), at which point the
-action also completes.
+target_altitude the pitch reaches ``final_pitch`` deg, at which point the
+action also completes. With ``final_pitch = 0`` (the default) the turn
+ends horizontal; with ``final_pitch = 45`` the turn ends at a 45 deg
+climb, still gaining altitude as apoapsis is reached.
 
 Phases
 ------
@@ -34,6 +36,7 @@ body's properties at start():
 - target_altitude: body_atmosphere_depth * 1.1 (or 50km if no atmosphere)
 - target_inclination: abs(latitude) (lowest-energy eastward launch)
 - turn_start_altitude: initial altitude + 50m (just enough to clear the pad)
+- final_pitch: 0 (horizontal at end of turn)
 """
 
 from __future__ import annotations
@@ -57,7 +60,7 @@ from ksp_mission_control.control.actions.base import (
 # Tuning constants
 # ---------------------------------------------------------------------------
 
-_APOAPSIS_TOLERANCE_MULTIPLIER = 0.001  # fraction of target altitude to consider "close enough" to apoapsis
+_APOAPSIS_TOLERANCE_MULTIPLIER = 0.002  # fraction of target altitude to consider "close enough" to apoapsis
 _GRAVITY_TURN_CLEARANCE = 50  # meters: default vertical climb above the launch altitude before the turn begins
 _DEFAULT_ALTITUDE_ATMOSPHERE_MULTIPLIER = 1.1  # multiplier: default target = atmosphere_depth * this
 _DEFAULT_ALTITUDE_AIRLESS_BODY = 50_000.0  # meters: default target when body has no atmosphere
@@ -143,6 +146,17 @@ class LaunchAction(Action):
             unit="m",
         ),
         ActionParam(
+            param_id="final_pitch",
+            label="Final Pitch",
+            description=(
+                "Pitch angle above the horizon when the target apoapsis is reached. 0 = horizontal, 45 = 45 deg climb, 90 = straight up (no turn)."
+            ),
+            required=False,
+            param_type=ParamType.FLOAT,
+            default=2.5,
+            unit="deg",
+        ),
+        ActionParam(
             param_id="auto_stage",
             label="Auto Stage",
             description="Automatically stage when thrust is lost (ignition, booster sep, flameout). Disable if staging manually.",
@@ -181,6 +195,10 @@ class LaunchAction(Action):
         else:
             self._turn_start_altitude = state.altitude_sea + _GRAVITY_TURN_CLEARANCE
 
+        # Resolve final_pitch: angle above the horizon when the turn ends.
+        raw_final_pitch = param_values["final_pitch"]
+        self._final_pitch: float = float(raw_final_pitch) if raw_final_pitch is not None else 0.0
+
         self._auto_stage: bool = bool(param_values["auto_stage"])
 
         # Compute tolerance for considering apoapsis "close enough" to target.
@@ -198,6 +216,11 @@ class LaunchAction(Action):
                 f"{state.position_latitude:.1f} deg. Reachable range: "
                 f"[{abs_lat:.1f}, {180.0 - abs_lat:.1f}] deg."
             )
+
+        # Validate final_pitch is within a sensible range. 90 means no turn
+        # at all (straight up), so we cap the upper bound just below it.
+        if self._final_pitch < 0.0 or self._final_pitch >= 90.0:
+            self._fail_message = f"Final pitch {self._final_pitch:.1f} deg out of range. Must be in [0, 90)."
 
         # Compute the launch heading from the target inclination.
         self._launch_heading: float = _inclination_to_heading(self._target_inclination, state.position_latitude)
@@ -232,12 +255,13 @@ class LaunchAction(Action):
         commands.autopilot_heading = self._launch_heading
 
         # Pitch: vertical until the vessel reaches turn_start_altitude, then
-        # track apoapsis progress toward target_altitude.
+        # track apoapsis progress toward target_altitude. The curve interpolates
+        # from 90 deg (straight up) down to final_pitch as progress goes 0 -> 1.
         progress = max(0.0, min(1.0, state.orbit_apoapsis / self._target_altitude))
         if state.altitude_sea < self._turn_start_altitude:
             commands.autopilot_pitch = 90.0
         else:
-            commands.autopilot_pitch = cos(radians(progress * 90.0)) * 90.0
+            commands.autopilot_pitch = cos(radians(progress * 90.0)) * (90.0 - self._final_pitch) + self._final_pitch
 
         log.debug(f"Dynamic pressure: {(state.pressure_dynamic / 1000):.1f}kPa")
 
