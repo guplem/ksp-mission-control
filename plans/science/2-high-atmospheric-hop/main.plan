@@ -11,8 +11,8 @@
 # - Science "Flying High": Goo x2, Temp, Crew and AtmPres
 # - Science "Splashed" in "Water": Goo x2, Temp and AtmPres
 
-@parallel science/2-second-atmospheric-hop/science_control.plan
+@parallel science/2-high-atmospheric-hop/science_control.plan
 
 # Wait before launch, to ensure science is fully collected
 wait_for time=5
-@parallel science/2-second-atmospheric-hop/vessel_control.plan
+@parallel science/2-high-atmospheric-hop/vessel_control.plan
