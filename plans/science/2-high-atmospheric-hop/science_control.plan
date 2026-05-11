@@ -1,0 +1,20 @@
+# - Science "Landed" in "Shores": AtmPres
+science    action=run  count=1  name=barometerScan
+
+# - Science "Flying Low": AtmPres
+wait_for   above_altitude=1_000
+science    action=run  count=1  name=barometerScan
+
+# - Science "Flying High": Goo x2, Temp, Crew and AtmPres
+wait_for   above_altitude=18_500
+science    action=run  name=crewReport
+science    action=run  count=1  name=barometerScan
+science    action=run  count=1  name=temperatureScan
+science    action=run  count=2  name=mysteryGoo
+
+# - Science "Splashed" in "Water": Goo x2, Temp and AtmPres
+wait_for   situation=splashed
+wait_for   biome=Water
+science    action=run  count=1  name=barometerScan
+science    action=run  count=1  name=temperatureScan
+science    action=run  count=2  name=mysteryGoo

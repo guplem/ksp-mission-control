@@ -240,6 +240,7 @@ class LaunchAction(Action):
             commands.autopilot_pitch = cos(radians(progress * 90.0)) * 90.0
 
         log.debug(f"Dynamic pressure: {(state.pressure_dynamic / 1000):.1f}kPa")
+        log.debug(f"Apoapsis: {state.orbit_apoapsis:,.1f} m / {self._target_altitude:,.1f} m (progress: {progress:.1%})")
 
         return ActionResult(status=ActionStatus.RUNNING)
 
