@@ -11,6 +11,7 @@ import math
 from dataclasses import fields
 
 from ksp_mission_control.control.actions.base import (
+    ManeuverNode,
     ParachuteInfo,
     PartInfo,
     Parts,
@@ -23,6 +24,13 @@ from ksp_mission_control.control.actions.base import (
     VesselCommands,
     VesselSituation,
 )
+from ksp_mission_control.control.actions.node_executor import tsiolkovsky_burn_time
+
+# Tolerance for matching a maneuver node by ut. kRPC does not change the
+# ut of a node after creation (unless someone drags it in-game), so an
+# exact float match is normally fine; the tolerance absorbs round-trip
+# float jitter through the kRPC protocol.
+_NODE_UT_MATCH_TOLERANCE: float = 0.001
 
 # Command fields that have a matching field in VesselState for comparison.
 # Excluded from comparison (always applied when non-None):
@@ -469,6 +477,49 @@ def read_vessel_state(conn: object) -> State:
     except Exception:
         parts_resource_harvesters = []
 
+    # Maneuver nodes: snapshot every node on the vessel, in ut order.
+    # burn_vector and burn_vector_remaining are captured in the body's
+    # non-rotating frame so actions can build AutopilotDirection with
+    # ReferenceFrame.BODY_NON_ROTATING without exposing kRPC frame objects.
+    # burn_time_estimate uses Tsiolkovsky with current vessel mass, vacuum
+    # Isp, and available thrust; kRPC does not expose burn time directly.
+    maneuver_nodes: list[ManeuverNode] = []
+    try:
+        body_non_rotating_frame = orbit.body.non_rotating_reference_frame
+        for idx, krpc_node in enumerate(vessel.control.nodes):
+            try:
+                post = krpc_node.orbit
+                maneuver_nodes.append(
+                    ManeuverNode(
+                        index=idx,
+                        ut=krpc_node.ut,
+                        time_to=krpc_node.time_to,
+                        delta_v=krpc_node.delta_v,
+                        delta_v_remaining=krpc_node.remaining_delta_v,
+                        prograde=krpc_node.prograde,
+                        normal=krpc_node.normal,
+                        radial=krpc_node.radial,
+                        burn_vector=tuple(krpc_node.burn_vector(body_non_rotating_frame)),
+                        burn_vector_remaining=tuple(krpc_node.remaining_burn_vector(body_non_rotating_frame)),
+                        burn_time_estimate=tsiolkovsky_burn_time(
+                            delta_v=krpc_node.remaining_delta_v,
+                            mass=vessel.mass,
+                            isp=vessel.vacuum_specific_impulse,
+                            thrust=vessel.available_thrust,
+                        ),
+                        post_burn_orbit_apoapsis=post.apoapsis_altitude,
+                        post_burn_orbit_periapsis=post.periapsis_altitude,
+                        post_burn_orbit_eccentricity=post.eccentricity,
+                        post_burn_orbit_inclination=post.inclination,
+                        post_burn_orbit_period=post.period,
+                        post_burn_orbit_semi_major_axis=post.semi_major_axis,
+                    )
+                )
+            except Exception:
+                continue
+    except Exception:
+        maneuver_nodes = []
+
     return State(
         altitude_sea=flight.mean_altitude,
         altitude_surface=flight.surface_altitude,
@@ -489,6 +540,7 @@ def read_vessel_state(conn: object) -> State:
         orbit_inclination=orbit.inclination,
         orbit_eccentricity=orbit.eccentricity,
         orbit_period=orbit.period,
+        orbit_semi_major_axis=orbit.semi_major_axis,
         orbit_apoapsis_time_to=orbit.time_to_apoapsis,
         orbit_apoapsis_time_from=orbit.period - orbit.time_to_apoapsis,
         orbit_apoapsis_passed=not (0 <= orbit.true_anomaly <= math.pi),
@@ -568,6 +620,7 @@ def read_vessel_state(conn: object) -> State:
         resource_oxidizer_max=vessel.resources.max("Oxidizer"),
         resource_mono_propellant_max=vessel.resources.max("MonoPropellant"),
         science_experiments=tuple(science_experiments),
+        nodes=tuple(maneuver_nodes),
         parts=Parts(
             parachutes=tuple(parts_parachutes),
             legs=tuple(parts_legs),
@@ -752,6 +805,18 @@ def apply_controls(conn: object, controls: VesselCommands) -> None:
         vc.parachutes = controls.deployable_parachutes
     if controls.deployable_radiators is not None:
         vc.radiators = controls.deployable_radiators
+
+    # Maneuver nodes: remove first so a "replace" pattern (remove + create in
+    # the same tick) is unambiguous about ordering.
+    if controls.remove_node_at_ut is not None:
+        target_ut = controls.remove_node_at_ut
+        for krpc_node in list(vc.nodes):
+            if abs(krpc_node.ut - target_ut) <= _NODE_UT_MATCH_TOLERANCE:
+                krpc_node.remove()
+                break
+    if controls.create_node is not None:
+        burn = controls.create_node
+        vc.add_node(burn.ut, prograde=burn.prograde, normal=burn.normal, radial=burn.radial)
 
 
 def list_launchable_vessels(conn: object) -> list[str]:

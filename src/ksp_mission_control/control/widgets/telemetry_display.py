@@ -320,18 +320,33 @@ def _on_off(value: bool) -> str:
 
 def _format_orbit(state: State, colors: dict[AlertLevel, str]) -> str:
     periapsis_level = evaluate_periapsis(state)
-    return "\n".join(
+    lines = [
+        "[b]Orbit[/b]",
+        f"Apoapsis:        {_format_altitude(state.orbit_apoapsis)}",
+        f"T to apoapsis:   {_format_time(state.orbit_apoapsis_time_to)}",
+        f"T from apoapsis: {_format_time(state.orbit_apoapsis_time_from)}",
+        f"Periapsis:       {_color(_format_altitude(state.orbit_periapsis), periapsis_level, colors)}",
+        f"T to periapsis:  {_format_time(state.orbit_periapsis_time_to)}",
+        f"T from periapsis:{_format_time(state.orbit_periapsis_time_from)}",
+        f"Inclination:     {state.orbit_inclination:.2f} deg",
+        f"Eccentricity:    {state.orbit_eccentricity:.4f}",
+        f"Period:          {_format_time(state.orbit_period)}",
+    ]
+    if state.nodes:
+        next_node = state.nodes[0]
+        burn_time_display = _format_time(next_node.burn_time_estimate) if math.isfinite(next_node.burn_time_estimate) else "N/A"
+        lines.extend(
+            [
+                "",
+                "[b]Next Maneuver[/b]",
+                f"Delta-v:         {next_node.delta_v_remaining:,.1f} m/s",
+                f"T to node:       {_format_time(next_node.time_to)}",
+                f"Burn time:       {burn_time_display}",
+                f"Planned:         {len(state.nodes)}",
+            ]
+        )
+    lines.extend(
         [
-            "[b]Orbit[/b]",
-            f"Apoapsis:        {_format_altitude(state.orbit_apoapsis)}",
-            f"T to apoapsis:   {_format_time(state.orbit_apoapsis_time_to)}",
-            f"T from apoapsis: {_format_time(state.orbit_apoapsis_time_from)}",
-            f"Periapsis:       {_color(_format_altitude(state.orbit_periapsis), periapsis_level, colors)}",
-            f"T to periapsis:  {_format_time(state.orbit_periapsis_time_to)}",
-            f"T from periapsis:{_format_time(state.orbit_periapsis_time_from)}",
-            f"Inclination:     {state.orbit_inclination:.2f} deg",
-            f"Eccentricity:    {state.orbit_eccentricity:.4f}",
-            f"Period:          {_format_time(state.orbit_period)}",
             "",
             "[b]Orientation[/b]",
             f"Pitch:           {state.orientation_pitch:.1f} deg",
@@ -352,6 +367,7 @@ def _format_orbit(state: State, colors: dict[AlertLevel, str]) -> str:
             f"Signal:          {_color(f'{state.comms_signal_strength * 100:.0f}%', evaluate_comms_signal_strength(state), colors)}",
         ]
     )
+    return "\n".join(lines)
 
 
 def _format_resource(amount: float, fraction: float) -> str:

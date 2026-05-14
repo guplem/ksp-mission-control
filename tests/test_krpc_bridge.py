@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from types import SimpleNamespace
 
 import pytest
@@ -72,6 +73,8 @@ def _make_mock_conn(
         reaction_wheels=True,
         wheel_throttle=0.0,
         wheel_steering=0.0,
+        # Maneuver nodes (read by bridge; write tests can override)
+        nodes=[],
     )
 
     body_ref_frame = SimpleNamespace()
@@ -95,6 +98,7 @@ def _make_mock_conn(
         inclination=0.5,
         eccentricity=0.007,
         period=2400.0,
+        semi_major_axis=675000.0,
         time_to_apoapsis=300.0,
         time_to_periapsis=900.0,
         true_anomaly=1.0,
@@ -926,6 +930,134 @@ class TestApplyControlsNewCommands:
         apply_controls(conn, commands)
         assert vc.stage_lock is True
         assert vc.wheel_throttle == 0.3
+
+
+# ---------------------------------------------------------------------------
+# Maneuver node tests
+# ---------------------------------------------------------------------------
+
+
+def _make_mock_krpc_node(
+    *,
+    ut: float = 1000.0,
+    delta_v: float = 100.0,
+    remaining_delta_v: float = 100.0,
+    burn_vector: tuple[float, float, float] = (0.0, 100.0, 0.0),
+    remaining_burn_vector: tuple[float, float, float] = (0.0, 100.0, 0.0),
+    post_orbit: SimpleNamespace | None = None,
+) -> SimpleNamespace:
+    if post_orbit is None:
+        post_orbit = SimpleNamespace(
+            apoapsis_altitude=100_000.0,
+            periapsis_altitude=100_000.0,
+            eccentricity=0.0,
+            inclination=0.0,
+            period=5500.0,
+            semi_major_axis=700_000.0,
+        )
+    return SimpleNamespace(
+        ut=ut,
+        time_to=ut,
+        delta_v=delta_v,
+        remaining_delta_v=remaining_delta_v,
+        prograde=delta_v,
+        normal=0.0,
+        radial=0.0,
+        burn_vector=lambda _frame, _bv=burn_vector: _bv,
+        remaining_burn_vector=lambda _frame, _rbv=remaining_burn_vector: _rbv,
+        orbit=post_orbit,
+        _removed=False,
+    )
+
+
+class TestReadVesselStateNodes:
+    """Tests for reading maneuver nodes from vessel.control.nodes."""
+
+    def test_empty_nodes_by_default(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        assert state.nodes == ()
+
+    def test_reads_single_node(self) -> None:
+        conn = _make_mock_conn()
+        krpc_node = _make_mock_krpc_node(ut=12345.6, delta_v=150.0, remaining_delta_v=80.0)
+        conn.space_center.active_vessel.control.nodes = [krpc_node]
+
+        state = read_vessel_state(conn)
+        assert len(state.nodes) == 1
+        node = state.nodes[0]
+        assert node.index == 0
+        assert node.ut == 12345.6
+        assert node.delta_v == 150.0
+        assert node.delta_v_remaining == 80.0
+        assert node.post_burn_orbit_apoapsis == 100_000.0
+        assert node.post_burn_orbit_semi_major_axis == 700_000.0
+        # burn_time_estimate is computed by the bridge from vessel mass/Isp/thrust.
+        # The mock vessel has mass=5000, available_thrust=50000, vacuum_isp=350.
+        # Tsiolkovsky for 80 m/s should produce a finite, sub-minute estimate.
+        assert math.isfinite(node.burn_time_estimate)
+        assert 0.0 < node.burn_time_estimate < 60.0
+
+    def test_indexes_in_iteration_order(self) -> None:
+        conn = _make_mock_conn()
+        first = _make_mock_krpc_node(ut=1000.0)
+        second = _make_mock_krpc_node(ut=2000.0)
+        conn.space_center.active_vessel.control.nodes = [first, second]
+
+        state = read_vessel_state(conn)
+        assert tuple(n.index for n in state.nodes) == (0, 1)
+        assert tuple(n.ut for n in state.nodes) == (1000.0, 2000.0)
+
+
+class TestApplyControlsManeuverNodes:
+    """Tests for the create_node and remove_node_at_ut commands."""
+
+    def test_creates_node(self) -> None:
+        from ksp_mission_control.control.actions.base import Maneuver
+
+        added: list[tuple[float, float, float, float]] = []
+
+        def add_node(ut: float, prograde: float = 0.0, normal: float = 0.0, radial: float = 0.0) -> SimpleNamespace:
+            added.append((ut, prograde, normal, radial))
+            return SimpleNamespace()
+
+        conn = _make_mock_conn()
+        conn.space_center.active_vessel.control.add_node = add_node
+
+        commands = VesselCommands(create_node=Maneuver(ut=1234.5, prograde=42.0))
+        apply_controls(conn, commands)
+        assert added == [(1234.5, 42.0, 0.0, 0.0)]
+
+    def test_removes_matching_node_by_ut(self) -> None:
+        conn = _make_mock_conn()
+        keep = _make_mock_krpc_node(ut=2000.0)
+        drop = _make_mock_krpc_node(ut=1000.0)
+        keep.remove = lambda _k=keep: setattr(_k, "_removed", True)
+        drop.remove = lambda _d=drop: setattr(_d, "_removed", True)
+        conn.space_center.active_vessel.control.nodes = [keep, drop]
+
+        commands = VesselCommands(remove_node_at_ut=1000.0)
+        apply_controls(conn, commands)
+        assert drop._removed is True
+        assert keep._removed is False
+
+    def test_remove_before_create_when_both_set(self) -> None:
+        """A single tick may remove + create to atomically replace a node."""
+        from ksp_mission_control.control.actions.base import Maneuver
+
+        order: list[str] = []
+        existing = _make_mock_krpc_node(ut=500.0)
+        existing.remove = lambda: order.append("remove")
+        conn = _make_mock_conn()
+        conn.space_center.active_vessel.control.nodes = [existing]
+        conn.space_center.active_vessel.control.add_node = lambda *_a, **_kw: order.append("create") or SimpleNamespace()
+
+        commands = VesselCommands(
+            create_node=Maneuver(ut=600.0, prograde=10.0),
+            remove_node_at_ut=500.0,
+        )
+        apply_controls(conn, commands)
+        assert order == ["remove", "create"]
 
 
 # ---------------------------------------------------------------------------

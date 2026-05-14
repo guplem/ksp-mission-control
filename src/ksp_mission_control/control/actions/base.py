@@ -373,6 +373,72 @@ class ScienceCommand:
 
 
 @dataclass(frozen=True)
+class Maneuver:
+    """Request to create a maneuver node at a specific universal time.
+
+    Used as a one-shot create command on ``VesselCommands.create_node``.
+    The bridge calls ``vessel.control.add_node(ut, prograde, normal, radial)``.
+    Identify the resulting node later by matching its ``ut`` against
+    ``State.nodes``; remove it via ``VesselCommands.remove_node_at_ut``.
+    """
+
+    ut: float
+    """Universal time at which the burn is centered, in seconds."""
+    prograde: float = 0.0
+    """Delta-v component along the prograde direction, in m/s."""
+    normal: float = 0.0
+    """Delta-v component along the normal direction, in m/s."""
+    radial: float = 0.0
+    """Delta-v component along the radial direction, in m/s."""
+
+
+@dataclass(frozen=True)
+class ManeuverNode:
+    """Immutable snapshot of a single kRPC maneuver node.
+
+    Captured each poll tick from ``vessel.control.nodes``. The ``index``
+    field is the position in the list ordered by ``ut`` (first to last);
+    use ``ut`` to identify a specific node across ticks, since indices
+    can shift when nodes are added or removed.
+    """
+
+    index: int
+    """Position in vessel.control.nodes, sorted by ut (first to last)."""
+    ut: float
+    """Universal time at which the burn is centered, in seconds."""
+    time_to: float
+    """Seconds until the node is reached. Negative once passed."""
+    delta_v: float
+    """Total planned delta-v magnitude, in m/s. Constant once the node is created."""
+    delta_v_remaining: float
+    """Remaining delta-v magnitude, in m/s. Updates during the burn."""
+    prograde: float
+    """Planned delta-v component along prograde, in m/s."""
+    normal: float
+    """Planned delta-v component along normal, in m/s."""
+    radial: float
+    """Planned delta-v component along radial, in m/s."""
+    burn_vector: tuple[float, float, float]
+    """Initial burn vector in the body's non-rotating frame, in m/s. Magnitude equals delta_v."""
+    burn_vector_remaining: tuple[float, float, float]
+    """Remaining burn vector in the body's non-rotating frame, in m/s. Use for autopilot orientation."""
+    burn_time_estimate: float
+    """Estimated seconds to complete the remaining burn at current mass, vacuum Isp, and available thrust. ``inf`` if not computable."""
+    post_burn_orbit_apoapsis: float
+    """Apoapsis altitude of the orbit after the burn completes, above sea level in meters."""
+    post_burn_orbit_periapsis: float
+    """Periapsis altitude of the orbit after the burn completes, above sea level in meters."""
+    post_burn_orbit_eccentricity: float
+    """Eccentricity of the orbit after the burn completes."""
+    post_burn_orbit_inclination: float
+    """Inclination of the orbit after the burn completes, in degrees."""
+    post_burn_orbit_period: float
+    """Period of the orbit after the burn completes, in seconds."""
+    post_burn_orbit_semi_major_axis: float
+    """Semi-major axis of the orbit after the burn completes, in meters."""
+
+
+@dataclass(frozen=True)
 class PartInfo:
     """Immutable snapshot of a single part's stage and state.
 
@@ -593,6 +659,8 @@ class State:
     """Orbital eccentricity. 0 = circular, 0-1 = elliptical, 1 = parabolic."""
     orbit_period: float = 0.0
     """Time for one complete orbit, in seconds."""
+    orbit_semi_major_axis: float = 0.0
+    """Semi-major axis of the orbit, in meters. Used by vis-viva calculations."""
     orbit_apoapsis_time_to: float = 0.0
     """Time until next apoapsis, in seconds. Always positive."""
     orbit_apoapsis_time_from: float = 0.0
@@ -767,6 +835,10 @@ class State:
     # --- Science ---
     science_experiments: tuple[ScienceExperiment, ...] = ()
     """All science experiments on the vessel, indexed for command targeting."""
+
+    # --- Maneuver nodes ---
+    nodes: tuple[ManeuverNode, ...] = ()
+    """All maneuver nodes on the vessel, sorted by ut (first to last)."""
 
     # --- Parts ---
     parts: Parts = field(default_factory=Parts)
@@ -993,6 +1065,12 @@ class VesselCommands:
     """Apply an action to ALL science experiments. One-shot like stage."""
     science_commands: tuple[ScienceCommand, ...] = ()
     """Targeted commands for specific experiments. One-shot like stage."""
+
+    # --- Maneuver nodes ---
+    create_node: Maneuver | None = None
+    """One-shot request to create a maneuver node. Applied after remove_node_at_ut."""
+    remove_node_at_ut: float | None = None
+    """Remove the maneuver node whose ut matches this value (tolerance 0.001s). Applied before create_node."""
 
     # --- Deployables ---
     deployable_solar_panels: bool | None = None
