@@ -7,11 +7,15 @@ from typing import Any
 from ksp_mission_control.control.actions.base import (
     ActionLogger,
     ActionStatus,
+    ManeuverNode,
     ScienceSituation,
     State,
     VesselCommands,
 )
-from ksp_mission_control.control.actions.wait_for.action import WaitForAction
+from ksp_mission_control.control.actions.wait_for.action import (
+    _DEFAULT_ORIENTATION_MARGIN_DEG,
+    WaitForAction,
+)
 
 # Default param dict matching ActionParam defaults. Tests override only the
 # params they care about, keeping each test focused on a single condition.
@@ -31,6 +35,8 @@ _DEFAULT_PARAMS: dict[str, float | bool | str | None] = {
     "biome": None,
     "situation": None,
     "science_situation": None,
+    "orientation": None,
+    "orientation_margin": _DEFAULT_ORIENTATION_MARGIN_DEG,
 }
 
 
@@ -495,3 +501,156 @@ class TestTime:
         result = action.tick(state_tick, VesselCommands(), 0.5, ActionLogger())
         assert result.status == ActionStatus.RUNNING
         assert "3" in result.message
+
+
+class TestOrientation:
+    """Tests for the orientation parameter."""
+
+    def test_succeeds_when_pointed_prograde(self) -> None:
+        action = WaitForAction()
+        # Vessel forward exactly matches prograde (+y in orbital frame).
+        state = State(orientation_direction_orbital=(0.0, 1.0, 0.0))
+        action.start(state, _params(orientation="prograde"))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+    def test_waits_when_off_prograde_beyond_margin(self) -> None:
+        action = WaitForAction()
+        # 45° away from prograde, default 10° margin.
+        import math
+
+        state = State(orientation_direction_orbital=(0.0, math.cos(math.radians(45.0)), math.sin(math.radians(45.0))))
+        action.start(state, _params(orientation="prograde"))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+        assert "prograde" in result.message
+        assert "45" in result.message
+
+    def test_succeeds_when_within_default_margin(self) -> None:
+        action = WaitForAction()
+        # ~5° off prograde, within the default 10° margin.
+        import math
+
+        state = State(orientation_direction_orbital=(0.0, math.cos(math.radians(5.0)), math.sin(math.radians(5.0))))
+        action.start(state, _params(orientation="prograde"))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+    def test_custom_margin_tighter(self) -> None:
+        action = WaitForAction()
+        # 5° off prograde, but margin tightened to 2°.
+        import math
+
+        state = State(orientation_direction_orbital=(0.0, math.cos(math.radians(5.0)), math.sin(math.radians(5.0))))
+        action.start(state, _params(orientation="prograde", orientation_margin=2.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+
+    def test_retrograde(self) -> None:
+        action = WaitForAction()
+        state = State(orientation_direction_orbital=(0.0, -1.0, 0.0))
+        action.start(state, _params(orientation="retrograde"))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+    def test_retrograde_fails_when_facing_prograde(self) -> None:
+        action = WaitForAction()
+        state = State(orientation_direction_orbital=(0.0, 1.0, 0.0))
+        action.start(state, _params(orientation="retrograde"))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+
+    def test_radial_uses_negative_x_in_orbital_frame(self) -> None:
+        # KSP "radial" marker points away from the body. In the kRPC orbital
+        # frame the +x axis is anti-radial (toward body), so radial-out is -x.
+        action = WaitForAction()
+        state = State(orientation_direction_orbital=(-1.0, 0.0, 0.0))
+        action.start(state, _params(orientation="radial"))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+    def test_anti_radial_uses_positive_x(self) -> None:
+        action = WaitForAction()
+        state = State(orientation_direction_orbital=(1.0, 0.0, 0.0))
+        action.start(state, _params(orientation="anti_radial"))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+    def test_normal_and_anti_normal(self) -> None:
+        action_normal = WaitForAction()
+        state_normal = State(orientation_direction_orbital=(0.0, 0.0, 1.0))
+        action_normal.start(state_normal, _params(orientation="normal"))
+        assert action_normal.tick(state_normal, VesselCommands(), 0.5, ActionLogger()).status == ActionStatus.SUCCEEDED
+
+        action_anti = WaitForAction()
+        state_anti = State(orientation_direction_orbital=(0.0, 0.0, -1.0))
+        action_anti.start(state_anti, _params(orientation="anti_normal"))
+        assert action_anti.tick(state_anti, VesselCommands(), 0.5, ActionLogger()).status == ActionStatus.SUCCEEDED
+
+    def test_surface_prograde_uses_surface_velocity_frame(self) -> None:
+        action = WaitForAction()
+        # Pointing prograde in surface-velocity frame, but NOT in orbital frame.
+        state = State(
+            orientation_direction_orbital=(1.0, 0.0, 0.0),
+            orientation_direction_surface_velocity=(0.0, 1.0, 0.0),
+        )
+        action.start(state, _params(orientation="surface_prograde"))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+    def test_maneuver_fails_when_no_node(self) -> None:
+        action = WaitForAction()
+        state = State(nodes=())
+        action.start(state, _params(orientation="maneuver"))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.FAILED
+        assert "maneuver" in result.message.lower()
+        assert "no" in result.message.lower() or "none" in result.message.lower() or "requires" in result.message.lower()
+
+    def test_maneuver_succeeds_when_pointed_along_burn_vector(self) -> None:
+        action = WaitForAction()
+        node = ManeuverNode(
+            index=0,
+            ut=1000.0,
+            time_to=60.0,
+            delta_v=100.0,
+            delta_v_remaining=100.0,
+            prograde=100.0,
+            normal=0.0,
+            radial=0.0,
+            burn_vector=(0.0, 100.0, 0.0),
+            burn_vector_remaining=(0.0, 100.0, 0.0),
+            burn_time_estimate=10.0,
+            post_burn_orbit_apoapsis=80_000.0,
+            post_burn_orbit_periapsis=80_000.0,
+            post_burn_orbit_eccentricity=0.0,
+            post_burn_orbit_inclination=0.0,
+            post_burn_orbit_period=2400.0,
+            post_burn_orbit_semi_major_axis=680_000.0,
+        )
+        state = State(nodes=(node,), orientation_direction_body_non_rotating=(0.0, 1.0, 0.0))
+        action.start(state, _params(orientation="maneuver"))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+    def test_accepts_uppercase_value(self) -> None:
+        action = WaitForAction()
+        state = State(orientation_direction_orbital=(0.0, 1.0, 0.0))
+        action.start(state, _params(orientation="PROGRADE"))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+    def test_unknown_orientation_raises(self) -> None:
+        import pytest
+
+        action = WaitForAction()
+        with pytest.raises(ValueError, match="Unknown orientation"):
+            action.start(State(), _params(orientation="sideways"))
+
+    def test_defaults_to_none(self) -> None:
+        action = WaitForAction()
+        # Direction is zero vector (no real data) but no orientation param set.
+        state = State()
+        action.start(state, _params(orientation=None))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED

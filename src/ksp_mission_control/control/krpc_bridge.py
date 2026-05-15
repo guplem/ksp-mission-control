@@ -557,6 +557,11 @@ def read_vessel_state(conn: object) -> State:
         altitude_sea=flight.mean_altitude,
         body=orbit.body,
     )
+    # Vessel forward (nose) direction in each frame the wait_for orientation
+    # checks need. kRPC returns a unit vector in the requested frame.
+    direction_orbital: tuple[float, float, float] = tuple(vessel.direction(vessel.orbital_reference_frame))
+    direction_surface_velocity: tuple[float, float, float] = tuple(vessel.direction(vessel.surface_velocity_reference_frame))
+    direction_body_non_rotating: tuple[float, float, float] = tuple(vessel.direction(orbit.body.non_rotating_reference_frame))
 
     return State(
         altitude_sea=flight.mean_altitude,
@@ -610,6 +615,9 @@ def read_vessel_state(conn: object) -> State:
         orientation_pitch=surface_flight.pitch,
         orientation_heading=surface_flight.heading,
         orientation_roll=surface_flight.roll,
+        orientation_direction_orbital=direction_orbital,
+        orientation_direction_surface_velocity=direction_surface_velocity,
+        orientation_direction_body_non_rotating=direction_body_non_rotating,
         control_input_pitch=control.pitch,
         control_input_yaw=control.yaw,
         control_input_roll=control.roll,

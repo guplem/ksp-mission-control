@@ -350,6 +350,17 @@ def _make_mock_conn(
         signal_strength=0.85,
     )
 
+    # Vessel forward direction per reference frame. Each ref-frame namespace
+    # carries its own ``_direction`` attribute; ``vessel.direction(ref)`` just
+    # reads that field. Tests can override by mutating
+    # ``vessel.orbital_reference_frame._direction`` etc.
+    vessel_orbital_ref._direction = (0.0, 1.0, 0.0)
+    vessel_surface_velocity_ref._direction = (0.0, 1.0, 0.0)
+    body_non_rotating_ref_frame._direction = (1.0, 0.0, 0.0)
+
+    def _read_direction(ref: object) -> tuple[float, float, float]:
+        return getattr(ref, "_direction", (0.0, 1.0, 0.0))
+
     vessel: SimpleNamespace | None = None
     if active_vessel:
         vessel = SimpleNamespace(
@@ -375,6 +386,7 @@ def _make_mock_conn(
             resources=resources,
             comms=comms,
             flight=lambda ref: flight,
+            direction=_read_direction,
         )
 
     _stages_called: list[bool] = []

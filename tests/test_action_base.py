@@ -12,6 +12,8 @@ from ksp_mission_control.control.actions.base import (
     ActionStatus,
     AutopilotConfig,
     AutopilotDirection,
+    ManeuverNode,
+    Orientation,
     ParachuteInfo,
     ParamType,
     PartInfo,
@@ -318,6 +320,134 @@ class TestVesselStateDerived:
     def test_resource_fraction_defaults_to_zero(self) -> None:
         state = State()
         assert state.resource_liquid_fuel_fraction == 0.0
+
+
+class TestStateAngleTo:
+    """Tests for ``State.angle_to(orientation)``."""
+
+    def test_prograde_zero_when_aligned(self) -> None:
+        state = State(orientation_direction_orbital=(0.0, 1.0, 0.0))
+        assert state.angle_to(Orientation.PROGRADE) == 0.0
+
+    def test_prograde_180_when_opposite(self) -> None:
+        state = State(orientation_direction_orbital=(0.0, -1.0, 0.0))
+        angle = state.angle_to(Orientation.PROGRADE)
+        assert angle is not None
+        assert abs(angle - 180.0) < 1e-6
+
+    def test_prograde_90_when_perpendicular(self) -> None:
+        state = State(orientation_direction_orbital=(1.0, 0.0, 0.0))
+        angle = state.angle_to(Orientation.PROGRADE)
+        assert angle is not None
+        assert abs(angle - 90.0) < 1e-6
+
+    def test_retrograde_aligned(self) -> None:
+        state = State(orientation_direction_orbital=(0.0, -1.0, 0.0))
+        assert state.angle_to(Orientation.RETROGRADE) == 0.0
+
+    def test_radial_is_minus_x(self) -> None:
+        # KSP "radial" points away from body. kRPC orbital +x is anti-radial,
+        # so radial-out is -x.
+        state = State(orientation_direction_orbital=(-1.0, 0.0, 0.0))
+        assert state.angle_to(Orientation.RADIAL) == 0.0
+
+    def test_anti_radial_is_plus_x(self) -> None:
+        state = State(orientation_direction_orbital=(1.0, 0.0, 0.0))
+        assert state.angle_to(Orientation.ANTI_RADIAL) == 0.0
+
+    def test_normal_is_plus_z(self) -> None:
+        state = State(orientation_direction_orbital=(0.0, 0.0, 1.0))
+        assert state.angle_to(Orientation.NORMAL) == 0.0
+
+    def test_anti_normal_is_minus_z(self) -> None:
+        state = State(orientation_direction_orbital=(0.0, 0.0, -1.0))
+        assert state.angle_to(Orientation.ANTI_NORMAL) == 0.0
+
+    def test_surface_prograde_uses_surface_velocity_frame(self) -> None:
+        # Vessel forward = (1,0,0) in orbital, (0,1,0) in surface-velocity.
+        # Orbital says "off by 90 from prograde", surface_velocity says "aligned".
+        state = State(
+            orientation_direction_orbital=(1.0, 0.0, 0.0),
+            orientation_direction_surface_velocity=(0.0, 1.0, 0.0),
+        )
+        assert state.angle_to(Orientation.SURFACE_PROGRADE) == 0.0
+
+    def test_maneuver_none_when_no_node(self) -> None:
+        state = State(nodes=())
+        assert state.angle_to(Orientation.MANEUVER) is None
+
+    def test_maneuver_aligned_with_burn_vector_remaining(self) -> None:
+        node = ManeuverNode(
+            index=0,
+            ut=1000.0,
+            time_to=60.0,
+            delta_v=100.0,
+            delta_v_remaining=100.0,
+            prograde=100.0,
+            normal=0.0,
+            radial=0.0,
+            burn_vector=(0.0, 100.0, 0.0),
+            burn_vector_remaining=(0.0, 100.0, 0.0),
+            burn_time_estimate=10.0,
+            post_burn_orbit_apoapsis=80_000.0,
+            post_burn_orbit_periapsis=80_000.0,
+            post_burn_orbit_eccentricity=0.0,
+            post_burn_orbit_inclination=0.0,
+            post_burn_orbit_period=2400.0,
+            post_burn_orbit_semi_major_axis=680_000.0,
+        )
+        state = State(nodes=(node,), orientation_direction_body_non_rotating=(0.0, 1.0, 0.0))
+        # Vessel forward aligned with the (non-unit-magnitude) burn vector.
+        assert state.angle_to(Orientation.MANEUVER) == 0.0
+
+    def test_maneuver_uses_first_node(self) -> None:
+        node_a = ManeuverNode(
+            index=0,
+            ut=1000.0,
+            time_to=60.0,
+            delta_v=100.0,
+            delta_v_remaining=100.0,
+            prograde=100.0,
+            normal=0.0,
+            radial=0.0,
+            burn_vector=(0.0, 100.0, 0.0),
+            burn_vector_remaining=(0.0, 100.0, 0.0),
+            burn_time_estimate=10.0,
+            post_burn_orbit_apoapsis=80_000.0,
+            post_burn_orbit_periapsis=80_000.0,
+            post_burn_orbit_eccentricity=0.0,
+            post_burn_orbit_inclination=0.0,
+            post_burn_orbit_period=2400.0,
+            post_burn_orbit_semi_major_axis=680_000.0,
+        )
+        # Second node points in a totally different direction; should be ignored.
+        node_b = ManeuverNode(
+            index=1,
+            ut=2000.0,
+            time_to=1060.0,
+            delta_v=100.0,
+            delta_v_remaining=100.0,
+            prograde=0.0,
+            normal=0.0,
+            radial=100.0,
+            burn_vector=(100.0, 0.0, 0.0),
+            burn_vector_remaining=(100.0, 0.0, 0.0),
+            burn_time_estimate=10.0,
+            post_burn_orbit_apoapsis=80_000.0,
+            post_burn_orbit_periapsis=80_000.0,
+            post_burn_orbit_eccentricity=0.0,
+            post_burn_orbit_inclination=0.0,
+            post_burn_orbit_period=2400.0,
+            post_burn_orbit_semi_major_axis=680_000.0,
+        )
+        state = State(nodes=(node_a, node_b), orientation_direction_body_non_rotating=(0.0, 1.0, 0.0))
+        assert state.angle_to(Orientation.MANEUVER) == 0.0
+
+    def test_handles_zero_length_facing(self) -> None:
+        # When kRPC has not populated the direction yet, vector is (0,0,0).
+        # Should return 0.0 (a safe degenerate value) rather than raising.
+        state = State(orientation_direction_orbital=(0.0, 0.0, 0.0))
+        assert state.angle_to(Orientation.PROGRADE) == 0.0
 
 
 class TestPartInfo:

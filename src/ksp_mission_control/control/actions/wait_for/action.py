@@ -14,12 +14,18 @@ from ksp_mission_control.control.actions.base import (
     ActionParam,
     ActionResult,
     ActionStatus,
+    Orientation,
     ParamType,
     ScienceSituation,
     State,
     VesselCommands,
     VesselSituation,
 )
+
+# Default angular margin for the ``orientation`` check. Loose on purpose:
+# wait_for is a gate, not a precision tuner, and the vessel may oscillate
+# slightly around the target marker before the rotation settles.
+_DEFAULT_ORIENTATION_MARGIN_DEG = 10.0
 
 
 class WaitForAction(Action):
@@ -155,6 +161,31 @@ class WaitForAction(Action):
             param_type=ParamType.STR,
             default=None,
         ),
+        ActionParam(
+            param_id="orientation",
+            label="Orientation",
+            description=(
+                "Wait until the vessel is facing this navball direction before proceeding "
+                "(prograde, retrograde, normal, anti_normal, radial, anti_radial, "
+                "surface_prograde, surface_retrograde, maneuver). Geometric check, "
+                "independent of SAS/autopilot. Maneuver requires an existing node."
+            ),
+            required=False,
+            param_type=ParamType.STR,
+            default=None,
+        ),
+        ActionParam(
+            param_id="orientation_margin",
+            label="Orientation Margin",
+            description=(
+                "Maximum angular deviation in degrees from the target orientation that still counts as 'aligned'. "
+                "Only used when 'orientation' is set."
+            ),
+            required=False,
+            param_type=ParamType.FLOAT,
+            default=_DEFAULT_ORIENTATION_MARGIN_DEG,
+            unit="deg",
+        ),
     ]
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
@@ -188,6 +219,17 @@ class WaitForAction(Action):
         self._science_situation: ScienceSituation | None = (
             ScienceSituation(raw_science_situation.lower()) if raw_science_situation is not None else None
         )
+        raw_orientation = param_values["orientation"]
+        if raw_orientation is None:
+            self._orientation: Orientation | None = None
+        else:
+            try:
+                self._orientation = Orientation(raw_orientation.lower())
+            except ValueError:
+                valid = ", ".join(o.value for o in Orientation)
+                raise ValueError(f"Unknown orientation '{raw_orientation}'. Valid: {valid}") from None
+        raw_margin = param_values["orientation_margin"]
+        self._orientation_margin: float = float(raw_margin) if raw_margin is not None else _DEFAULT_ORIENTATION_MARGIN_DEG
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
 
@@ -274,6 +316,20 @@ class WaitForAction(Action):
                 status=ActionStatus.RUNNING,
                 message=(f"Waiting for science situation {self._science_situation.value!r} (current: {state.science_situation.value!r})"),
             )
+
+        if self._orientation is not None:
+            angle = state.angle_to(self._orientation)
+            if angle is None:
+                # Only Orientation.MANEUVER returns None, and only when no node exists.
+                return ActionResult(
+                    status=ActionStatus.FAILED,
+                    message="Failed: orientation=maneuver requires a maneuver node, but none exists.",
+                )
+            if angle > self._orientation_margin:
+                return ActionResult(
+                    status=ActionStatus.RUNNING,
+                    message=(f"Waiting for orientation {self._orientation.value!r} (off by {angle:.1f}°, margin {self._orientation_margin:.1f}°)"),
+                )
 
         return ActionResult(status=ActionStatus.SUCCEEDED, message="All conditions met. Wait finished.")
 

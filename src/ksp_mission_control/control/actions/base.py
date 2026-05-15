@@ -208,6 +208,71 @@ class ScienceAction(Enum):
         return self.value.replace("_", " ").title()
 
 
+class Orientation(Enum):
+    """Named target direction the vessel can be facing.
+
+    Used for geometric "is the vessel currently pointed at X" checks, e.g.
+    in ``wait_for orientation=prograde``. Independent of SAS / autopilot:
+    we compare the vessel's forward vector against the target direction,
+    regardless of how the rotation was commanded.
+
+    Members mirror the navball markers that do not require a target vessel
+    (``SASMode.TARGET`` / ``ANTI_TARGET`` and ``STABILITY_ASSIST`` are
+    deliberately excluded - they have no fixed direction in space).
+
+    ``MANEUVER`` points along the next maneuver node's remaining burn
+    vector. The angle is undefined when no node exists.
+    """
+
+    PROGRADE = "prograde"
+    RETROGRADE = "retrograde"
+    NORMAL = "normal"
+    ANTI_NORMAL = "anti_normal"
+    RADIAL = "radial"
+    ANTI_RADIAL = "anti_radial"
+    SURFACE_PROGRADE = "surface_prograde"
+    SURFACE_RETROGRADE = "surface_retrograde"
+    MANEUVER = "maneuver"
+
+    @property
+    def display_name(self) -> str:
+        """Human-readable label (e.g. 'Prograde', 'Anti Normal')."""
+        return self.value.replace("_", " ").title()
+
+
+# Target unit vectors per Orientation member, in the kRPC reference frame
+# noted in the comment. The vessel's facing vector (also read in that
+# frame) is compared against this target to compute the alignment angle.
+# Frames:
+#   VESSEL_ORBITAL          +x = anti-radial (toward body), +y = prograde, +z = normal
+#   VESSEL_SURFACE_VELOCITY +y = surface prograde
+# MANEUVER has no fixed vector: the burn vector is read live from the
+# upcoming node, so it is not listed here.
+_ORBITAL_TARGETS: dict[Orientation, tuple[float, float, float]] = {
+    Orientation.PROGRADE: (0.0, 1.0, 0.0),
+    Orientation.RETROGRADE: (0.0, -1.0, 0.0),
+    Orientation.NORMAL: (0.0, 0.0, 1.0),
+    Orientation.ANTI_NORMAL: (0.0, 0.0, -1.0),
+    Orientation.RADIAL: (-1.0, 0.0, 0.0),
+    Orientation.ANTI_RADIAL: (1.0, 0.0, 0.0),
+}
+_SURFACE_VELOCITY_TARGETS: dict[Orientation, tuple[float, float, float]] = {
+    Orientation.SURFACE_PROGRADE: (0.0, 1.0, 0.0),
+    Orientation.SURFACE_RETROGRADE: (0.0, -1.0, 0.0),
+}
+
+
+def _angle_between(v1: tuple[float, float, float], v2: tuple[float, float, float]) -> float:
+    """Angle in degrees between two 3D vectors. Returns 0.0 if either is zero-length."""
+    mag1 = math.sqrt(v1[0] * v1[0] + v1[1] * v1[1] + v1[2] * v1[2])
+    mag2 = math.sqrt(v2[0] * v2[0] + v2[1] * v2[1] + v2[2] * v2[2])
+    if mag1 == 0.0 or mag2 == 0.0:
+        return 0.0
+    dot = v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2]
+    cos_theta = max(-1.0, min(1.0, dot / (mag1 * mag2)))
+    return math.degrees(math.acos(cos_theta))
+
+
 class ActionStatus(Enum):
     """Lifecycle status of an action."""
 
@@ -751,6 +816,23 @@ class State:
     """Vessel heading in degrees. 0 = north, 90 = east, 180 = south, 270 = west."""
     orientation_roll: float = 0.0
     """Vessel roll angle in degrees."""
+    orientation_direction_orbital: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    """Vessel forward unit vector in the orbital reference frame.
+
+    Used with ``angle_to`` to check alignment with prograde / retrograde /
+    normal / anti_normal / radial / anti_radial.
+    """
+    orientation_direction_surface_velocity: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    """Vessel forward unit vector in the surface-velocity reference frame.
+
+    Used with ``angle_to`` to check alignment with surface_prograde / surface_retrograde.
+    """
+    orientation_direction_body_non_rotating: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    """Vessel forward unit vector in the body's non-rotating reference frame.
+
+    Used with ``angle_to(Orientation.MANEUVER)`` to compare against the next
+    maneuver node's burn vector, which is also expressed in that frame.
+    """
 
     # --- Control ---
     control_input_pitch: float = 0.0
@@ -1008,6 +1090,21 @@ class State:
     def is_descending(self) -> bool:
         """Whether the vessel is moving downward (negative vertical speed)."""
         return self.speed_vertical < 0.0
+
+    def angle_to(self, orientation: Orientation) -> float | None:
+        """Angle in degrees between the vessel's forward vector and the named direction.
+
+        Returns ``None`` when the orientation is undefined for the current
+        state. The only such case today is ``Orientation.MANEUVER`` when
+        there is no maneuver node.
+        """
+        if orientation is Orientation.MANEUVER:
+            if not self.nodes:
+                return None
+            return _angle_between(self.orientation_direction_body_non_rotating, self.nodes[0].burn_vector_remaining)
+        if orientation in _SURFACE_VELOCITY_TARGETS:
+            return _angle_between(self.orientation_direction_surface_velocity, _SURFACE_VELOCITY_TARGETS[orientation])
+        return _angle_between(self.orientation_direction_orbital, _ORBITAL_TARGETS[orientation])
 
 
 @dataclass
