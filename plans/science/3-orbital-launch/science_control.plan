@@ -1,0 +1,22 @@
+# - Science "Near Space" in "KERBIN": Crew Report, Goo x2, Temp and AtmPres
+wait_for   science_situation=space_low
+science    action=run  name=crewReport has-data=False
+science    action=run  count=2  name=mysteryGoo has-data=False
+science    action=run  count=1  name=temperatureScan has-data=False
+science    action=run  count=1  name=barometerScan has-data=False
+
+# - Science "Far Space" in "KERBIN": Goo x2, Temp and AtmPres
+wait_for   science_situation=space_high
+science    action=run  count=2  name=mysteryGoo has-data=False
+science    action=run  count=1  name=temperatureScan has-data=False
+science    action=run  count=1  name=barometerScan has-data=False
+
+# - Science "Flying Low" in "Deserts": Temp
+wait_for   science_situation=atmosphere_low
+science    action=run  count=1  name=temperatureScan has-data=False
+
+# - Science "Landed" in "Deserts": Goo x2, Temp and AtmPres
+wait_for   science_situation=surface_landed
+science    action=run  count=2  name=mysteryGoo has-data=False
+science    action=run  count=1  name=temperatureScan has-data=False
+science    action=run  count=1  name=barometerScan has-data=False

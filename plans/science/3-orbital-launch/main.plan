@@ -1,0 +1,17 @@
+@craft fart-3
+# REQUIREMENTS:
+# - Engineering 101
+# - Survivability
+# - Basic Rocketry
+# - General Rocketry
+# - Stability
+
+# Atmospheric launch to collect data flying in kerbal.
+# Objectives:
+# - Science "Near Space" in "KERBIN": Crew Report, Goo x2, Temp and AtmPres
+# - Science "Far Space" in "KERBIN": Goo x2, Temp and AtmPres
+# - Science "Flying Low" in "Deserts": Temp
+# - Science "Landed" in "Deserts": Goo x2, Temp and AtmPres
+
+@parallel science/3-orbital-launch/science_control.plan
+@parallel science/3-orbital-launch/vessel_control.plan

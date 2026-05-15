@@ -1,0 +1,27 @@
+launch auto_stage=True target_altitude=75_000
+circularize  apse=apoapsis
+
+# Raise orbit to "far space" 
+change_apse target=apoapsis target_altitude=260_000_000
+
+# Reach the target apoapsis
+wait_for   apoapsis=True
+
+# Circularize again at periapsis, lowering apoapsis prepare for reentry
+circularize  apse=periapsis
+
+# TODO: Create a node so we have an expected landing in the desert. Meanwhile simply retrograde burn
+change_apse target=periapsis target_altitude=35_000
+
+# Get rid of all the remaining stages to be left with the heatshield exposed
+sas        mode=prograde
+wait_for   orientation=prograde
+stage      until=0
+
+# Ensure the debries is far before turning on retrograde, to avoid collision
+wait_for   time=10
+sas        mode=retrograde
+
+# Deploy parachutes below 3500m, to avoid a very long descent with open parachutes
+wait_for   below_altitude=3_500
+parachutes
