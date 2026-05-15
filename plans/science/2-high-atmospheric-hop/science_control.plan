@@ -2,18 +2,18 @@
 science    action=run  count=1  name=barometerScan has-data=False
 
 # - Science "Flying Low": AtmPres
-wait_for   above_altitude=1_000
+wait_for   science_situation=atmosphere_low
 science    action=run  count=1  name=barometerScan has-data=False
 
 # - Science "Flying High": Goo x2, Temp, Crew and AtmPres
-wait_for   above_altitude=18_500
+wait_for   science_situation=atmosphere_high
 science    action=run  name=crewReport has-data=False
 science    action=run  count=1  name=barometerScan has-data=False
 science    action=run  count=1  name=temperatureScan has-data=False
 science    action=run  count=2  name=mysteryGoo has-data=False
 
 # - Science "Splashed" in "Water": Goo x2, Temp and AtmPres
-wait_for   situation=splashed
+wait_for   science_situation=surface_splashed
 wait_for   biome=Water
 science    action=run  count=1  name=barometerScan has-data=False
 science    action=run  count=1  name=temperatureScan has-data=False

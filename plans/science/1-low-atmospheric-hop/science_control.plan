@@ -1,8 +1,8 @@
 # Science "Launchpad"
 science    action=run  count=2  name=temperatureScan
 
-# Science "Flying Low" 
-wait_for   above_altitude=1_000
+# Science "Flying Low"
+wait_for   science_situation=atmosphere_low
 science    action=run  name=crewReport
 science    action=run  count=2  name=temperatureScan
 science    action=run  count=1  name=mysteryGoo
