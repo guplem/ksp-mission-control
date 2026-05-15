@@ -13,6 +13,7 @@ from ksp_mission_control.control.actions.base import (
     ReferenceFrame,
     ScienceAction,
     ScienceCommand,
+    ScienceSituation,
     State,
     VesselCommands,
 )
@@ -87,6 +88,8 @@ def _make_mock_conn(
         atmosphere_depth=70000.0,
         gravitational_parameter=3.5316e12,
         sphere_of_influence=84159286.0,
+        flying_high_altitude_threshold=18000.0,
+        space_high_altitude_threshold=250000.0,
         reference_frame=body_ref_frame,
         non_rotating_reference_frame=body_non_rotating_ref_frame,
     )
@@ -611,6 +614,61 @@ class TestReadVesselState:
         conn = _make_mock_conn(active_vessel=False)
         with pytest.raises(NoActiveVesselError):
             read_vessel_state(conn)
+
+
+class TestReadScienceSituation:
+    """Tests for derivation of science_situation from kRPC telemetry."""
+
+    def test_surface_landed_when_situation_landed(self) -> None:
+        conn = _make_mock_conn(situation="VesselSituation.landed")
+        state = read_vessel_state(conn)
+        assert state.science_situation == ScienceSituation.SURFACE_LANDED
+
+    def test_surface_landed_when_situation_pre_launch(self) -> None:
+        conn = _make_mock_conn(situation="VesselSituation.pre_launch")
+        state = read_vessel_state(conn)
+        assert state.science_situation == ScienceSituation.SURFACE_LANDED
+
+    def test_surface_splashed_when_situation_splashed(self) -> None:
+        conn = _make_mock_conn(situation="VesselSituation.splashed")
+        state = read_vessel_state(conn)
+        assert state.science_situation == ScienceSituation.SURFACE_SPLASHED
+
+    def test_atmosphere_low_when_flying_below_threshold(self) -> None:
+        conn = _make_mock_conn(situation="VesselSituation.flying")
+        conn.space_center.active_vessel.flight(None).mean_altitude = 5_000.0  # below 18km
+        state = read_vessel_state(conn)
+        assert state.science_situation == ScienceSituation.ATMOSPHERE_LOW
+
+    def test_atmosphere_high_when_flying_above_threshold(self) -> None:
+        conn = _make_mock_conn(situation="VesselSituation.flying")
+        conn.space_center.active_vessel.flight(None).mean_altitude = 25_000.0  # above 18km
+        state = read_vessel_state(conn)
+        assert state.science_situation == ScienceSituation.ATMOSPHERE_HIGH
+
+    def test_space_low_when_sub_orbital_below_threshold(self) -> None:
+        conn = _make_mock_conn(situation="VesselSituation.sub_orbital")
+        conn.space_center.active_vessel.flight(None).mean_altitude = 100_000.0  # below 250km
+        state = read_vessel_state(conn)
+        assert state.science_situation == ScienceSituation.SPACE_LOW
+
+    def test_space_high_when_orbiting_above_threshold(self) -> None:
+        conn = _make_mock_conn(situation="VesselSituation.orbiting")
+        conn.space_center.active_vessel.flight(None).mean_altitude = 500_000.0  # above 250km
+        state = read_vessel_state(conn)
+        assert state.science_situation == ScienceSituation.SPACE_HIGH
+
+    def test_space_low_when_docked(self) -> None:
+        conn = _make_mock_conn(situation="VesselSituation.docked")
+        conn.space_center.active_vessel.flight(None).mean_altitude = 200_000.0
+        state = read_vessel_state(conn)
+        assert state.science_situation == ScienceSituation.SPACE_LOW
+
+    def test_space_when_escaping_above_threshold(self) -> None:
+        conn = _make_mock_conn(situation="VesselSituation.escaping")
+        conn.space_center.active_vessel.flight(None).mean_altitude = 10_000_000.0
+        state = read_vessel_state(conn)
+        assert state.science_situation == ScienceSituation.SPACE_HIGH
 
 
 # ---------------------------------------------------------------------------

@@ -7,6 +7,7 @@ from typing import Any
 from ksp_mission_control.control.actions.base import (
     ActionLogger,
     ActionStatus,
+    ScienceSituation,
     State,
     VesselCommands,
 )
@@ -29,6 +30,7 @@ _DEFAULT_PARAMS: dict[str, float | bool | str | None] = {
     "time": None,
     "biome": None,
     "situation": None,
+    "science_situation": None,
 }
 
 
@@ -419,6 +421,40 @@ class TestBelowCurrentThrust:
         action = WaitForAction()
         state = State(thrust=100.0)
         action.start(state, _params(below_current_thrust=100.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+
+class TestScienceSituation:
+    """Tests for the science_situation parameter."""
+
+    def test_waits_when_science_situation_does_not_match(self) -> None:
+        action = WaitForAction()
+        state = State(science_situation=ScienceSituation.ATMOSPHERE_LOW)
+        action.start(state, _params(science_situation="space_low"))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+        assert "space_low" in result.message
+        assert "atmosphere_low" in result.message
+
+    def test_succeeds_when_science_situation_matches(self) -> None:
+        action = WaitForAction()
+        state = State(science_situation=ScienceSituation.SPACE_LOW)
+        action.start(state, _params(science_situation="space_low"))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+    def test_accepts_uppercase_value(self) -> None:
+        action = WaitForAction()
+        state = State(science_situation=ScienceSituation.SURFACE_LANDED)
+        action.start(state, _params(science_situation="SURFACE_LANDED"))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+    def test_defaults_to_none(self) -> None:
+        action = WaitForAction()
+        state = State(science_situation=ScienceSituation.SPACE_HIGH)
+        action.start(state, _params(science_situation=None))
         result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
         assert result.status == ActionStatus.SUCCEEDED
 

@@ -19,6 +19,7 @@ from ksp_mission_control.control.actions.base import (
     SASMode,
     ScienceAction,
     ScienceExperiment,
+    ScienceSituation,
     SpeedMode,
     State,
     VesselCommands,
@@ -97,6 +98,36 @@ def _parse_vessel_situation(raw: str) -> VesselSituation:
     """
     name = raw.split(".")[-1] if "." in raw else raw
     return VesselSituation(name)
+
+
+def _derive_science_situation(situation: VesselSituation, altitude_sea: float, body: object) -> ScienceSituation:
+    """Derive the science (experiment) situation from vessel state and body thresholds.
+
+    KSP gates science experiments on the body-relative situation, which is not
+    the same as ``vessel.situation``. The thresholds between "low" and "high"
+    come from the body (``flying_high_altitude_threshold``,
+    ``space_high_altitude_threshold``). Falls back to safe defaults if the
+    thresholds are unavailable on older kRPC versions.
+    """
+    if situation in (VesselSituation.LANDED, VesselSituation.PRE_LAUNCH):
+        return ScienceSituation.SURFACE_LANDED
+    if situation == VesselSituation.SPLASHED:
+        return ScienceSituation.SURFACE_SPLASHED
+    if situation == VesselSituation.FLYING:
+        try:
+            flying_high_threshold = float(body.flying_high_altitude_threshold)  # type: ignore[attr-defined]
+        except (AttributeError, Exception):
+            flying_high_threshold = float("inf")
+        if altitude_sea >= flying_high_threshold:
+            return ScienceSituation.ATMOSPHERE_HIGH
+        return ScienceSituation.ATMOSPHERE_LOW
+    try:
+        space_high_threshold = float(body.space_high_altitude_threshold)  # type: ignore[attr-defined]
+    except (AttributeError, Exception):
+        space_high_threshold = float("inf")
+    if altitude_sea >= space_high_threshold:
+        return ScienceSituation.SPACE_HIGH
+    return ScienceSituation.SPACE_LOW
 
 
 def _parse_part_state(raw: str) -> str:
@@ -520,6 +551,13 @@ def read_vessel_state(conn: object) -> State:
     except Exception:
         maneuver_nodes = []
 
+    vessel_situation = _parse_vessel_situation(str(vessel.situation))
+    science_situation = _derive_science_situation(
+        situation=vessel_situation,
+        altitude_sea=flight.mean_altitude,
+        body=orbit.body,
+    )
+
     return State(
         altitude_sea=flight.mean_altitude,
         altitude_surface=flight.surface_altitude,
@@ -551,7 +589,7 @@ def read_vessel_state(conn: object) -> State:
         universal_time=conn.space_center.ut,  # type: ignore[attr-defined]
         met=vessel.met,
         name=vessel.name,
-        situation=_parse_vessel_situation(str(vessel.situation)),
+        situation=vessel_situation,
         mass=vessel.mass,
         mass_dry=vessel.dry_mass,
         thrust=vessel.thrust,
@@ -620,6 +658,7 @@ def read_vessel_state(conn: object) -> State:
         resource_oxidizer_max=vessel.resources.max("Oxidizer"),
         resource_mono_propellant_max=vessel.resources.max("MonoPropellant"),
         science_experiments=tuple(science_experiments),
+        science_situation=science_situation,
         nodes=tuple(maneuver_nodes),
         parts=Parts(
             parachutes=tuple(parts_parachutes),

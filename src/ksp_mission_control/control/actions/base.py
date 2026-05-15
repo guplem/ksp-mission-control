@@ -136,6 +136,28 @@ class VesselSituation(Enum):
         return self.value.replace("_", " ").title()
 
 
+class ScienceSituation(Enum):
+    """Body-relative situation used by KSP to gate science experiment availability.
+
+    Distinct from ``VesselSituation`` (the vessel's flight phase). KSP exposes
+    different science subjects per (body, situation) pair. The thresholds
+    between "low" and "high" are body-specific (kRPC's
+    ``flying_high_altitude_threshold`` and ``space_high_altitude_threshold``).
+    """
+
+    SURFACE_LANDED = "surface_landed"
+    SURFACE_SPLASHED = "surface_splashed"
+    ATMOSPHERE_LOW = "atmosphere_low"
+    ATMOSPHERE_HIGH = "atmosphere_high"
+    SPACE_LOW = "space_low"
+    SPACE_HIGH = "space_high"
+
+    @property
+    def display_name(self) -> str:
+        """Human-readable label (e.g. 'Surface Landed', 'Space High')."""
+        return self.value.replace("_", " ").title()
+
+
 class ReferenceFrame(Enum):
     """Coordinate reference frame for autopilot direction vectors.
 
@@ -835,6 +857,8 @@ class State:
     # --- Science ---
     science_experiments: tuple[ScienceExperiment, ...] = ()
     """All science experiments on the vessel, indexed for command targeting."""
+    science_situation: ScienceSituation = ScienceSituation.SURFACE_LANDED
+    """Body-relative situation that determines which science experiments are available."""
 
     # --- Maneuver nodes ---
     nodes: tuple[ManeuverNode, ...] = ()

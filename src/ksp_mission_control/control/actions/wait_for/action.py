@@ -15,6 +15,7 @@ from ksp_mission_control.control.actions.base import (
     ActionResult,
     ActionStatus,
     ParamType,
+    ScienceSituation,
     State,
     VesselCommands,
     VesselSituation,
@@ -143,6 +144,17 @@ class WaitForAction(Action):
             param_type=ParamType.STR,
             default=None,
         ),
+        ActionParam(
+            param_id="science_situation",
+            label="Science Situation",
+            description=(
+                "Wait until the vessel is in this body-relative science situation before proceeding "
+                "(e.g. space_low, space_high, atmosphere_low, atmosphere_high, surface_landed, surface_splashed)."
+            ),
+            required=False,
+            param_type=ParamType.STR,
+            default=None,
+        ),
     ]
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
@@ -172,6 +184,10 @@ class WaitForAction(Action):
         self._biome: str | None = param_values["biome"]
         raw_situation = param_values["situation"]
         self._situation: VesselSituation | None = VesselSituation(raw_situation.lower()) if raw_situation is not None else None
+        raw_science_situation = param_values["science_situation"]
+        self._science_situation: ScienceSituation | None = (
+            ScienceSituation(raw_science_situation.lower()) if raw_science_situation is not None else None
+        )
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
 
@@ -251,6 +267,12 @@ class WaitForAction(Action):
             return ActionResult(
                 status=ActionStatus.RUNNING,
                 message=(f"Waiting for situation {self._situation.value!r} (current: {state.situation.value!r})"),
+            )
+
+        if self._science_situation is not None and state.science_situation != self._science_situation:
+            return ActionResult(
+                status=ActionStatus.RUNNING,
+                message=(f"Waiting for science situation {self._science_situation.value!r} (current: {state.science_situation.value!r})"),
             )
 
         return ActionResult(status=ActionStatus.SUCCEEDED, message="All conditions met. Wait finished.")
