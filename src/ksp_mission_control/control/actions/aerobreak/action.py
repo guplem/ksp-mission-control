@@ -29,6 +29,12 @@ from ksp_mission_control.control.actions.base import (
     State,
     VesselCommands,
 )
+from ksp_mission_control.control.actions.helpers.staging import (
+    STAGING_MODE_PARAM,
+    StagingMode,
+    auto_stage,
+    parse_staging_mode,
+)
 
 # Surface retrograde: opposite to the velocity through the atmosphere. Surface frame
 # (not orbital) is required because the body's rotation makes orbital and surface
@@ -78,14 +84,7 @@ class AerobreakAction(Action):
             default=30_000.0,
             unit="Pa",
         ),
-        ActionParam(
-            param_id="auto_stage",
-            label="Auto Stage",
-            description="Automatically stage the vessel if the current stage runs out of thrust.",
-            required=False,
-            param_type=ParamType.BOOL,
-            default=False,
-        ),
+        STAGING_MODE_PARAM,
     ]
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
@@ -98,7 +97,7 @@ class AerobreakAction(Action):
             raise ValueError("Invalid target altitude: must be non-negative.")
 
         self._max_dynamic_pressure: float = float(param_values["max_dynamic_pressure"])
-        self._auto_stage: bool = bool(param_values["auto_stage"])
+        self._staging_mode: StagingMode | None = parse_staging_mode(param_values["staging_mode"])
         self._engine_brake_started: bool = False
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
@@ -113,25 +112,19 @@ class AerobreakAction(Action):
                 message=f"Target reached: {state.speed_surface:,.1f}m/s at {state.altitude_surface:,.0f}m",
             )
 
-        # Check if we have thrust available. If not, either auto-stage or fail.
+        # Auto-stage opportunistically before falling back to failure.
+        if auto_stage(state, commands, self._staging_mode, log):
+            return ActionResult(
+                status=ActionStatus.RUNNING,
+                message="Staging to next stage",
+            )
+
+        # Check if we have thrust available. If not, fail.
         if state.thrust_available <= 0:
-            if self._auto_stage:
-                if state.parts.engines_inactive() > 0:
-                    commands.stage = True
-                    return ActionResult(
-                        status=ActionStatus.RUNNING,
-                        message=f"Staging to next stage. {state.parts.engines_inactive()} inactive engines still in the vessel.",  # noqa: E501
-                    )
-                else:
-                    return ActionResult(
-                        status=ActionStatus.FAILED,
-                        message=f"Failed: no thrust available. Speed {state.speed_surface:,.1f}m/s, target {self._target_speed:,.1f}m/s",  # noqa: E501
-                    )
-            else:
-                return ActionResult(
-                    status=ActionStatus.FAILED,
-                    message=f"Failed: no thrust available and staging disabled. Speed {state.speed_surface:,.1f}m/s, target {self._target_speed:,.1f}m/s",  # noqa: E501
-                )
+            return ActionResult(
+                status=ActionStatus.FAILED,
+                message=f"Failed: no thrust available. Speed {state.speed_surface:,.1f}m/s, target {self._target_speed:,.1f}m/s",  # noqa: E501
+            )
 
         # --- Braking distance calculation ---
         # How much altitude remains before the target altitude

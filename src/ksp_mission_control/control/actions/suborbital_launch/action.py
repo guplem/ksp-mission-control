@@ -19,6 +19,12 @@ from ksp_mission_control.control.actions.base import (
     State,
     VesselCommands,
 )
+from ksp_mission_control.control.actions.helpers.staging import (
+    STAGING_MODE_PARAM,
+    StagingMode,
+    auto_stage,
+    parse_staging_mode,
+)
 
 
 class SuborbitalLaunchAction(Action):
@@ -37,14 +43,7 @@ class SuborbitalLaunchAction(Action):
             default=None,
             unit="m",
         ),
-        ActionParam(
-            param_id="auto_stage",
-            label="Auto Stage",
-            description="Automatically stage the vessel if the current stage runs out of thrust.",
-            required=False,
-            param_type=ParamType.BOOL,
-            default=False,
-        ),
+        STAGING_MODE_PARAM,
         ActionParam(
             param_id="max_dynamic_pressure",
             label="Max Dynamic Pressure",
@@ -76,8 +75,8 @@ class SuborbitalLaunchAction(Action):
         if self._target_altitude <= 0.0:
             raise ValueError("Invalid target altitude: must be positive.")
 
-        # Save auto-stage setting
-        self._auto_stage: bool = bool(param_values["auto_stage"])
+        # Save staging mode (None = no auto-staging).
+        self._staging_mode: StagingMode | None = parse_staging_mode(param_values["staging_mode"])
 
         # Save max dynamic pressure
         self._max_dynamic_pressure: float = float(param_values["max_dynamic_pressure"])
@@ -95,25 +94,19 @@ class SuborbitalLaunchAction(Action):
         commands.autopilot = True
         commands.autopilot_pitch = 90.0  # straight up
 
-        # Check if we have thrust available. If not, either auto-stage or fail.
+        # Auto-stage opportunistically before falling back to failure.
+        if auto_stage(state, commands, self._staging_mode, log):
+            return ActionResult(
+                status=ActionStatus.RUNNING,
+                message="Staging to next stage",
+            )
+
+        # Check if we have thrust available. If not, fail.
         if state.thrust_available <= 0:
-            if self._auto_stage:
-                if state.parts.engines_inactive() > 0:
-                    commands.stage = True
-                    return ActionResult(
-                        status=ActionStatus.RUNNING,
-                        message=f"Staging to next stage. {state.parts.engines_inactive()} inactive engines still in the vessel.",  # noqa: E501
-                    )
-                else:
-                    return ActionResult(
-                        status=ActionStatus.FAILED,
-                        message=f"Failed: no thrust available. Current apoapsis is {state.orbit_apoapsis:,.1f}m, target altitude is {self._target_altitude:,.1f}m",  # noqa: E501
-                    )
-            else:
-                return ActionResult(
-                    status=ActionStatus.FAILED,
-                    message=f"Failed: no thrust available and staging disabled. Current apoapsis is {state.orbit_apoapsis:,.1f}m, target altitude is {self._target_altitude:,.1f}m",  # noqa: E501
-                )
+            return ActionResult(
+                status=ActionStatus.FAILED,
+                message=f"Failed: no thrust available. Current apoapsis is {state.orbit_apoapsis:,.1f}m, target altitude is {self._target_altitude:,.1f}m",  # noqa: E501
+            )
 
         # Throttle control
         if state.orbit_apoapsis < self._target_altitude:

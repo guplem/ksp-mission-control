@@ -37,7 +37,13 @@ from ksp_mission_control.control.actions.base import (
     State,
     VesselCommands,
 )
-from ksp_mission_control.control.actions.node_executor import execute_node
+from ksp_mission_control.control.actions.helpers.maneuver_node import execute_node
+from ksp_mission_control.control.actions.helpers.staging import (
+    STAGING_MODE_PARAM,
+    StagingMode,
+    auto_stage,
+    parse_staging_mode,
+)
 
 # Tolerance used to match the node we requested against state.nodes by ut.
 # The bridge writes the same value we set in Maneuver.ut and reads it back
@@ -71,6 +77,7 @@ class CircularizeAction(Action):
             param_type=ParamType.STR,
             default="apoapsis",
         ),
+        STAGING_MODE_PARAM,
     ]
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
@@ -80,6 +87,7 @@ class CircularizeAction(Action):
         except ValueError:
             valid = ", ".join(a.value for a in Apse)
             raise ValueError(f"Unknown apse '{raw_apse}'. Valid: {valid}") from None
+        self._staging_mode: StagingMode | None = parse_staging_mode(param_values["staging_mode"])
         # ut of the node this action created, captured on first tick so we
         # can find it again across ticks even if other nodes get inserted.
         self._node_ut: float | None = None
@@ -97,6 +105,18 @@ class CircularizeAction(Action):
             return ActionResult(
                 status=ActionStatus.SUCCEEDED,
                 message=f"Circularized at {self._apse.display_name} (e={state.orbit_eccentricity:.4f})",
+            )
+
+        # Still burning. Try auto-staging first; execute_node will recompute
+        # burn timing next tick from the post-stage mass and thrust. If we
+        # have genuinely run out of thrust with nothing to stage into, fail.
+        if auto_stage(state, commands, self._staging_mode, log):
+            return ActionResult(status=ActionStatus.RUNNING, message="Staging to next stage")
+
+        if state.thrust_available <= 0.0:
+            return ActionResult(
+                status=ActionStatus.FAILED,
+                message=f"Failed: no thrust available. dv_remaining={node.delta_v_remaining:.1f} m/s",
             )
 
         return ActionResult(

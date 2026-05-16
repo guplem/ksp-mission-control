@@ -55,20 +55,17 @@ from ksp_mission_control.control.actions.base import (
     State,
     VesselCommands,
 )
-
-# ---------------------------------------------------------------------------
-# Tuning constants
-# ---------------------------------------------------------------------------
+from ksp_mission_control.control.actions.helpers.staging import (
+    STAGING_MODE_PARAM,
+    StagingMode,
+    auto_stage,
+    parse_staging_mode,
+)
 
 _APOAPSIS_TOLERANCE_MULTIPLIER = 0.002  # fraction of target altitude to consider "close enough" to apoapsis
 _GRAVITY_TURN_CLEARANCE = 50  # meters: default vertical climb above the launch altitude before the turn begins
 _DEFAULT_ALTITUDE_ATMOSPHERE_MULTIPLIER = 1.1  # multiplier: default target = atmosphere_depth * this
 _DEFAULT_ALTITUDE_AIRLESS_BODY = 50_000.0  # meters: default target when body has no atmosphere
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 
 def _inclination_to_heading(inclination_deg: float, latitude_deg: float = 0.0) -> float:
@@ -99,11 +96,6 @@ def _inclination_to_heading(inclination_deg: float, latitude_deg: float = 0.0) -
         heading = 180.0 - heading
 
     return heading % 360.0
-
-
-# ---------------------------------------------------------------------------
-# Action
-# ---------------------------------------------------------------------------
 
 
 class LaunchAction(Action):
@@ -156,17 +148,8 @@ class LaunchAction(Action):
             default=2.5,
             unit="deg",
         ),
-        ActionParam(
-            param_id="auto_stage",
-            label="Auto Stage",
-            description="Automatically stage when thrust is lost (ignition, booster sep, flameout). Disable if staging manually.",
-            required=False,
-            param_type=ParamType.BOOL,
-            default=False,
-        ),
+        STAGING_MODE_PARAM,
     ]
-
-    # -- Lifecycle ------------------------------------------------------------
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
         # Resolve target_altitude: use provided value, or infer from body.
@@ -199,7 +182,7 @@ class LaunchAction(Action):
         raw_final_pitch = param_values["final_pitch"]
         self._final_pitch: float = float(raw_final_pitch) if raw_final_pitch is not None else 0.0
 
-        self._auto_stage: bool = bool(param_values["auto_stage"])
+        self._staging_mode: StagingMode | None = parse_staging_mode(param_values["staging_mode"])
 
         # Compute tolerance for considering apoapsis "close enough" to target.
         self._tolerance_altitude: float = self._target_altitude * _APOAPSIS_TOLERANCE_MULTIPLIER
@@ -235,14 +218,14 @@ class LaunchAction(Action):
         if state.orbit_apoapsis >= self._target_altitude - self._tolerance_altitude:
             return ActionResult(status=ActionStatus.SUCCEEDED, message=f"Target apoapsis reached ({state.orbit_apoapsis:,.1f} m)")
 
+        # Auto-stage opportunistically. ANY_FLAMEOUT may stage even while
+        # thrust is still available (drops empty side boosters); FULL_DEPLETION
+        # only stages when thrust has dropped to zero with inactive engines waiting.
+        if auto_stage(state, commands, self._staging_mode, log):
+            return ActionResult(status=ActionStatus.RUNNING, message="Staging to next stage")
+
         # Check if remaining thrust.
         if state.thrust_available <= 0:
-            if self._auto_stage:
-                if state.parts.engines_inactive() > 0:
-                    commands.stage = True
-                    log.info(f"Staging: no thrust, {state.parts.engines_inactive()} inactive engine(s) available")
-                    return ActionResult(status=ActionStatus.RUNNING, message="Staging to ignite engines")
-                return ActionResult(status=ActionStatus.FAILED, message="No thrust available and no inactive engines to stage")
             return ActionResult(status=ActionStatus.FAILED, message="No thrust available")
 
         commands.ui_speed_mode = SpeedMode.ORBIT

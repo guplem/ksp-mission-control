@@ -63,9 +63,9 @@ class TestParseFlightPlan:
 
     def test_parse_action_with_bool_params(self, tmp_path: Path) -> None:
         plan_file = tmp_path / "bool.plan"
-        plan_file.write_text("launch  auto_stage=true\n")
+        plan_file.write_text("wait_for  apoapsis=true\n")
         plan = parse_flight_plan(plan_file)
-        assert plan.steps[0].param_values["auto_stage"] is True
+        assert plan.steps[0].param_values["apoapsis"] is True
 
     def test_parse_multiple_steps(self, tmp_path: Path) -> None:
         plan_file = tmp_path / "multi.plan"
@@ -101,9 +101,9 @@ class TestParseFlightPlan:
 
     def test_bare_boolean_flag(self, tmp_path: Path) -> None:
         plan_file = tmp_path / "bare_flag.plan"
-        plan_file.write_text("launch  auto_stage\n")
+        plan_file.write_text("wait_for  apoapsis\n")
         plan = parse_flight_plan(plan_file)
-        assert plan.steps[0].param_values["auto_stage"] is True
+        assert plan.steps[0].param_values["apoapsis"] is True
 
     def test_bare_non_boolean_param_raises(self, tmp_path: Path) -> None:
         plan_file = tmp_path / "bad_bare.plan"
@@ -125,7 +125,7 @@ class TestParseFlightPlan:
 
     def test_invalid_bool_value_raises(self, tmp_path: Path) -> None:
         plan_file = tmp_path / "bad_bool.plan"
-        plan_file.write_text("launch  auto_stage=maybe\n")
+        plan_file.write_text("wait_for  apoapsis=maybe\n")
         with pytest.raises(ValueError, match="Invalid bool value"):
             parse_flight_plan(plan_file)
 

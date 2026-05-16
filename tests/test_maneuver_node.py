@@ -9,7 +9,7 @@ from ksp_mission_control.control.actions.base import (
     State,
     VesselCommands,
 )
-from ksp_mission_control.control.actions.node_executor import execute_node
+from ksp_mission_control.control.actions.helpers.maneuver_node import execute_node
 
 
 def _make_node(
@@ -136,17 +136,17 @@ class TestTsiolkovsky:
     """Direct tests for the Tsiolkovsky helper used by the bridge."""
 
     def test_returns_inf_for_zero_thrust(self) -> None:
-        from ksp_mission_control.control.actions.node_executor import tsiolkovsky_burn_time
+        from ksp_mission_control.control.actions.helpers.maneuver_node import tsiolkovsky_burn_time
 
         assert tsiolkovsky_burn_time(delta_v=100.0, mass=5000.0, isp=300.0, thrust=0.0) == float("inf")
 
     def test_returns_inf_for_zero_isp(self) -> None:
-        from ksp_mission_control.control.actions.node_executor import tsiolkovsky_burn_time
+        from ksp_mission_control.control.actions.helpers.maneuver_node import tsiolkovsky_burn_time
 
         assert tsiolkovsky_burn_time(delta_v=100.0, mass=5000.0, isp=0.0, thrust=50_000.0) == float("inf")
 
     def test_returns_finite_burn_time_for_normal_inputs(self) -> None:
-        from ksp_mission_control.control.actions.node_executor import tsiolkovsky_burn_time
+        from ksp_mission_control.control.actions.helpers.maneuver_node import tsiolkovsky_burn_time
 
         burn_time = tsiolkovsky_burn_time(delta_v=100.0, mass=5000.0, isp=300.0, thrust=50_000.0)
         # exhaust = 300 * 9.80665 = 2941.995; m1 = 5000/exp(100/2941.995) ~= 4833;

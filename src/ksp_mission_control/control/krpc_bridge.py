@@ -25,7 +25,7 @@ from ksp_mission_control.control.actions.base import (
     VesselCommands,
     VesselSituation,
 )
-from ksp_mission_control.control.actions.node_executor import tsiolkovsky_burn_time
+from ksp_mission_control.control.actions.helpers.maneuver_node import tsiolkovsky_burn_time
 
 # Tolerance for matching a maneuver node by ut. kRPC does not change the
 # ut of a node after creation (unless someone drags it in-game), so an
