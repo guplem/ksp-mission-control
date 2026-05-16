@@ -61,13 +61,16 @@ src/ksp_mission_control/
 │   ├── manual_command_dialog.py   # ManualCommandDialog (one-shot manual VesselCommands)
 │   ├── science_command_dialog.py  # ScienceCommandDialog (targeted science experiment command)
 │   ├── tick_record.py        # TickRecord (per-tick snapshot for export)
-│   ├── actions/          # Action execution system (ADR 0006)
+│   ├── actions/          # Action execution system (ADR 0006). See actions/CLAUDE.md for the action-authoring guide.
 │   │   ├── base.py       # Action ABC, State, VesselCommands, ActionParam, ActionLogger, ScienceExperiment, ScienceCommand, enums
 │   │   ├── runner.py     # ActionRunner (step-based executor), StepResult
 │   │   ├── plan_executor.py # PlanExecutor (wraps ActionRunner, chains plan steps)
 │   │   ├── multi_track_executor.py # MultiTrackExecutor (parallel plan tracks, command merging)
 │   │   ├── flight_plan.py   # FlightPlan, FlightPlanStep, parse_flight_plan(), @parallel directive
 │   │   ├── registry.py   # get_available_actions() factory
+│   │   ├── helpers/      # Shared helpers called BY actions (not lifecycle executors)
+│   │   │   ├── maneuver_node.py  # Drive vessel through a maneuver node (used by circularize, change_apse)
+│   │   │   └── staging.py        # Auto-stage on fuel exhaustion or any-engine flameout
 │   │   ├── controllability_test/ # Diagnostic attitude control verification
 │   │   │   └── action.py # ControllabilityTestAction (tests roll/pitch/heading axes)
 │   │   ├── hold_attitude/    # Diagnostic autopilot hold test

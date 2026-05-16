@@ -1,5 +1,11 @@
 # ADR 0009: Action Lifecycle Contract
 
+## Related
+
+- [ADR 0006](0006-action-execution-system.md) - defines the action execution architecture this ADR refines.
+- [ADR 0011](0011-atomic-actions-and-wait-for.md) - what belongs as an action parameter vs. a `wait_for` precondition.
+- [`src/ksp_mission_control/control/actions/CLAUDE.md`](../src/ksp_mission_control/control/actions/CLAUDE.md) - companion file-structure and helpers guide for action authors.
+
 ## Context
 
 As the number of actions grows, inconsistencies have appeared in how actions handle parameter storage, type conversion, validation, error reporting, and cleanup. Some actions use `param_values.get()` with inline defaults, others use bracket access; some validate enums, others don't; some re-validate params in `tick()`, others trust `start()`. This makes actions harder to review, debug, and extend.

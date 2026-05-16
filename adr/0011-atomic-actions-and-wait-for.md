@@ -1,5 +1,11 @@
 # ADR 0011: Atomic Actions and `wait_for` for Preconditions
 
+## Related
+
+- [ADR 0006](0006-action-execution-system.md) - action execution architecture.
+- [ADR 0009](0009-action-lifecycle-contract.md) - lifecycle contract for `start`/`tick`/`stop`.
+- [`src/ksp_mission_control/control/actions/CLAUDE.md`](../src/ksp_mission_control/control/actions/CLAUDE.md) - file-structure and helpers guide for action authors.
+
 ## Context
 
 As actions accumulated, several of them grew parameters that were really just preconditions: gates that block the action from doing its real work until some condition on `State` is met. Examples that existed in the codebase:

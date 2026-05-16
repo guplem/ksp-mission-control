@@ -1,5 +1,11 @@
 # ADR 0006: Tick-based Action Execution System
 
+## Related
+
+- [ADR 0009](0009-action-lifecycle-contract.md) - strict contract for `start`/`tick`/`stop` methods.
+- [ADR 0011](0011-atomic-actions-and-wait-for.md) - what belongs on an action vs. in a `wait_for` step.
+- [`src/ksp_mission_control/control/actions/CLAUDE.md`](../src/ksp_mission_control/control/actions/CLAUDE.md) - file-structure and helpers guide for action authors.
+
 ## Context
 
 The control screen needs to support automated vessel actions (hover, ascend to orbit, wait-until conditions, etc.). Each action follows a loop: read vessel state, decide what controls to set, repeat. Actions must be testable without a running KSP instance.
