@@ -19,8 +19,7 @@ from ksp_mission_control.control.actions.base import (
     VesselSituation,
 )
 
-# --- PD controller tuning constants ---
-# The throttle output is: 0.5 (hover baseline) + KP * speed_error - KD * acceleration
+# PD controller: throttle = 0.5 (hover baseline) + KP * speed_error - KD * acceleration.
 # KP converts m/s speed error into throttle adjustment (0-1 range).
 # KD damps rapid velocity changes to prevent throttle oscillation and mid-descent stalls.
 _KP = 0.3

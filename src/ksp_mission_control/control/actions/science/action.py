@@ -130,6 +130,8 @@ class ExecuteScienceAction(Action):
     def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
         pass
 
+    # ---- Helpers ------------------------------------------------------
+
     def _matches(self, experiment: ScienceExperiment) -> bool:
         if self._index is not None and experiment.index != self._index:
             return False

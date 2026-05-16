@@ -56,10 +56,6 @@ from ksp_mission_control.control.actions.base import (
     VesselCommands,
 )
 
-# ---------------------------------------------------------------------------
-# Tuning constants
-# ---------------------------------------------------------------------------
-
 # Altitude hold (cascaded velocity controller, same gains as HoverAction)
 _SPEED_GAIN = 0.5  # m/s desired vertical speed per meter of altitude error
 _MAX_APPROACH_SPEED = 50.0  # cap on vertical climb/descent rate (m/s)
@@ -72,11 +68,6 @@ _RCS_GAIN = 0.2  # RCS axis output per m/s of velocity error
 # Arrival / completion
 _ARRIVAL_DISTANCE = 2.0  # meters: close enough to declare success
 _ARRIVAL_SPEED = 1.0  # m/s: slow enough to declare success
-
-
-# ---------------------------------------------------------------------------
-# Geometry helpers
-# ---------------------------------------------------------------------------
 
 
 def _lat_lon_to_meters(
@@ -144,11 +135,6 @@ def _world_to_vessel(
     return forward, right, up
 
 
-# ---------------------------------------------------------------------------
-# Action
-# ---------------------------------------------------------------------------
-
-
 class TranslateAction(Action):
     """Move horizontally while holding altitude using multi-axis RCS."""
 
@@ -185,8 +171,6 @@ class TranslateAction(Action):
         ),
     ]
 
-    # -- Lifecycle ------------------------------------------------------------
-
     def start(self, state: State, param_values: dict[str, Any]) -> None:
         self._distance_north: float = float(param_values["distance_north"])
         self._distance_east: float = float(param_values["distance_east"])
@@ -203,8 +187,7 @@ class TranslateAction(Action):
         self._prev_traveled_east: float = 0.0
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
-
-        # ── 1. Where are we? ────────────────────────────────────────────────
+        # 1. Where are we?
         traveled_north, traveled_east = _lat_lon_to_meters(
             state.position_latitude,
             state.position_longitude,
@@ -217,7 +200,7 @@ class TranslateAction(Action):
         remaining_east = self._distance_east - traveled_east
         remaining_distance = math.sqrt(remaining_north**2 + remaining_east**2)
 
-        # ── 2. How fast are we going? ───────────────────────────────────────
+        # 2. How fast are we going?
         safe_dt = max(dt, 0.01)
         velocity_north = (traveled_north - self._prev_traveled_north) / safe_dt
         velocity_east = (traveled_east - self._prev_traveled_east) / safe_dt
@@ -225,12 +208,12 @@ class TranslateAction(Action):
         self._prev_traveled_east = traveled_east
         actual_speed = math.sqrt(velocity_north**2 + velocity_east**2)
 
-        # ── 3. Are we there yet? ────────────────────────────────────────────
+        # 3. Are we there yet?
         if remaining_distance < _ARRIVAL_DISTANCE and actual_speed < _ARRIVAL_SPEED:
             log.info(f"Target reached: traveled N={traveled_north:,.1f}m E={traveled_east:,.1f}m")
             return ActionResult(status=ActionStatus.SUCCEEDED)
 
-        # ── 4. Altitude hold ────────────────────────────────────────────────
+        # 4. Altitude hold
         altitude_error = self._target_altitude - state.altitude_surface
         desired_vspeed = max(
             -_MAX_APPROACH_SPEED,
@@ -239,12 +222,12 @@ class TranslateAction(Action):
         vspeed_error = desired_vspeed - state.speed_vertical
         commands.throttle = max(0.0, min(1.0, 0.5 + _KP_SPEED * vspeed_error))
 
-        # ── 5. Keep vessel upright with SAS radial ──────────────────────────
+        # 5. Keep vessel upright with SAS radial
         commands.sas = True
         commands.sas_mode = SASMode.RADIAL
         commands.rcs = True
 
-        # ── 6. Desired velocity vector ──────────────────────────────────────
+        # 6. Desired velocity vector
         # Scale desired speed with distance: fast when far, slow when close.
         desired_speed = min(
             self._max_speed,
@@ -259,11 +242,11 @@ class TranslateAction(Action):
             desired_velocity_north = 0.0
             desired_velocity_east = 0.0
 
-        # ── 7. Velocity error in world space ────────────────────────────────
+        # 7. Velocity error in world space
         error_north = desired_velocity_north - velocity_north
         error_east = desired_velocity_east - velocity_east
 
-        # ── 8. Project onto vessel axes ─────────────────────────────────────
+        # 8. Project onto vessel axes
         # Convert world-space velocity error to vessel body axes using the
         # full 3D orientation. All three axes are needed because the vessel
         # may have significant roll (e.g., -90 deg in SAS radial mode).
@@ -279,7 +262,7 @@ class TranslateAction(Action):
         commands.translate_right = max(-1.0, min(1.0, _RCS_GAIN * body_right))
         commands.translate_up = max(-1.0, min(1.0, _RCS_GAIN * body_up))
 
-        # ── 9. Debug log ───────────────────────────────────────────────────
+        # 9. Debug log
         log.debug(
             f"translate: remaining N={remaining_north:+,.1f}m E={remaining_east:+,.1f}m "
             f"dist={remaining_distance:,.1f}m  "

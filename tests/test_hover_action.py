@@ -204,7 +204,8 @@ class TestHoverActionDuration:
 class TestHoverActionStop:
     """Tests for HoverAction cleanup on stop."""
 
-    def test_stop_does_not_reset_commands(self) -> None:
+    def test_stop_clears_commanded_systems(self) -> None:
+        """stop() resets every system the action commanded during tick()."""
         action = HoverAction()
         state = State()
         action.start(
@@ -216,6 +217,6 @@ class TestHoverActionStop:
         )
         controls = VesselCommands()
         action.stop(state, controls, log=ActionLogger())
-        # HoverAction.stop() only logs; no command resets
-        assert controls.throttle is None
-        assert controls.sas is None
+        assert controls.throttle == 0.0
+        assert controls.sas is False
+        assert controls.rcs is False
