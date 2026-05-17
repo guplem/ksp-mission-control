@@ -89,6 +89,10 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
     def _load_plans(self) -> None:
         """Scan the plans directory recursively for .plan files.
 
+        Plans marked with ``@hidden`` are dropped from the listing: they can
+        still be spawned via ``@parallel`` from another plan, but they are
+        not directly selectable from the picker.
+
         When ``require_craft`` is True, plans without an ``@craft`` directive
         are dropped from the listing entirely.
         """
@@ -103,6 +107,8 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
                 plan = parse_flight_plan(plan_file)
             except ValueError as exc:
                 self._parse_errors[display_name] = str(exc)
+                continue
+            if plan.is_hidden:
                 continue
             if self._require_craft and plan.craft is None:
                 continue

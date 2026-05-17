@@ -10,6 +10,10 @@ space-separated key=value parameters. Example:
 A line of the form ``@parallel <relative-path>`` becomes a ``ParallelStep``
 in its position. When the executor reaches it, it spawns the referenced
 sub-plan as a parallel track and immediately advances to the next step.
+
+A bare ``@hidden`` directive marks the plan as a sub-plan: it can still be
+spawned via ``@parallel`` from another plan, but it does not appear in the
+top-level flight plan picker.
 """
 
 from __future__ import annotations
@@ -61,6 +65,7 @@ class FlightPlan:
     name: str
     steps: tuple[PlanStep, ...]
     craft: str | None = None
+    is_hidden: bool = False
 
 
 def _parse_param_value(raw: str, param_type: ParamType) -> float | bool | str:
@@ -129,6 +134,7 @@ def parse_flight_plan(path: Path) -> FlightPlan:
     actions = get_available_actions()
     steps: list[PlanStep] = []
     craft: str | None = None
+    is_hidden: bool = False
 
     text = path.read_text(encoding="utf-8")
     for line_number, raw_line in enumerate(text.splitlines(), start=1):
@@ -152,6 +158,12 @@ def parse_flight_plan(path: Path) -> FlightPlan:
             craft = craft_name
             continue
 
+        if line == "@hidden":
+            is_hidden = True
+            continue
+        if line.startswith("@hidden "):
+            raise ValueError(f"Line {line_number}: @hidden takes no arguments")
+
         tokens = line.split()
         action_id = tokens[0]
         try:
@@ -170,4 +182,5 @@ def parse_flight_plan(path: Path) -> FlightPlan:
         name=plan_name,
         steps=tuple(steps),
         craft=craft,
+        is_hidden=is_hidden,
     )

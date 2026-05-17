@@ -265,3 +265,43 @@ class TestParseCraftDirective:
         plan = parse_flight_plan(plan_file)
         assert plan.craft == "fart-1"
         assert plan.steps == (ParallelStep(plan_path="science/collect.plan"),)
+
+
+class TestParseHiddenDirective:
+    """Tests for @hidden directive parsing in .plan files."""
+
+    def test_hidden_directive_sets_flag(self, tmp_path: Path) -> None:
+        plan_file = tmp_path / "secret.plan"
+        plan_file.write_text("@hidden\nhover\n")
+        plan = parse_flight_plan(plan_file)
+        assert plan.is_hidden is True
+        assert len(plan.steps) == 1
+
+    def test_no_hidden_defaults_to_false(self, tmp_path: Path) -> None:
+        plan_file = tmp_path / "visible.plan"
+        plan_file.write_text("hover\n")
+        plan = parse_flight_plan(plan_file)
+        assert plan.is_hidden is False
+
+    def test_hidden_is_idempotent(self, tmp_path: Path) -> None:
+        plan_file = tmp_path / "double_hidden.plan"
+        plan_file.write_text("@hidden\n@hidden\nhover\n")
+        plan = parse_flight_plan(plan_file)
+        assert plan.is_hidden is True
+
+    def test_hidden_with_arguments_raises(self, tmp_path: Path) -> None:
+        plan_file = tmp_path / "bad_hidden.plan"
+        plan_file.write_text("@hidden true\nhover\n")
+        with pytest.raises(ValueError, match="@hidden takes no arguments"):
+            parse_flight_plan(plan_file)
+
+    def test_hidden_combines_with_craft_and_parallel(self, tmp_path: Path) -> None:
+        plan_file = tmp_path / "all_directives.plan"
+        plan_file.write_text("@hidden\n@craft fart-1\n@parallel science/collect.plan\nhover\n")
+        plan = parse_flight_plan(plan_file)
+        assert plan.is_hidden is True
+        assert plan.craft == "fart-1"
+        assert plan.steps == (
+            ParallelStep(plan_path="science/collect.plan"),
+            FlightPlanStep(action_id="hover", param_values={}),
+        )
