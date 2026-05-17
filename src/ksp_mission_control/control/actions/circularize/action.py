@@ -108,8 +108,10 @@ class CircularizeAction(Action):
 
         # Still burning. execute_node already handled auto-staging this tick.
         # If we have genuinely run out of thrust with nothing to stage into,
-        # the burn cannot complete: fail rather than spin forever.
-        if state.thrust_available <= 0.0:
+        # the burn cannot complete: fail rather than spin forever. But if
+        # commands.stage was set this tick (auto_stage queued a stage), the
+        # next tick will see the new engine's thrust, so defer the failure.
+        if state.thrust_available <= 0.0 and commands.stage is not True:
             return ActionResult(
                 status=ActionStatus.FAILED,
                 message=f"Failed: no thrust available. dv_remaining={node.delta_v_remaining:.1f} m/s",
