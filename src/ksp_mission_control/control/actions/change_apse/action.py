@@ -53,7 +53,6 @@ from ksp_mission_control.control.actions.helpers.maneuver_node import execute_no
 from ksp_mission_control.control.actions.helpers.staging import (
     STAGING_MODE_PARAM,
     StagingMode,
-    auto_stage,
     parse_staging_mode,
 )
 
@@ -142,7 +141,7 @@ class ChangeApseAction(Action):
         if node is None:
             return self._request_node(state, commands, log)
 
-        if execute_node(state, commands, node, log):
+        if execute_node(state, commands, node, self._staging_mode, log):
             commands.remove_node_at_ut = node.ut
             commands.autopilot = False
             commands.throttle = 0.0
@@ -151,12 +150,9 @@ class ChangeApseAction(Action):
                 message=f"Set {self._target.display_name} to {self._target_altitude:,.0f}m",
             )
 
-        # Still burning. Try auto-staging first; execute_node will recompute
-        # burn timing next tick from the post-stage mass and thrust. If we
-        # have genuinely run out of thrust with nothing to stage into, fail.
-        if auto_stage(state, commands, self._staging_mode, log):
-            return ActionResult(status=ActionStatus.RUNNING, message="Staging to next stage")
-
+        # Still burning. execute_node already handled auto-staging this tick.
+        # If we have genuinely run out of thrust with nothing to stage into,
+        # the burn cannot complete: fail rather than spin forever.
         if state.thrust_available <= 0.0:
             return ActionResult(
                 status=ActionStatus.FAILED,

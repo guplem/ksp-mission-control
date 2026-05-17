@@ -161,25 +161,37 @@ Examples in tree: `launch`, `change_apse`.
 
 | Helper | Function / constant | Purpose |
 |---|---|---|
-| `helpers.maneuver_node` | `execute_node(state, commands, node, log)` | Drive the vessel through a kRPC maneuver node. Returns `True` when the burn completes. |
+| `helpers.maneuver_node` | `execute_node(state, commands, node, staging_mode, log)` | Drive the vessel through a kRPC maneuver node. Calls `auto_stage` internally when `staging_mode` is not `None`. Returns `True` when the burn completes. |
 | `helpers.maneuver_node` | `tsiolkovsky_burn_time(...)` | Estimate burn duration from current mass/Isp/thrust. Used by the bridge to populate `ManeuverNode.burn_time_estimate`. |
 | `helpers.staging` | `STAGING_MODE_PARAM` | Canonical `staging_mode` `ActionParam`. Add to `params` unchanged. |
 | `helpers.staging` | `parse_staging_mode(value)` | `str | None -> StagingMode | None`. Use in `start()`. |
-| `helpers.staging` | `auto_stage(state, commands, mode, log)` | Stage when fuel depletes or any engine flames out. Accepts `mode=None` (short-circuits). Returns `True` when it set `commands.stage = True`. |
+| `helpers.staging` | `auto_stage(state, commands, mode, log)` | Stage when fuel depletes or any engine flames out. Accepts `mode=None` (short-circuits). Returns `True` when it set `commands.stage = True`. Node-driven actions do **not** call this directly: `execute_node` does. |
 
 ### Auto-staging contract
 
 `auto_stage` is safe to call unconditionally - it short-circuits when
-`mode is None`. Use it like this:
+`mode is None`. Use it like this in non-node burn actions
+(`launch`, `aerobreak`, `suborbital_launch`):
 
 ```python
 if auto_stage(state, commands, self._staging_mode, log):
     return ActionResult(status=ActionStatus.RUNNING, message="Staging to next stage")
 ```
 
+In node-driven actions (`circularize`, `change_apse`) you do not call
+`auto_stage` yourself: pass `self._staging_mode` to `execute_node` and
+the helper invokes it before throttle decisions, so a spent stage drops
+mid-burn and the next tick re-plans burn timing against the new
+mass/thrust.
+
 ### No-thrust failure pattern
 
-Any action that runs the engines should follow this pattern, in this order:
+Any action that runs the engines should fail rather than spin forever
+once thrust is exhausted with nothing to stage into. The exact placement
+differs by action shape:
+
+**Non-node burn actions** (`launch`, `aerobreak`, `suborbital_launch`)
+follow this pattern, in this order:
 
 ```python
 # 1. Try auto-staging first.
@@ -193,11 +205,20 @@ if state.thrust_available <= 0.0:
 # 3. Otherwise drive normal flight logic ...
 ```
 
-For node-driven actions (`circularize`, `change_apse`), put this block after
-the `execute_node` completion check, before returning the running status.
-For ascent / brake actions (`launch`, `suborbital_launch`, `aerobreak`),
-put it as the first effective check in `tick()` after any deferred-fail
-guard.
+Put this block as the first effective check in `tick()` after any
+deferred-fail guard.
+
+**Node-driven actions** (`circularize`, `change_apse`) collapse to a
+single post-`execute_node` thrust check, because `execute_node` already
+invoked `auto_stage` this tick:
+
+```python
+if execute_node(state, commands, node, self._staging_mode, log):
+    # ... burn complete, return SUCCEEDED
+if state.thrust_available <= 0.0:
+    return ActionResult(status=ActionStatus.FAILED, message="No thrust available")
+# ... return RUNNING
+```
 
 ## Tests
 

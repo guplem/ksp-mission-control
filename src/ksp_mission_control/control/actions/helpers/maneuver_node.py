@@ -18,6 +18,13 @@ Phases:
 ``burn_start_ut`` is recomputed every tick from current mass, Isp, and
 available thrust via the Tsiolkovsky rocket equation, so changes during
 the burn (staging, drained tanks) self-correct.
+
+Auto-staging is handled in-helper: pass a non-None ``staging_mode`` and
+``auto_stage`` is invoked before throttle decisions so a spent stage is
+dropped mid-burn without the caller wiring the check itself. The helper
+does not surface a separate "no thrust" signal; callers that need to fail
+on thrust exhaustion check ``state.thrust_available`` after the helper
+returns ``False``.
 """
 
 from __future__ import annotations
@@ -32,6 +39,7 @@ from ksp_mission_control.control.actions.base import (
     State,
     VesselCommands,
 )
+from ksp_mission_control.control.actions.helpers.staging import StagingMode, auto_stage
 
 # Burn is considered complete when remaining delta-v drops below this
 # threshold. 0.1 m/s matches the kRPC tutorial's deadband and keeps small
@@ -46,6 +54,7 @@ def execute_node(
     state: State,
     commands: VesselCommands,
     node: ManeuverNode,
+    staging_mode: StagingMode | None,
     log: ActionLogger,
 ) -> bool:
     """Drive the vessel through one maneuver node.
@@ -53,8 +62,10 @@ def execute_node(
     Sets ``commands.autopilot`` and ``commands.autopilot_direction`` to
     point along the node's remaining burn vector every tick. Throttles to
     0 while still coasting; throttles to 1 once the burn window is
-    entered. Returns ``True`` when ``node.delta_v_remaining`` falls below
-    the completion threshold.
+    entered. When ``staging_mode`` is not ``None``, also delegates to
+    ``auto_stage`` so spent stages drop without caller wiring. Returns
+    ``True`` when ``node.delta_v_remaining`` falls below the completion
+    threshold.
 
     The caller is responsible for cleanup after completion (e.g. setting
     ``commands.remove_node_at_ut`` and disengaging the autopilot).
@@ -72,6 +83,11 @@ def execute_node(
         commands.throttle = 0.0
         log.info(f"Maneuver complete (dv_remaining={node.delta_v_remaining:.2f} m/s)")
         return True
+
+    # Auto-stage before throttle decisions so a spent stage is dropped
+    # mid-burn and the next tick re-plans burn timing against the new
+    # mass/thrust. Short-circuits when staging_mode is None.
+    auto_stage(state, commands, staging_mode, log)
 
     # If burn_time is not computable (no thrust, no fuel, or engines off)
     # stay cold rather than commanding throttle into a vessel that cannot
