@@ -1,0 +1,108 @@
+"""Tests for FlightPlanPicker - display-name logic and plan loading."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from ksp_mission_control.control.flight_plan_picker import (
+    FlightPlanPicker,
+    compute_plan_display_name,
+)
+
+
+class TestComputePlanDisplayName:
+    """Tests for compute_plan_display_name (pure function)."""
+
+    def test_top_level_plan_keeps_stem(self, tmp_path: Path) -> None:
+        plans_dir = tmp_path
+        plan_file = plans_dir / "altitude-steps.plan"
+        plan_file.touch()
+        counts = {plan_file.parent: 1}
+        assert compute_plan_display_name(plan_file, plans_dir, counts) == "altitude-steps"
+
+    def test_nested_non_main_plan_shows_full_path(self, tmp_path: Path) -> None:
+        plans_dir = tmp_path
+        plan_dir = plans_dir / "science" / "1-low-atmospheric-hop"
+        plan_dir.mkdir(parents=True)
+        plan_file = plan_dir / "vessel_control.plan"
+        plan_file.touch()
+        counts = {plan_dir: 1}
+        assert compute_plan_display_name(plan_file, plans_dir, counts) == "science/1-low-atmospheric-hop/vessel_control"
+
+    def test_lone_main_collapses_to_folder(self, tmp_path: Path) -> None:
+        plans_dir = tmp_path
+        plan_dir = plans_dir / "science" / "1-low-atmospheric-hop"
+        plan_dir.mkdir(parents=True)
+        plan_file = plan_dir / "main.plan"
+        plan_file.touch()
+        counts = {plan_dir: 1}
+        assert compute_plan_display_name(plan_file, plans_dir, counts) == "science/1-low-atmospheric-hop"
+
+    def test_main_with_visible_sibling_keeps_stem(self, tmp_path: Path) -> None:
+        plans_dir = tmp_path
+        plan_dir = plans_dir / "tests-folder"
+        plan_dir.mkdir()
+        main_file = plan_dir / "main.plan"
+        main_file.touch()
+        counts = {plan_dir: 2}
+        assert compute_plan_display_name(main_file, plans_dir, counts) == "tests-folder/main"
+
+    def test_top_level_main_returns_main(self, tmp_path: Path) -> None:
+        plans_dir = tmp_path
+        plan_file = plans_dir / "main.plan"
+        plan_file.touch()
+        counts = {plan_file.parent: 1}
+        assert compute_plan_display_name(plan_file, plans_dir, counts) == "main"
+
+
+class TestLoadPlans:
+    """Tests for FlightPlanPicker._load_plans against a real plans directory."""
+
+    def test_hidden_plans_are_excluded(self, tmp_path: Path) -> None:
+        (tmp_path / "visible.plan").write_text("hover\n")
+        (tmp_path / "secret.plan").write_text("@hidden\nhover\n")
+        picker = FlightPlanPicker(plans_dir=tmp_path)
+        picker._load_plans()
+        assert set(picker._parsed_plans.keys()) == {"visible"}
+
+    def test_lone_main_in_folder_collapses_display_name(self, tmp_path: Path) -> None:
+        folder = tmp_path / "mission-a"
+        folder.mkdir()
+        (folder / "main.plan").write_text("@parallel mission-a/inner.plan\n")
+        (folder / "inner.plan").write_text("@hidden\nhover\n")
+        picker = FlightPlanPicker(plans_dir=tmp_path)
+        picker._load_plans()
+        assert "mission-a" in picker._parsed_plans
+        assert "mission-a/main" not in picker._parsed_plans
+        assert "mission-a/inner" not in picker._parsed_plans
+
+    def test_main_with_visible_sibling_keeps_full_path(self, tmp_path: Path) -> None:
+        folder = tmp_path / "mission-b"
+        folder.mkdir()
+        (folder / "main.plan").write_text("hover\n")
+        (folder / "alt.plan").write_text("hover\n")
+        picker = FlightPlanPicker(plans_dir=tmp_path)
+        picker._load_plans()
+        assert "mission-b/main" in picker._parsed_plans
+        assert "mission-b/alt" in picker._parsed_plans
+
+    def test_require_craft_drops_plans_without_craft(self, tmp_path: Path) -> None:
+        (tmp_path / "with-craft.plan").write_text("@craft fart-1\nhover\n")
+        (tmp_path / "no-craft.plan").write_text("hover\n")
+        picker = FlightPlanPicker(plans_dir=tmp_path, require_craft=True)
+        picker._load_plans()
+        assert set(picker._parsed_plans.keys()) == {"with-craft"}
+
+    def test_parse_errors_are_recorded(self, tmp_path: Path) -> None:
+        (tmp_path / "bad.plan").write_text("nonexistent_action\n")
+        picker = FlightPlanPicker(plans_dir=tmp_path)
+        picker._load_plans()
+        assert "bad" in picker._parse_errors
+        assert picker._parsed_plans == {}
+
+    def test_missing_plans_dir_is_silent(self, tmp_path: Path) -> None:
+        missing_dir = tmp_path / "does-not-exist"
+        picker = FlightPlanPicker(plans_dir=missing_dir)
+        picker._load_plans()
+        assert picker._parsed_plans == {}
+        assert picker._parse_errors == {}

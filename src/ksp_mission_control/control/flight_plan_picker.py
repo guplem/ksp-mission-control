@@ -17,6 +17,33 @@ from ksp_mission_control.control.actions.flight_plan import (
 )
 
 _PLANS_DIR_NAME = "plans"
+_FOLDER_ENTRYPOINT_STEM = "main"
+
+
+def compute_plan_display_name(
+    plan_file: Path,
+    plans_dir: Path,
+    folder_visible_counts: dict[Path, int],
+) -> str:
+    """Return the picker label for a single plan file.
+
+    A plan named ``main.plan`` is collapsed to its parent folder name when
+    that folder contains no other visible plans, so e.g.
+    ``science/1-low-atmospheric-hop/main`` becomes
+    ``science/1-low-atmospheric-hop``. All other plans keep their full
+    ``folder/stem`` path.
+
+    ``folder_visible_counts`` maps each parent folder to the number of
+    plans the picker would otherwise display from it (hidden plans
+    excluded).
+    """
+    relative = plan_file.relative_to(plans_dir)
+    if plan_file.stem == _FOLDER_ENTRYPOINT_STEM and folder_visible_counts.get(plan_file.parent, 0) == 1:
+        parent_relative = relative.parent
+        if str(parent_relative) == ".":
+            return _FOLDER_ENTRYPOINT_STEM
+        return str(parent_relative).replace("\\", "/")
+    return str(relative.with_suffix("")).replace("\\", "/")
 
 
 class FlightPlanPicker(ModalScreen[FlightPlan | None]):
@@ -95,23 +122,37 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
 
         When ``require_craft`` is True, plans without an ``@craft`` directive
         are dropped from the listing entirely.
+
+        Display names are computed via ``compute_plan_display_name``, which
+        collapses ``folder/main`` to ``folder`` when ``main`` is the sole
+        visible entry-point of its folder.
         """
         self._parsed_plans.clear()
         self._parse_errors.clear()
         if not self._plans_dir.is_dir():
             return
+
+        parsed_by_path: dict[Path, FlightPlan] = {}
         for plan_file in sorted(self._plans_dir.rglob("*.plan")):
             relative = plan_file.relative_to(self._plans_dir)
-            display_name = str(relative.with_suffix("")).replace("\\", "/")
+            fallback_key = str(relative.with_suffix("")).replace("\\", "/")
             try:
                 plan = parse_flight_plan(plan_file)
             except ValueError as exc:
-                self._parse_errors[display_name] = str(exc)
+                self._parse_errors[fallback_key] = str(exc)
                 continue
             if plan.is_hidden:
                 continue
             if self._require_craft and plan.craft is None:
                 continue
+            parsed_by_path[plan_file] = plan
+
+        folder_visible_counts: dict[Path, int] = {}
+        for plan_file in parsed_by_path:
+            folder_visible_counts[plan_file.parent] = folder_visible_counts.get(plan_file.parent, 0) + 1
+
+        for plan_file, plan in parsed_by_path.items():
+            display_name = compute_plan_display_name(plan_file, self._plans_dir, folder_visible_counts)
             self._parsed_plans[display_name] = plan
 
     def compose(self) -> ComposeResult:
