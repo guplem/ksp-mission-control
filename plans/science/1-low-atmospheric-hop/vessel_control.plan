@@ -1,4 +1,4 @@
-launch staging_mode=any_flameout target_altitude=6_000
+launch target_altitude=6_000
 
 # Get rid of the solid booster once it's out of fuel
 wait_for   below_current_thrust=0

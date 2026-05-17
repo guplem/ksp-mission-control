@@ -48,40 +48,48 @@ class StagingMode(Enum):
     """Stage as soon as any active engine flames out (drops spent side boosters)."""
 
 
+# Sentinel string for "auto-staging disabled" in plan files and the UI.
+# ``None`` is the Python representation; plans need a writable keyword.
+STAGING_OFF_KEYWORD: str = "off"
+
 # Shared param descriptor: every action that opts into auto-staging declares
 # the same parameter, so .plan files and the UI present a uniform interface.
+# Default is ``any_flameout`` because on single-engine stages it is identical
+# to ``full_depletion`` and on asparagus designs it is what the user wants;
+# the only design that needs a different value is an engine cluster where one
+# engine is allowed to die without staging.
 STAGING_MODE_PARAM: ActionParam = ActionParam(
     param_id="staging_mode",
     label="Staging Mode",
     description=(
-        "Automatic staging trigger. "
-        "'full_depletion' stages when all active engines have flamed out and an inactive engine is waiting. "
-        "'any_flameout' also stages as soon as a single engine flames out, useful for dropping spent asparagus side boosters. "
-        "Omit (or leave blank) for no auto-staging."
+        "Automatic staging trigger. Defaults to 'any_flameout': stages as soon as any active engine flames out "
+        "(subsumes 'full_depletion' on single-engine stages, drops spent asparagus side boosters on clustered ones). "
+        "Use 'full_depletion' to stage only when all active engines have flamed out and an inactive engine is waiting. "
+        "Use 'off' to disable auto-staging entirely."
     ),
     required=False,
     param_type=ParamType.STR,
-    default=None,
+    default=StagingMode.ANY_FLAMEOUT.value,
 )
 
 
 def parse_staging_mode(value: object) -> StagingMode | None:
     """Parse a ``staging_mode`` param value into an optional StagingMode.
 
-    ``None`` (or an empty/whitespace string) means "no auto-staging". A
-    non-empty string must match a StagingMode value, case-insensitive.
-    Raises ``ValueError`` on any other input.
+    ``None``, an empty/whitespace string, or the literal ``"off"`` (case
+    insensitive) all mean "no auto-staging". Any other string must match a
+    StagingMode value, case-insensitive. Raises ``ValueError`` otherwise.
     """
     if value is None:
         return None
     text = str(value).strip().lower()
-    if not text:
+    if not text or text == STAGING_OFF_KEYWORD:
         return None
     try:
         return StagingMode(text)
     except ValueError:
         valid = ", ".join(m.value for m in StagingMode)
-        raise ValueError(f"Unknown staging_mode '{value}'. Valid: {valid} (or omit for off).") from None
+        raise ValueError(f"Unknown staging_mode '{value}'. Valid: {valid}, or '{STAGING_OFF_KEYWORD}' to disable.") from None
 
 
 def auto_stage(

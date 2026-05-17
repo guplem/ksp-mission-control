@@ -1,4 +1,4 @@
-launch staging_mode=any_flameout target_altitude=25_000 final_pitch=45
+launch target_altitude=25_000 final_pitch=45
 sas        mode=prograde
 
 # Get rid of the remaining weight once apogee is the desired altitude

@@ -1,4 +1,4 @@
-launch staging_mode=any_flameout target_altitude=75_000
+launch target_altitude=75_000
 circularize  apse=apoapsis
 
 # Raise orbit to "far space" 

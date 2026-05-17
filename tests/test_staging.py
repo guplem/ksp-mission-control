@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from ksp_mission_control.control.actions.base import (
     ActionLogger,
     PartInfo,
@@ -9,7 +11,12 @@ from ksp_mission_control.control.actions.base import (
     State,
     VesselCommands,
 )
-from ksp_mission_control.control.actions.helpers.staging import StagingMode, auto_stage
+from ksp_mission_control.control.actions.helpers.staging import (
+    STAGING_MODE_PARAM,
+    StagingMode,
+    auto_stage,
+    parse_staging_mode,
+)
 
 
 def _engines(*states: str) -> tuple[PartInfo, ...]:
@@ -130,3 +137,51 @@ class TestLogging:
         log = ActionLogger()
         auto_stage(state, VesselCommands(), StagingMode.ANY_FLAMEOUT, log)
         assert any("flameout" in entry.message.lower() for entry in log.entries)
+
+
+class TestStagingModeParamDefault:
+    """``STAGING_MODE_PARAM`` defaults to ANY_FLAMEOUT so plans get auto-staging without opting in."""
+
+    def test_param_default_is_any_flameout(self) -> None:
+        assert STAGING_MODE_PARAM.default == StagingMode.ANY_FLAMEOUT.value
+
+    def test_default_parses_back_to_any_flameout(self) -> None:
+        """A plan omitting staging_mode resolves to the param default, which must parse cleanly."""
+        assert parse_staging_mode(STAGING_MODE_PARAM.default) is StagingMode.ANY_FLAMEOUT
+
+
+class TestParseStagingMode:
+    """``parse_staging_mode`` accepts the enum values, the 'off' sentinel, and empty/None for off."""
+
+    def test_none_is_off(self) -> None:
+        assert parse_staging_mode(None) is None
+
+    def test_empty_string_is_off(self) -> None:
+        assert parse_staging_mode("") is None
+
+    def test_whitespace_only_is_off(self) -> None:
+        assert parse_staging_mode("   ") is None
+
+    def test_off_keyword_is_off(self) -> None:
+        assert parse_staging_mode("off") is None
+
+    def test_off_keyword_is_case_insensitive(self) -> None:
+        assert parse_staging_mode("OFF") is None
+        assert parse_staging_mode("Off") is None
+
+    def test_off_keyword_strips_whitespace(self) -> None:
+        assert parse_staging_mode("  off  ") is None
+
+    def test_full_depletion_keyword(self) -> None:
+        assert parse_staging_mode("full_depletion") is StagingMode.FULL_DEPLETION
+
+    def test_any_flameout_keyword(self) -> None:
+        assert parse_staging_mode("any_flameout") is StagingMode.ANY_FLAMEOUT
+
+    def test_enum_keyword_is_case_insensitive(self) -> None:
+        assert parse_staging_mode("ANY_FLAMEOUT") is StagingMode.ANY_FLAMEOUT
+
+    def test_unknown_value_lists_off_in_error(self) -> None:
+        """Error message must mention the 'off' keyword so the user knows how to disable."""
+        with pytest.raises(ValueError, match=r"Unknown staging_mode 'bogus'.*off"):
+            parse_staging_mode("bogus")

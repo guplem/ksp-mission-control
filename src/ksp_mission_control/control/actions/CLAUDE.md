@@ -163,8 +163,8 @@ Examples in tree: `launch`, `change_apse`.
 |---|---|---|
 | `helpers.maneuver_node` | `execute_node(state, commands, node, staging_mode, log)` | Drive the vessel through a kRPC maneuver node. Calls `auto_stage` internally when `staging_mode` is not `None`. Returns `True` when the burn completes. |
 | `helpers.maneuver_node` | `tsiolkovsky_burn_time(...)` | Estimate burn duration from current mass/Isp/thrust. Used by the bridge to populate `ManeuverNode.burn_time_estimate`. |
-| `helpers.staging` | `STAGING_MODE_PARAM` | Canonical `staging_mode` `ActionParam`. Add to `params` unchanged. |
-| `helpers.staging` | `parse_staging_mode(value)` | `str | None -> StagingMode | None`. Use in `start()`. |
+| `helpers.staging` | `STAGING_MODE_PARAM` | Canonical `staging_mode` `ActionParam`. Add to `params` unchanged. Default is `any_flameout`; users disable it per-step with `staging_mode=off`. |
+| `helpers.staging` | `parse_staging_mode(value)` | `str | None -> StagingMode | None`. Accepts a `StagingMode` value (case-insensitive), `"off"`, or empty/`None` for disabled. Use in `start()`. |
 | `helpers.staging` | `auto_stage(state, commands, mode, log)` | Stage when fuel depletes or any engine flames out. Accepts `mode=None` (short-circuits). Returns `True` when it set `commands.stage = True`. Node-driven actions do **not** call this directly: `execute_node` does. |
 
 ### Auto-staging contract
