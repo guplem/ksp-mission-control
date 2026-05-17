@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from ksp_mission_control.control.actions.base import (
     ActionLogger,
     ManeuverNode,
@@ -115,6 +117,44 @@ class TestExecuteNodeThrottle:
         assert complete is True
         assert commands.throttle == 0.0
 
+    def test_completion_when_burn_vector_flips_retrograde(self) -> None:
+        """When burn_vector_remaining flips retrograde of the planned burn_vector, stop.
+
+        Regression for the circularize-loop bug: at end of burn the remaining
+        vector becomes tiny and noise-dominated; if it points opposite to the
+        original planned direction we have overshot and any further burn
+        deposits dv in the wrong direction. dv_remaining alone never reaches
+        the 0.1 m/s threshold because the magnitude grows back as the burn
+        oscillates.
+        """
+        # Original plan: +100 m/s along +y. Live remaining vector points -y
+        # with a small magnitude. dot = -2.0 < 0 -> overshoot.
+        node = _make_node(
+            ut=500.0,
+            delta_v_remaining=2.0,
+            burn_vector_remaining=(0.0, -2.0, 0.0),
+            burn_time_estimate=0.1,
+        )
+        commands = VesselCommands()
+        complete = execute_node(_make_burning_state(universal_time=500.0), commands, node, None, 0.5, ActionLogger())
+        assert complete is True
+        assert commands.throttle == 0.0
+
+    def test_no_overshoot_when_remaining_still_prograde(self) -> None:
+        """A small but still-prograde remaining vector keeps burning."""
+        # Same magnitude as the overshoot test but still pointing along +y.
+        node = _make_node(
+            ut=500.0,
+            delta_v_remaining=2.0,
+            burn_vector_remaining=(0.0, 2.0, 0.0),
+            burn_time_estimate=0.1,
+        )
+        commands = VesselCommands()
+        complete = execute_node(_make_burning_state(universal_time=500.0), commands, node, None, 0.5, ActionLogger())
+        assert complete is False
+        assert commands.throttle is not None
+        assert commands.throttle > 0.0
+
     def test_burn_start_is_centered_on_node_ut(self) -> None:
         """burn_start_ut = node.ut - burn_time_estimate/2; well before that is still cold."""
         # burn_time_estimate is 20s, so burn_start = ut - 10. At ut=500, burn starts at 490.
@@ -129,14 +169,14 @@ class TestExecuteNodeThrottle:
     def test_throttle_tapers_near_completion(self) -> None:
         """When burn_time_estimate < dt * _TAPER_MARGIN, throttle ramps down.
 
-        With dt=0.5s and _TAPER_MARGIN=2, the taper window is 1.0s of burn.
-        burn_time_estimate=0.4s -> throttle = 0.4 / (0.5 * 2) = 0.4.
+        With dt=0.5s and _TAPER_MARGIN=3, the taper window is 1.5s of burn.
+        burn_time_estimate=0.6s -> throttle = 0.6 / (0.5 * 3) = 0.4.
         """
-        node = _make_node(ut=500.0, delta_v_remaining=8.0, burn_time_estimate=0.4)
+        node = _make_node(ut=500.0, delta_v_remaining=8.0, burn_time_estimate=0.6)
         commands = VesselCommands()
         complete = execute_node(_make_burning_state(universal_time=500.0), commands, node, None, 0.5, ActionLogger())
         assert complete is False
-        assert commands.throttle == 0.4
+        assert commands.throttle == pytest.approx(0.4)
 
     def test_throttle_clamps_at_one_when_burn_long(self) -> None:
         """When burn_time_estimate >> dt * margin, the formula clamps to 1.0."""

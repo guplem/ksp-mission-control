@@ -17,7 +17,10 @@ Phases:
              approaches completion, so the engine ramps down across the
              last ~_TAPER_MARGIN ticks instead of overshooting on the
              final tick.
-    Done:    delta_v_remaining <= _BURN_COMPLETE_DV.
+    Done:    delta_v_remaining <= _BURN_COMPLETE_DV, OR the remaining
+             burn vector has flipped retrograde of the original planned
+             direction (i.e. dot(burn_vector, burn_vector_remaining) <= 0,
+             meaning the optimal burn moment has already been passed).
              Throttle = 0, helper returns True.
 
 ``burn_start_ut`` is recomputed every tick from current mass, Isp, and
@@ -56,10 +59,12 @@ _STANDARD_GRAVITY: float = 9.80665
 
 # Throttle taper margin. Throttle starts tapering when the remaining burn
 # at full thrust would take less than ``_TAPER_MARGIN * dt`` seconds, so
-# the engine ramps down over the last ~2 ticks instead of slamming to full
-# until the final tick. Wider margin = softer landing, ~1 extra tick at
-# the end of the burn.
-_TAPER_MARGIN: float = 2.0
+# the engine ramps down over the last ~3 ticks instead of slamming to full
+# until the final tick. Wider margin = softer landing with more low-throttle
+# ticks near completion, trading a little burn-window efficiency for better
+# autopilot tracking at small remaining dv (where the burn vector is
+# noise-dominated and a misaligned full-tick impulse easily overshoots).
+_TAPER_MARGIN: float = 3.0
 
 
 def execute_node(
@@ -95,6 +100,23 @@ def execute_node(
     if node.delta_v_remaining <= _BURN_COMPLETE_DV:
         commands.throttle = 0.0
         log.info(f"Maneuver complete (dv_remaining={node.delta_v_remaining:.2f} m/s)")
+        return True
+
+    # Overshoot detection: once the remaining burn vector points retrograde
+    # of the originally planned burn vector, the optimal burn moment has
+    # passed. The residual vector is now small enough that its direction is
+    # noise-dominated, so the autopilot cannot realign in time and any
+    # further throttle deposits dv in roughly the wrong direction, pushing
+    # the magnitude further from zero. Stop here; the residual is below
+    # what we can correct at the current tick rate.
+    burn_dot = (
+        node.burn_vector[0] * node.burn_vector_remaining[0]
+        + node.burn_vector[1] * node.burn_vector_remaining[1]
+        + node.burn_vector[2] * node.burn_vector_remaining[2]
+    )
+    if burn_dot <= 0.0:
+        commands.throttle = 0.0
+        log.info(f"Maneuver complete (overshoot detected, dv_remaining={node.delta_v_remaining:.2f} m/s)")
         return True
 
     # Auto-stage before throttle decisions so a spent stage is dropped
