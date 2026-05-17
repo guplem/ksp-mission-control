@@ -5,6 +5,10 @@
 autopilot_config time_to_peak=6.0 stopping_time=1.5 deceleration_time=8.0 attenuation_angle=5.0
 
 launch target_altitude=75_000
+
+# Booster dropped; restore default autopilot tuning for the lighter upper stage.
+autopilot_config restore_defaults=true
+
 circularize  apse=apoapsis
 
 # Raise orbit to "far space" 

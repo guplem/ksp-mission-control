@@ -3,8 +3,12 @@
 One-shot action: sends an ``AutopilotConfig`` command and succeeds in a
 single tick. Each scalar parameter is replicated to all three axes
 (pitch, yaw, roll). Fields the user omits fall back to the kRPC defaults
-defined on ``AutopilotConfig``, so a step with no params resets the
-autopilot to its default tuning.
+defined on ``AutopilotConfig``.
+
+To revert the autopilot to kRPC's default tuning, pass
+``restore_defaults=true``. In that mode no other tuning param may be
+provided; the action writes a full ``AutopilotConfig()`` (all default
+values) so kRPC's autopilot returns to its stock behavior.
 
 Useful knobs to dampen a wobbling vessel (resonance with the autopilot):
 
@@ -77,7 +81,23 @@ class AutopilotConfigAction(Action):
             param_type=ParamType.FLOAT,
             unit="deg",
         ),
+        ActionParam(
+            param_id="restore_defaults",
+            label="Restore Defaults",
+            description=("Reset all autopilot tuning to kRPC defaults. When true, no other tuning param may be set."),
+            required=False,
+            param_type=ParamType.BOOL,
+            default=False,
+        ),
     ]
+
+    _TUNING_PARAM_NAMES: ClassVar[tuple[str, ...]] = (
+        "time_to_peak",
+        "overshoot",
+        "stopping_time",
+        "deceleration_time",
+        "attenuation_angle",
+    )
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
         def _positive_or_none(name: str) -> float | None:
@@ -89,6 +109,12 @@ class AutopilotConfigAction(Action):
                 raise ValueError(f"{name} must be positive (got {value})")
             return value
 
+        self._restore_defaults: bool = bool(param_values.get("restore_defaults") or False)
+        if self._restore_defaults:
+            conflicting = [name for name in self._TUNING_PARAM_NAMES if param_values.get(name) is not None]
+            if conflicting:
+                raise ValueError(f"restore_defaults=true cannot be combined with tuning params: {', '.join(conflicting)}")
+
         self._time_to_peak: float | None = _positive_or_none("time_to_peak")
         self._overshoot: float | None = _positive_or_none("overshoot")
         self._stopping_time: float | None = _positive_or_none("stopping_time")
@@ -96,6 +122,13 @@ class AutopilotConfigAction(Action):
         self._attenuation_angle: float | None = _positive_or_none("attenuation_angle")
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
+        if self._restore_defaults:
+            commands.autopilot_config = AutopilotConfig()
+            return ActionResult(
+                status=ActionStatus.SUCCEEDED,
+                message="Restored autopilot tuning to kRPC defaults",
+            )
+
         kwargs: dict[str, Any] = {}
         parts: list[str] = []
 

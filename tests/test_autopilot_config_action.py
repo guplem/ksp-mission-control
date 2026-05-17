@@ -16,14 +16,15 @@ from ksp_mission_control.control.actions.base import (
 )
 
 
-def _all_none() -> dict[str, None]:
-    """Param dict with every optional field omitted (runner fills None)."""
+def _all_none() -> dict[str, None | bool]:
+    """Param dict with every optional field omitted (runner fills None/default)."""
     return {
         "time_to_peak": None,
         "overshoot": None,
         "stopping_time": None,
         "deceleration_time": None,
         "attenuation_angle": None,
+        "restore_defaults": False,
     }
 
 
@@ -118,3 +119,20 @@ class TestAutopilotConfigAction:
         commands = VesselCommands()
         action.stop(state, commands, ActionLogger())
         assert commands.autopilot_config is None
+
+    def test_restore_defaults_writes_default_config(self) -> None:
+        action = AutopilotConfigAction()
+        state = State()
+        action.start(state, _all_none() | {"restore_defaults": True})
+        commands = VesselCommands()
+        result = action.tick(state, commands, 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+        assert commands.autopilot_config == AutopilotConfig()
+        assert result.message == "Restored autopilot tuning to kRPC defaults"
+
+    def test_restore_defaults_rejects_other_tuning_params(self) -> None:
+        action = AutopilotConfigAction()
+        state = State()
+        params = _all_none() | {"restore_defaults": True, "time_to_peak": 6.0}
+        with pytest.raises(ValueError, match="restore_defaults"):
+            action.start(state, params)
