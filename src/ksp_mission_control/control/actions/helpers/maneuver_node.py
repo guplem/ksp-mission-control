@@ -11,7 +11,12 @@ Phases:
     Cold:    state.universal_time < burn_start_ut.
              Autopilot points at burn_vector_remaining, throttle = 0.
     Burn:    state.universal_time >= burn_start_ut.
-             Autopilot points at burn_vector_remaining, throttle = 1.
+             Autopilot points at burn_vector_remaining; throttle is full
+             while burn_time_estimate >> dt and tapers to
+             ``burn_time_estimate / (dt * _TAPER_MARGIN)`` as the burn
+             approaches completion, so the engine ramps down across the
+             last ~_TAPER_MARGIN ticks instead of overshooting on the
+             final tick.
     Done:    delta_v_remaining <= _BURN_COMPLETE_DV.
              Throttle = 0, helper returns True.
 
@@ -49,12 +54,20 @@ _BURN_COMPLETE_DV: float = 0.1
 # Standard gravity, used in Tsiolkovsky (Isp seconds -> exhaust velocity).
 _STANDARD_GRAVITY: float = 9.80665
 
+# Throttle taper margin. Throttle starts tapering when the remaining burn
+# at full thrust would take less than ``_TAPER_MARGIN * dt`` seconds, so
+# the engine ramps down over the last ~2 ticks instead of slamming to full
+# until the final tick. Wider margin = softer landing, ~1 extra tick at
+# the end of the burn.
+_TAPER_MARGIN: float = 2.0
+
 
 def execute_node(
     state: State,
     commands: VesselCommands,
     node: ManeuverNode,
     staging_mode: StagingMode | None,
+    dt: float,
     log: ActionLogger,
 ) -> bool:
     """Drive the vessel through one maneuver node.
@@ -108,8 +121,16 @@ def execute_node(
         )
         return False
 
-    commands.throttle = 1.0
-    log.debug(f"Burning: dv_remaining={node.delta_v_remaining:.1f} m/s, burn_time_left~{node.burn_time_estimate:.1f}s")
+    # Taper throttle as the burn approaches completion. Without this, a
+    # full-throttle final tick overshoots by (thrust / mass) * dt m/s, the
+    # node's remaining burn vector flips retrograde, and the next tick
+    # over-corrects in the opposite direction; the loop oscillates around
+    # zero until fuel runs out. Scaling throttle by burn_time / (dt * margin)
+    # means the engine ramps down across the last ~_TAPER_MARGIN ticks.
+    commands.throttle = min(1.0, node.burn_time_estimate / (dt * _TAPER_MARGIN))
+    log.debug(
+        f"Burning: dv_remaining={node.delta_v_remaining:.1f} m/s, burn_time_left~{node.burn_time_estimate:.1f}s, throttle={commands.throttle:.2f}"
+    )
     return False
 
 

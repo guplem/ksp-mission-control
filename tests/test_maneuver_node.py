@@ -71,7 +71,7 @@ class TestExecuteNodeOrientation:
     def test_sets_autopilot_direction_to_remaining_burn_vector(self) -> None:
         node = _make_node(burn_vector_remaining=(10.0, 90.0, 0.0))
         commands = VesselCommands()
-        execute_node(_make_burning_state(), commands, node, None, ActionLogger())
+        execute_node(_make_burning_state(), commands, node, None, 0.5, ActionLogger())
         assert commands.autopilot is True
         assert commands.autopilot_direction is not None
         assert commands.autopilot_direction.vector == (10.0, 90.0, 0.0)
@@ -82,7 +82,7 @@ class TestExecuteNodeOrientation:
         # Node far in the future relative to current universal_time.
         node = _make_node(ut=10_000.0, burn_vector_remaining=(0.0, 100.0, 0.0))
         commands = VesselCommands()
-        execute_node(_make_burning_state(universal_time=0.0), commands, node, None, ActionLogger())
+        execute_node(_make_burning_state(universal_time=0.0), commands, node, None, 0.5, ActionLogger())
         assert commands.autopilot is True
         assert commands.autopilot_direction is not None
 
@@ -94,15 +94,16 @@ class TestExecuteNodeThrottle:
         """When universal_time is well before node.ut, throttle must be 0."""
         node = _make_node(ut=10_000.0, delta_v_remaining=100.0)
         commands = VesselCommands()
-        complete = execute_node(_make_burning_state(universal_time=0.0), commands, node, None, ActionLogger())
+        complete = execute_node(_make_burning_state(universal_time=0.0), commands, node, None, 0.5, ActionLogger())
         assert commands.throttle == 0.0
         assert complete is False
 
     def test_burn_phase_opens_throttle(self) -> None:
         """When universal_time is at the node, the burn window is open."""
-        node = _make_node(ut=500.0, delta_v_remaining=100.0)
+        # burn_time_estimate=10s, dt=0.5s; remaining burn >> taper window, so full throttle.
+        node = _make_node(ut=500.0, delta_v_remaining=100.0, burn_time_estimate=10.0)
         commands = VesselCommands()
-        complete = execute_node(_make_burning_state(universal_time=500.0), commands, node, None, ActionLogger())
+        complete = execute_node(_make_burning_state(universal_time=500.0), commands, node, None, 0.5, ActionLogger())
         assert commands.throttle == 1.0
         assert complete is False
 
@@ -110,7 +111,7 @@ class TestExecuteNodeThrottle:
         """When delta_v_remaining is at or below the deadband, helper returns True."""
         node = _make_node(delta_v_remaining=0.05)
         commands = VesselCommands()
-        complete = execute_node(_make_burning_state(universal_time=500.0), commands, node, None, ActionLogger())
+        complete = execute_node(_make_burning_state(universal_time=500.0), commands, node, None, 0.5, ActionLogger())
         assert complete is True
         assert commands.throttle == 0.0
 
@@ -122,8 +123,27 @@ class TestExecuteNodeThrottle:
         assert state.universal_time < 500.0 - 20.0 / 2.0  # 480 < 490, cold
 
         commands = VesselCommands()
-        execute_node(state, commands, node, None, ActionLogger())
+        execute_node(state, commands, node, None, 0.5, ActionLogger())
         assert commands.throttle == 0.0
+
+    def test_throttle_tapers_near_completion(self) -> None:
+        """When burn_time_estimate < dt * _TAPER_MARGIN, throttle ramps down.
+
+        With dt=0.5s and _TAPER_MARGIN=2, the taper window is 1.0s of burn.
+        burn_time_estimate=0.4s -> throttle = 0.4 / (0.5 * 2) = 0.4.
+        """
+        node = _make_node(ut=500.0, delta_v_remaining=8.0, burn_time_estimate=0.4)
+        commands = VesselCommands()
+        complete = execute_node(_make_burning_state(universal_time=500.0), commands, node, None, 0.5, ActionLogger())
+        assert complete is False
+        assert commands.throttle == 0.4
+
+    def test_throttle_clamps_at_one_when_burn_long(self) -> None:
+        """When burn_time_estimate >> dt * margin, the formula clamps to 1.0."""
+        node = _make_node(ut=500.0, delta_v_remaining=100.0, burn_time_estimate=30.0)
+        commands = VesselCommands()
+        execute_node(_make_burning_state(universal_time=500.0), commands, node, None, 0.5, ActionLogger())
+        assert commands.throttle == 1.0
 
 
 class TestExecuteNodeEdgeCases:
@@ -134,7 +154,7 @@ class TestExecuteNodeEdgeCases:
         node = _make_node(ut=500.0, delta_v_remaining=100.0, burn_time_estimate=float("inf"))
         state = _make_burning_state(universal_time=500.0, thrust_available=0.0)
         commands = VesselCommands()
-        complete = execute_node(state, commands, node, None, ActionLogger())
+        complete = execute_node(state, commands, node, None, 0.5, ActionLogger())
         assert commands.throttle == 0.0
         assert complete is False
 
@@ -147,19 +167,19 @@ class TestExecuteNodeStaging:
         node = _make_node(ut=500.0, delta_v_remaining=100.0)
         state = _make_burning_state(universal_time=500.0, engine_states=("flameout", "inactive"))
         commands = VesselCommands()
-        execute_node(state, commands, node, None, ActionLogger())
+        execute_node(state, commands, node, None, 0.5, ActionLogger())
         assert commands.stage is None
 
     def test_any_flameout_stages_mid_burn(self) -> None:
         """ANY_FLAMEOUT drops a spent corner booster while other engines still thrust."""
-        node = _make_node(ut=500.0, delta_v_remaining=100.0)
+        node = _make_node(ut=500.0, delta_v_remaining=100.0, burn_time_estimate=10.0)
         state = _make_burning_state(
             universal_time=500.0,
             thrust_available=80_000.0,
             engine_states=("active", "flameout"),
         )
         commands = VesselCommands()
-        execute_node(state, commands, node, StagingMode.ANY_FLAMEOUT, ActionLogger())
+        execute_node(state, commands, node, StagingMode.ANY_FLAMEOUT, 0.5, ActionLogger())
         assert commands.stage is True
         # Throttle is still commanded after staging so the next tick keeps burning.
         assert commands.throttle == 1.0
@@ -173,7 +193,7 @@ class TestExecuteNodeStaging:
             engine_states=("flameout", "inactive"),
         )
         commands = VesselCommands()
-        execute_node(state, commands, node, StagingMode.FULL_DEPLETION, ActionLogger())
+        execute_node(state, commands, node, StagingMode.FULL_DEPLETION, 0.5, ActionLogger())
         assert commands.stage is True
 
     def test_full_depletion_does_not_stage_on_partial_flameout(self) -> None:
@@ -185,7 +205,7 @@ class TestExecuteNodeStaging:
             engine_states=("active", "flameout"),
         )
         commands = VesselCommands()
-        execute_node(state, commands, node, StagingMode.FULL_DEPLETION, ActionLogger())
+        execute_node(state, commands, node, StagingMode.FULL_DEPLETION, 0.5, ActionLogger())
         assert commands.stage is None
 
 
