@@ -12,6 +12,7 @@ from ksp_mission_control.control.actions.base import (
     ActionParam,
     ActionResult,
     ActionStatus,
+    LogLevel,
     State,
     VesselCommands,
 )
@@ -193,6 +194,39 @@ class TestPlanExecutorPlan:
         assert snap.step_statuses[1] == StepStatus.RUNNING
         assert snap.current_step_index == 1
 
+    def test_completed_step_logs_keep_their_own_action_id(self) -> None:
+        """Regression: when a step finishes and the executor advances to
+        the next step in the same tick, the runner-produced logs
+        (ACTION_FAILED / ACTION_END for the step that just finished)
+        must carry the finished step's action_id and plan_step, not the
+        new step's. Previously self._step_index was advanced before the
+        annotation pass, so the failed step's logs were mis-tagged with
+        the next step's identity."""
+        executor = PlanExecutor()
+        actions = [StubAction(), StubAction()]
+        steps = (
+            FlightPlanStep(action_id="first", param_values={}),
+            FlightPlanStep(action_id="second", param_values={}),
+        )
+        plan = FlightPlan(name="test", steps=steps)
+        state = State()
+        executor.start_plan(plan, state, actions=actions)
+
+        # Tick 1: step 1 still running; consume PLAN_START and ACTION_START.
+        executor.step(state, dt=0.5)
+
+        # Tick 2: step 1 fails, executor advances to step 2 in the same tick.
+        actions[0].set_return_status(ActionStatus.FAILED)
+        result = executor.step(state, dt=0.5)
+
+        # ACTION_FAILED and ACTION_END describe the step that just finished
+        # ("first" / plan_step 1), not the freshly-started next step.
+        terminal_logs = [log for log in result.logs if log.level in (LogLevel.ACTION_FAILED, LogLevel.ACTION_END)]
+        assert len(terminal_logs) == 2
+        for log in terminal_logs:
+            assert log.action_id == "first", f"expected 'first', got {log.action_id!r}"
+            assert log.plan_step == 1, f"expected plan_step 1, got {log.plan_step!r}"
+
     def test_last_step_failure_ends_plan(self) -> None:
         executor = PlanExecutor()
         plan, actions = _make_plan(1)
@@ -201,8 +235,6 @@ class TestPlanExecutorPlan:
 
         actions[0].set_return_status(ActionStatus.FAILED)
         result = executor.step(state, dt=0.5)
-
-        from ksp_mission_control.control.actions.base import LogLevel
 
         plan_end_logs = [log for log in result.logs if log.level == LogLevel.PLAN_END]
         assert len(plan_end_logs) == 1

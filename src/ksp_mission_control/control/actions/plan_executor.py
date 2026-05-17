@@ -205,19 +205,11 @@ class PlanExecutor:
 
         has_action = self._runner.snapshot().action_id is not None
 
-        # Detect action completion: was running, now cleared
-        if had_action and not has_action:
-            if result.finished_status == ActionStatus.SUCCEEDED:
-                self._step_statuses[self._step_index] = StepStatus.SUCCEEDED
-            else:
-                self._step_statuses[self._step_index] = StepStatus.FAILED
-
-            self._begin_from(vessel_state, self._step_index + 1)
-            if self._queued_logs:
-                result.logs.extend(self._queued_logs)
-                self._queued_logs = []
-
-        # Annotate logs with the current step's action_id and plan_step
+        # Annotate logs with the action_id and plan_step of the step that
+        # produced them. Must run BEFORE the step-transition block below:
+        # that block advances self._step_index to the next step, but the
+        # runner-produced logs collected this tick (LOG_*, ACTION_FAILED,
+        # ACTION_END, ...) belong to the step that just finished.
         if result.logs:
             current_step = self._plan.steps[self._step_index] if 0 <= self._step_index < len(self._plan.steps) else None
             if isinstance(current_step, FlightPlanStep):
@@ -237,6 +229,18 @@ class PlanExecutor:
                 )
                 for entry in result.logs
             ]
+
+        # Detect action completion: was running, now cleared
+        if had_action and not has_action:
+            if result.finished_status == ActionStatus.SUCCEEDED:
+                self._step_statuses[self._step_index] = StepStatus.SUCCEEDED
+            else:
+                self._step_statuses[self._step_index] = StepStatus.FAILED
+
+            self._begin_from(vessel_state, self._step_index + 1)
+            if self._queued_logs:
+                result.logs.extend(self._queued_logs)
+                self._queued_logs = []
 
         return result
 
