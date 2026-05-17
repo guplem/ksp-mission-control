@@ -28,7 +28,7 @@ A parameter is intrinsic to an action when removing it would make the action inc
 2. **Tuning constants**: numbers that shape how the action operates. `aerobreak.max_dynamic_pressure`, `controllability_test.tolerance`, `suborbital_launch.min_throttle`.
 3. **Selection filters**: which subjects the action operates on. `science.name`, `science.has-data`, `science.count`.
 4. **Completion criteria intrinsic to the action's purpose**: `hover.hover_duration`, `hold_attitude.hold_ticks`, `controllability_test.hold_duration`. These are not preconditions; they describe how long the action runs.
-5. **Continuous fault-recovery toggles**: behavior the action evaluates every tick during execution, not once at start. `launch.auto_stage`, `aerobreak.auto_stage`, `suborbital_launch.auto_stage`. These cannot be expressed as a single `wait_for` step because they react to conditions throughout the action's lifetime.
+5. **Continuous fault-recovery toggles**: behavior the action evaluates every tick during execution, not once at start. Every action that runs (or may run) the engines carries `staging_mode`: `launch`, `aerobreak`, `suborbital_launch`, `circularize`, `change_apse`, `hold_attitude`, `controllability_test`. These cannot be expressed as a single `wait_for` step because they react to conditions throughout the action's lifetime (ignite on the pad, swap on flameout, drop spent asparagus boosters).
 
 ### What does not belong on an action
 

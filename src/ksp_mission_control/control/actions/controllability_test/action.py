@@ -1,9 +1,11 @@
 """ControllabilityTestAction - diagnostic action to verify vessel attitude control.
 
-Stages, throttles up, then runs through a series of maneuvers testing each
-axis independently: roll to a target and back, pitch to a target and back,
+Throttles up, then runs through a series of maneuvers testing each axis
+independently: roll to a target and back, pitch to a target and back,
 heading to a target and back. Each maneuver must hold within tolerance for
-a configurable duration before advancing. Logs detailed progress throughout.
+a configurable duration before advancing. Auto-staging is on by default,
+so the first tick ignites the engines on the launchpad and subsequent
+ticks swap stages on flameout. Logs detailed progress throughout.
 
 Note on gimbal lock: when pitch is near 90 deg (pointing straight up),
 heading and roll become coupled (rotating around the same axis). The test
@@ -25,6 +27,12 @@ from ksp_mission_control.control.actions.base import (
     ParamType,
     State,
     VesselCommands,
+)
+from ksp_mission_control.control.actions.helpers.staging import (
+    STAGING_MODE_PARAM,
+    StagingMode,
+    auto_stage,
+    parse_staging_mode,
 )
 
 _DEFAULT_ROLL_OFFSET = 45.0
@@ -115,6 +123,7 @@ class ControllabilityTestAction(Action):
             default=_DEFAULT_TOLERANCE,
             unit="deg",
         ),
+        STAGING_MODE_PARAM,
     ]
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
@@ -123,6 +132,7 @@ class ControllabilityTestAction(Action):
         heading_offset = float(param_values["heading_offset"])
         self._hold_duration = float(param_values["hold_duration"])
         self._tolerance: float = float(param_values["tolerance"])
+        self._staging_mode: StagingMode | None = parse_staging_mode(param_values["staging_mode"])
 
         # Capture initial orientation as baseline.
         initial_pitch = state.orientation_pitch
@@ -184,7 +194,6 @@ class ControllabilityTestAction(Action):
         ]
 
         self._step_index: int = 0
-        self._staged: bool = False
         self._hold_time: float = 0.0  # accumulated seconds within tolerance
         self._slewing: bool = True  # True = slewing to target, False = holding
         self._settling: bool = True  # skip tolerance check for 1 tick after step change
@@ -193,12 +202,8 @@ class ControllabilityTestAction(Action):
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         self._tick_count += 1
 
-        # Stage once on the first tick.
-        if not self._staged:
-            commands.stage = True
-            commands.autopilot = True
-            self._staged = True
-            log.info("Staged")
+        auto_stage(state, commands, self._staging_mode, log)
+        commands.autopilot = True
 
         # Set a constant throttle to ensure we have some control authority for the test
         if state.thrust_peak > 0:  # Requires staged engines

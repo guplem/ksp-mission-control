@@ -186,9 +186,14 @@ mass/thrust.
 
 ### No-thrust failure pattern
 
-Any action that runs the engines should fail rather than spin forever
-once thrust is exhausted with nothing to stage into. The exact placement
-differs by action shape:
+An action whose **goal requires thrust** (reach an apoapsis, brake to a
+speed, complete a maneuver node) must fail rather than spin forever once
+thrust is exhausted with nothing to stage into. An action whose goal is
+**not thrust-bound** (diagnostic attitude tests) calls `auto_stage` for
+the ignition/restage convenience but does *not* fail on thrust loss --
+holding attitude with zero thrust is still a valid completion.
+
+The exact placement differs by action shape:
 
 **Non-node burn actions** (`launch`, `aerobreak`, `suborbital_launch`)
 follow this pattern, in this order:
@@ -218,6 +223,16 @@ if execute_node(state, commands, node, self._staging_mode, log):
 if state.thrust_available <= 0.0:
     return ActionResult(status=ActionStatus.FAILED, message="No thrust available")
 # ... return RUNNING
+```
+
+**Diagnostic / non-burn actions** (`hold_attitude`, `controllability_test`)
+call `auto_stage` for first-tick ignition and mid-test restages, but
+have no thrust check -- the action's goal is orientation control, not a
+delta-v target:
+
+```python
+auto_stage(state, commands, self._staging_mode, log)
+# ... drive autopilot, throttle, etc. ...
 ```
 
 ## Tests

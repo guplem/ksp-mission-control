@@ -1,8 +1,10 @@
 """HoldAttitudeAction - diagnostic action to test autopilot attitude hold.
 
-Stages, sets throttle to 100%, engages the kRPC autopilot targeting the
-vessel's current pitch, heading, and roll, then holds for a fixed number
-of ticks. Logs the autopilot error each tick so we can verify whether the
+Engages the kRPC autopilot targeting the vessel's current pitch, heading,
+and roll, then holds for a fixed number of ticks. Auto-staging is on by
+default, so on the launchpad the first tick ignites the engines (thrust=0
++ inactive engines waiting -> stage) and subsequent ticks swap stages on
+flameout. Logs the autopilot error each tick so we can verify whether the
 autopilot actually maintains the commanded orientation.
 """
 
@@ -20,16 +22,22 @@ from ksp_mission_control.control.actions.base import (
     State,
     VesselCommands,
 )
+from ksp_mission_control.control.actions.helpers.staging import (
+    STAGING_MODE_PARAM,
+    StagingMode,
+    auto_stage,
+    parse_staging_mode,
+)
 
 _DEFAULT_HOLD_TICKS = 100  # number of ticks to hold attitude before succeeding
 
 
 class HoldAttitudeAction(Action):
-    """Stage, throttle up, and hold current attitude for N ticks."""
+    """Throttle up and hold current attitude for N ticks (auto-stages by default)."""
 
     action_id: ClassVar[str] = "hold_attitude"
     label: ClassVar[str] = "Hold Attitude"
-    description: ClassVar[str] = "Stage, throttle 100%, hold current pitch/heading/roll for N ticks"
+    description: ClassVar[str] = "Throttle 100%, hold current pitch/heading/roll for N ticks"
     params: ClassVar[list[ActionParam]] = [
         ActionParam(
             param_id="hold_ticks",
@@ -40,12 +48,13 @@ class HoldAttitudeAction(Action):
             default=_DEFAULT_HOLD_TICKS,
             unit="ticks",
         ),
+        STAGING_MODE_PARAM,
     ]
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
         self._hold_ticks: int = int(param_values["hold_ticks"])
+        self._staging_mode: StagingMode | None = parse_staging_mode(param_values["staging_mode"])
         self._tick_count: int = 0
-        self._staged: bool = False
 
         # Capture current orientation as autopilot targets.
         self._target_pitch: float = state.orientation_pitch
@@ -55,11 +64,7 @@ class HoldAttitudeAction(Action):
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         self._tick_count += 1
 
-        # Stage once on the first tick.
-        if not self._staged:
-            commands.stage = True
-            self._staged = True
-            log.info("Staged")
+        auto_stage(state, commands, self._staging_mode, log)
 
         # Engage autopilot every tick with the captured targets.
         commands.throttle = 1.0
