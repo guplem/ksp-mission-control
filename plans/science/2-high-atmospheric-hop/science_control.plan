@@ -1,3 +1,5 @@
+@hidden
+
 # - Science "Landed" in "Shores": AtmPres
 science    action=run  count=1  name=barometerScan has-data=False
 

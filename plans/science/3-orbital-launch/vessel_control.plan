@@ -1,3 +1,5 @@
+@hidden
+
 # This craft wobbles and creates resonance with the autopilot.
 # Soften the response so corrections are gentler and slower.
 autopilot_config time_to_peak=6.0 stopping_time=1.5 deceleration_time=8.0 attenuation_angle=5.0

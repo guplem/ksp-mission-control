@@ -1,3 +1,5 @@
+@hidden
+
 launch target_altitude=6_000
 
 # Get rid of the solid booster once it's out of fuel

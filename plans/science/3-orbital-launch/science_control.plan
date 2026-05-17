@@ -1,3 +1,5 @@
+@hidden
+
 # - Science "Near Space" in "KERBIN": Crew Report, Goo x2, Temp and AtmPres
 wait_for   science_situation=space_low
 science    action=run  name=crewReport has-data=False

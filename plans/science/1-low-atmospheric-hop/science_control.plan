@@ -1,3 +1,5 @@
+@hidden
+
 # Science "Launchpad"
 science    action=run  count=2  name=temperatureScan
 

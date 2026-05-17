@@ -1,3 +1,5 @@
+@hidden
+
 launch target_altitude=25_000 final_pitch=45
 sas        mode=prograde
 
