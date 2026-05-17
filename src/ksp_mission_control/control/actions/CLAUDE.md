@@ -215,12 +215,16 @@ deferred-fail guard.
 
 **Node-driven actions** (`circularize`, `change_apse`) collapse to a
 single post-`execute_node` thrust check, because `execute_node` already
-invoked `auto_stage` this tick:
+invoked `auto_stage` this tick. The check must also exempt the tick on
+which auto-staging just fired: state was read before this tick's commands
+are applied, so a flameout shows `thrust_available == 0` even though a
+stage command was just queued. Failing in that case would kill the burn
+one tick before the new stage gets a chance to ignite.
 
 ```python
 if execute_node(state, commands, node, self._staging_mode, log):
     # ... burn complete, return SUCCEEDED
-if state.thrust_available <= 0.0:
+if state.thrust_available <= 0.0 and commands.stage is not True:
     return ActionResult(status=ActionStatus.FAILED, message="No thrust available")
 # ... return RUNNING
 ```

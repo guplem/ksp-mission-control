@@ -216,11 +216,17 @@ class TestCircularizeExecutesNode:
 class TestCircularizeStaging:
     """staging_mode opt-in drives the auto_stage helper during the burn phase."""
 
-    def _burn_state(self, action: CircularizeAction, engine_states: tuple[str, ...], stage_current: int = 3) -> State:
+    def _burn_state(
+        self,
+        action: CircularizeAction,
+        engine_states: tuple[str, ...],
+        stage_current: int = 3,
+        thrust_available: float = 80_000.0,
+    ) -> State:
         node = _node_for(action, delta_v_remaining=100.0)
         return State(
             universal_time=action._node_ut or 0.0,
-            thrust_available=80_000.0,
+            thrust_available=thrust_available,
             engine_impulse_specific_vacuum=300.0,
             mass=5_000.0,
             body_radius=_KERBIN_RADIUS,
@@ -255,6 +261,45 @@ class TestCircularizeStaging:
         action = CircularizeAction()
         with pytest.raises(ValueError, match="Unknown staging_mode"):
             action.start(_orbit_state(), {"apse": "apoapsis", "staging_mode": "bogus"})
+
+    def test_zero_thrust_with_pending_stage_returns_running(self) -> None:
+        """auto_stage queues a stage in the same tick the engine flames out;
+        state.thrust_available is still 0 (read before the command applies),
+        so the action must defer the no-thrust failure to the next tick."""
+        action = CircularizeAction()
+        seed = _orbit_state()
+        action.start(seed, {"apse": "apoapsis", "staging_mode": "any_flameout"})
+        action.tick(seed, VesselCommands(), dt=0.5, log=ActionLogger())
+
+        commands = VesselCommands()
+        burn_state = self._burn_state(
+            action,
+            engine_states=("flameout", "inactive"),
+            thrust_available=0.0,
+        )
+        result = action.tick(burn_state, commands, dt=0.5, log=ActionLogger())
+
+        assert commands.stage is True
+        assert result.status == ActionStatus.RUNNING
+
+    def test_zero_thrust_without_pending_stage_fails(self) -> None:
+        """When no inactive engine is waiting, auto_stage cannot queue a stage,
+        so the action correctly fails on thrust exhaustion."""
+        action = CircularizeAction()
+        seed = _orbit_state()
+        action.start(seed, {"apse": "apoapsis", "staging_mode": "any_flameout"})
+        action.tick(seed, VesselCommands(), dt=0.5, log=ActionLogger())
+
+        commands = VesselCommands()
+        burn_state = self._burn_state(
+            action,
+            engine_states=("flameout",),
+            thrust_available=0.0,
+        )
+        result = action.tick(burn_state, commands, dt=0.5, log=ActionLogger())
+
+        assert commands.stage is None
+        assert result.status == ActionStatus.FAILED
 
 
 class TestCircularizeStop:
