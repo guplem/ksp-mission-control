@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
 from textual.screen import ModalScreen
@@ -42,6 +43,24 @@ def compute_plan_display_name(
             return _FOLDER_ENTRYPOINT_STEM
         return str(parent_relative).replace("\\", "/")
     return str(relative.with_suffix("")).replace("\\", "/")
+
+
+def format_plan_cell(display_name: str) -> Text:
+    """Render a plan display name with the folder prefix dimmed.
+
+    The folder prefix (everything up to and including the last ``/``) is
+    rendered with the ``dim`` style so the leaf name stands out. Plans
+    with no folder prefix render at full brightness.
+    """
+    last_slash = display_name.rfind("/")
+    if last_slash == -1:
+        return Text(display_name)
+    folder = display_name[: last_slash + 1]
+    leaf = display_name[last_slash + 1 :]
+    rendered = Text()
+    rendered.append(folder, style="dim")
+    rendered.append(leaf)
+    return rendered
 
 
 class FlightPlanPicker(ModalScreen[FlightPlan | None]):
@@ -179,7 +198,7 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
             craft_text = plan.craft if plan.craft else ""
             idx = len(self._plan_names)
             self._plan_names.append(name)
-            table.add_row(name, craft_text, key=str(idx))
+            table.add_row(format_plan_cell(name), craft_text, key=str(idx))
 
         empty_widget = self.query_one("#picker-empty", Static)
         if not self._parsed_plans and not self._parse_errors:

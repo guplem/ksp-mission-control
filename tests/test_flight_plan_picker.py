@@ -7,6 +7,7 @@ from pathlib import Path
 from ksp_mission_control.control.flight_plan_picker import (
     FlightPlanPicker,
     compute_plan_display_name,
+    format_plan_cell,
 )
 
 
@@ -106,3 +107,26 @@ class TestLoadPlans:
         picker._load_plans()
         assert picker._parsed_plans == {}
         assert picker._parse_errors == {}
+
+
+class TestFormatPlanCell:
+    """Tests for format_plan_cell: folder prefix dimmed, leaf at full brightness."""
+
+    def test_no_folder_prefix_is_undimmed(self) -> None:
+        cell = format_plan_cell("altitude-steps")
+        assert cell.plain == "altitude-steps"
+        # Single uniform span, no styling applied.
+        styles = {span.style for span in cell.spans}
+        assert "dim" not in styles
+
+    def test_single_folder_prefix_is_dimmed(self) -> None:
+        cell = format_plan_cell("science/1-low-atmospheric-hop")
+        assert cell.plain == "science/1-low-atmospheric-hop"
+        dim_ranges = [cell.plain[span.start : span.end] for span in cell.spans if span.style == "dim"]
+        assert dim_ranges == ["science/"]
+
+    def test_nested_folder_prefix_is_dimmed_up_to_last_slash(self) -> None:
+        cell = format_plan_cell("science/1-low-atmospheric-hop/vessel_control")
+        assert cell.plain == "science/1-low-atmospheric-hop/vessel_control"
+        dim_ranges = [cell.plain[span.start : span.end] for span in cell.spans if span.style == "dim"]
+        assert dim_ranges == ["science/1-low-atmospheric-hop/"]
