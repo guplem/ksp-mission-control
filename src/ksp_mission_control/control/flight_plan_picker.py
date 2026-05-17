@@ -7,12 +7,10 @@ from pathlib import Path
 from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Button, ListItem, ListView, Static
+from textual.widgets import Button, DataTable, Static
 
 from ksp_mission_control.control.actions.flight_plan import (
     FlightPlan,
-    FlightPlanStep,
-    ParallelStep,
     parse_flight_plan,
 )
 
@@ -49,9 +47,8 @@ def compute_plan_display_name(
 class FlightPlanPicker(ModalScreen[FlightPlan | None]):
     """Modal dialog for selecting a flight plan from the plans/ directory.
 
-    Lists all .plan files, shows their name and step count.
-    Plans are re-scanned each time the dialog opens.
-    Dismisses with the parsed FlightPlan or None on cancel.
+    Shows a two-column table (Plan, Craft). Plans are re-scanned each time
+    the dialog opens. Dismisses with the parsed FlightPlan or None on cancel.
     """
 
     AUTO_FOCUS = ""
@@ -62,7 +59,7 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
     }
 
     #picker-container {
-        width: 60;
+        width: 80;
         height: auto;
         max-height: 80%;
         padding: 1 2;
@@ -74,7 +71,7 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
         padding: 0 0 1 0;
     }
 
-    #picker-listview {
+    #picker-table {
         height: auto;
         max-height: 20;
     }
@@ -112,6 +109,7 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
         self._parsed_plans: dict[str, FlightPlan] = {}
         self._parse_errors: dict[str, str] = {}
         self._require_craft = require_craft
+        self._plan_names: list[str] = []
 
     def _load_plans(self) -> None:
         """Scan the plans directory recursively for .plan files.
@@ -159,42 +157,29 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
         with VerticalScroll(id="picker-container"):
             yield Static("[b]Select Flight Plan[/b]", id="picker-title")
             yield Static("", id="picker-empty")
-            yield ListView(id="picker-listview")
+            yield DataTable(id="picker-table", cursor_type="row", zebra_stripes=True)
             yield Static("", id="picker-error")
             with Horizontal(id="picker-buttons"):
                 yield Button("Cancel", id="picker-cancel-btn", variant="error")
 
     def on_mount(self) -> None:
         """Re-scan plans from disk each time the dialog opens."""
+        table = self.query_one("#picker-table", DataTable)
+        table.add_columns("Plan", "Craft")
         self._load_plans()
         self._refresh_list()
 
     def _refresh_list(self) -> None:
-        """Rebuild the list view and error display from loaded plans."""
-        listview = self.query_one("#picker-listview", ListView)
-        listview.clear()
-        self._plan_names: list[str] = []
+        """Rebuild the table and error display from loaded plans."""
+        table = self.query_one("#picker-table", DataTable)
+        table.clear()
+        self._plan_names = []
 
         for name, plan in self._parsed_plans.items():
-            summary_parts: list[str] = []
-            action_count = sum(1 for step in plan.steps if isinstance(step, FlightPlanStep))
-            parallel_count = sum(1 for step in plan.steps if isinstance(step, ParallelStep))
-            if action_count > 0:
-                step_word = "step" if action_count == 1 else "steps"
-                summary_parts.append(f"{action_count} {step_word}")
-            if parallel_count > 0:
-                sub_word = "sub-plan" if parallel_count == 1 else "sub-plans"
-                summary_parts.append(f"{parallel_count} {sub_word}")
-            summary = f" ({', '.join(summary_parts)})" if summary_parts else ""
-            craft_suffix = f" — [b]{plan.craft}[/b]" if plan.craft else ""
+            craft_text = plan.craft if plan.craft else ""
             idx = len(self._plan_names)
             self._plan_names.append(name)
-            listview.append(
-                ListItem(
-                    Static(f"{name}{summary}{craft_suffix}"),
-                    id=f"plan-{idx}",
-                )
-            )
+            table.add_row(name, craft_text, key=str(idx))
 
         empty_widget = self.query_one("#picker-empty", Static)
         if not self._parsed_plans and not self._parse_errors:
@@ -209,13 +194,13 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
         else:
             error_widget.update("")
 
-    def on_list_view_selected(self, event: ListView.Selected) -> None:
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         """Select and dismiss with the chosen plan."""
-        item_id = event.item.id
-        if item_id is None:
+        key = event.row_key.value
+        if key is None:
             return
         try:
-            idx = int(item_id.removeprefix("plan-"))
+            idx = int(key)
         except ValueError:
             return
         if 0 <= idx < len(self._plan_names):
