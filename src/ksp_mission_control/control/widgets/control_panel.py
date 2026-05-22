@@ -84,7 +84,12 @@ class ControlPanelWidget(Static):
         border-left: solid $surface-lighten-2;
     }
 
-    #plan-steps-list ListItem.-highlight {
+    #plan-steps-list ListItem:hover {
+        background: $primary 10%;
+    }
+
+    #plan-steps-list ListItem.-highlight,
+    #plan-steps-list ListItem.-highlight:hover {
         background: $block-hover-background;
         border-left: solid $primary;
     }
@@ -92,6 +97,10 @@ class ControlPanelWidget(Static):
     #plan-steps-list:focus ListItem.-highlight {
         background: $block-hover-background;
         border-left: solid $primary;
+    }
+
+    #plan-steps-list ListItem.-disabled:hover {
+        background: transparent;
     }
 
     #plan-steps-list ListItem Static {
