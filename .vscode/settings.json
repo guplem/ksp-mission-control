@@ -1,0 +1,49 @@
+{
+  // Files excluded from VS Code search (Ctrl+Shift+F) for this workspace only.
+  // Default search already respects .gitignore, but listing things explicitly
+  // here makes search noticeably faster and avoids noise from generated files.
+  "search.exclude": {
+    // Python virtualenv (~105 MB, biggest offender)
+    ".venv/**": true,
+    "venv/**": true,
+
+    // Tool caches
+    ".mypy_cache/**": true,
+    ".pytest_cache/**": true,
+    ".ruff_cache/**": true,
+
+    // Python bytecode
+    "**/__pycache__/**": true,
+    "**/*.pyc": true,
+    "**/*.pyo": true,
+
+    // Build artifacts
+    "dist/**": true,
+    "build/**": true,
+    "**/*.egg-info/**": true,
+
+    // Coverage
+    "htmlcov/**": true,
+    ".coverage": true,
+
+    // Lock file (~225 KB single line file, never useful to search)
+    "uv.lock": true,
+
+    // Runtime-generated flight logs (XML, can grow large)
+    "flight_logs/**": true,
+
+    // KSP craft blueprints (exported from the game, noisy part data)
+    "crafts/**/*.craft": true
+  },
+
+  // Also tell the file watcher to ignore these — fewer file events keeps the
+  // editor responsive even when caches are being rewritten.
+  "files.watcherExclude": {
+    "**/.venv/**": true,
+    "**/.mypy_cache/**": true,
+    "**/.pytest_cache/**": true,
+    "**/.ruff_cache/**": true,
+    "**/__pycache__/**": true,
+    "**/flight_logs/**": true
+  }
+}
