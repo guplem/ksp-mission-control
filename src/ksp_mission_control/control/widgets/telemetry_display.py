@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import math
+import re
 
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal
 from textual.events import Click
 from textual.message import Message
-from textual.widgets import Static
+from textual.widgets import Input, Static
 
 from ksp_mission_control.control.actions.base import ScienceExperiment, State
 from ksp_mission_control.control.formatting import format_met, resolve_theme_colors
@@ -29,6 +30,92 @@ from ksp_mission_control.control.widgets.telemetry_alerts import (
     evaluate_time_to_impact,
     evaluate_twr,
 )
+
+_RICH_TAG_RE = re.compile(r"\[/?[^\]]+\]")
+
+
+def _strip_markup(text: str) -> str:
+    """Remove Rich BBCode-style tags so the search matches the visible text only."""
+    return _RICH_TAG_RE.sub("", text)
+
+
+def filter_telemetry_text(text: str, query: str) -> str:
+    """Hide telemetry lines that do not match *query* (case-insensitive).
+
+    Telemetry columns are built as long strings where blank lines separate
+    section blocks (e.g. ``[b]Overview[/b]`` + its data rows). The filter
+    walks each section and:
+
+    * keeps the whole section if its header matches (so a search for a
+      section name yields full context);
+    * otherwise keeps only the data lines that match, prefixed by the
+      section header so the surviving lines stay labeled;
+    * drops the section entirely when nothing matches.
+
+    Rich markup tags (``[b]``, ``[red]``...) are stripped before matching
+    so a search like ``"red"`` does not accidentally match a color tag.
+    Empty query returns the input unchanged.
+    """
+    if not query:
+        return text
+    q = query.lower()
+
+    sections: list[tuple[str | None, list[str]]] = []
+    header: str | None = None
+    body: list[str] = []
+    open_section = False
+    for raw_line in text.split("\n"):
+        if raw_line.strip() == "":
+            if open_section:
+                sections.append((header, body))
+            header = None
+            body = []
+            open_section = False
+            continue
+        if not open_section and raw_line.lstrip().startswith("[b]"):
+            header = raw_line
+            open_section = True
+        else:
+            body.append(raw_line)
+            open_section = True
+    if open_section:
+        sections.append((header, body))
+
+    rendered_sections: list[list[str]] = []
+    for section_header, section_body in sections:
+        header_matches = section_header is not None and q in _strip_markup(section_header).lower()
+        if header_matches:
+            kept_lines: list[str] = []
+            if section_header is not None:
+                kept_lines.append(section_header)
+            kept_lines.extend(section_body)
+            rendered_sections.append(kept_lines)
+            continue
+        matched_body = [line for line in section_body if q in _strip_markup(line).lower()]
+        if not matched_body:
+            continue
+        kept_lines = []
+        if section_header is not None:
+            kept_lines.append(section_header)
+        kept_lines.extend(matched_body)
+        rendered_sections.append(kept_lines)
+
+    return "\n\n".join("\n".join(section) for section in rendered_sections)
+
+
+def science_matches_query(experiment: ScienceExperiment, query: str) -> bool:
+    """Whether a science experiment should appear given a search query.
+
+    Case-insensitive substring match against title, internal name,
+    containing part title, and (if set) the user-defined name tag.
+    """
+    if not query:
+        return True
+    q = query.lower()
+    candidates = [experiment.title, experiment.name, experiment.part_title]
+    if experiment.name_tag:
+        candidates.append(experiment.name_tag)
+    return any(q in field.lower() for field in candidates)
 
 
 class ScienceCardWidget(Static, can_focus=False):
@@ -115,6 +202,10 @@ class TelemetryDisplayWidget(Static):
         width: auto;
     }
 
+    #telemetry-search {
+        margin: 0 0 1 0;
+    }
+
     #telemetry-columns {
         height: auto;
     }
@@ -143,6 +234,10 @@ class TelemetryDisplayWidget(Static):
         self._science_experiments: tuple[ScienceExperiment, ...] = ()
         self._alert_colors: dict[AlertLevel, str] | None = None
         self._frozen: bool = False
+        self._last_state: State | None = None
+        """Most recent state, cached so a search-input change can re-render
+        without waiting for the next poll tick."""
+        self._search_query: str = ""
 
     def _resolve_alert_colors(self) -> dict[AlertLevel, str]:
         if self._alert_colors is None:
@@ -153,6 +248,7 @@ class TelemetryDisplayWidget(Static):
         with Horizontal(id="telemetry-header"):
             yield Static("[b]Telemetry[/b]", id="telemetry-title")
             yield Static("", id="telemetry-ut")
+        yield Input(placeholder="Search telemetry...", id="telemetry-search")
         with Horizontal(id="telemetry-columns"):
             yield Static("Connecting...", id="telemetry-flight", classes="telemetry-column")
             yield Static("", id="telemetry-orbit", classes="telemetry-column")
@@ -167,12 +263,14 @@ class TelemetryDisplayWidget(Static):
         """
         if self._frozen:
             return
+        self._last_state = state
         self._render_state(state)
         self.query_one("#telemetry-title", Static).update("[b]Telemetry[/b]")
 
     def show_historical_state(self, state: State, met: float) -> None:
         """Display a historical state snapshot and freeze live updates."""
         self._frozen = True
+        self._last_state = state
         self._render_state(state)
         self.query_one("#telemetry-title", Static).update(f"[b]Telemetry[/b]  [dim italic]{format_met(met)} (historical)[/dim italic]")
 
@@ -181,23 +279,44 @@ class TelemetryDisplayWidget(Static):
         self._frozen = False
         self.query_one("#telemetry-title", Static).update("[b]Telemetry[/b]")
 
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Re-render the cached state when the search query changes."""
+        if event.input.id != "telemetry-search":
+            return
+        self._search_query = event.value
+        if self._last_state is not None:
+            self._render_state(self._last_state)
+
     def _render_state(self, state: State) -> None:
-        """Render a State snapshot into the three telemetry columns."""
+        """Render a State snapshot into the three telemetry columns, applying the search filter."""
         colors = self._resolve_alert_colors()
         self.query_one("#telemetry-ut", Static).update(f"UT: {_format_time(state.universal_time)} ")
-        self.query_one("#telemetry-flight", Static).update(_format_flight(state, colors))
-        self.query_one("#telemetry-orbit", Static).update(_format_orbit(state, colors))
-        self.query_one("#telemetry-resources", Static).update(_format_resources(state, colors))
+
+        query = self._search_query.strip().lower()
+        flight = filter_telemetry_text(_format_flight(state, colors), query)
+        orbit = filter_telemetry_text(_format_orbit(state, colors), query)
+        resources = filter_telemetry_text(_format_resources(state, colors), query)
+        self.query_one("#telemetry-flight", Static).update(flight)
+        self.query_one("#telemetry-orbit", Static).update(orbit)
+        self.query_one("#telemetry-resources", Static).update(resources)
         self._update_science(state)
 
     def _update_science(self, state: State) -> None:
-        """Update the science experiments section below the telemetry grid."""
+        """Update the science experiments section below the telemetry grid.
+
+        Hides experiments that don't match the current search query while
+        keeping the full experiment tuple in ``_science_experiments`` so
+        the click-handler can still resolve a card to its experiment.
+        """
         experiments = state.science_experiments
         self._science_experiments = experiments
         science_header = self.query_one("#telemetry-science-header", Static)
         grid = self.query_one("#telemetry-science-grid", Container)
 
-        if not experiments:
+        query = self._search_query.strip().lower()
+        visible = tuple(exp for exp in experiments if science_matches_query(exp, query))
+
+        if not visible:
             science_header.update("")
             grid.remove_children()
             return
@@ -206,14 +325,14 @@ class TelemetryDisplayWidget(Static):
         existing_cards = list(grid.query(ScienceCardWidget))
 
         # Reuse existing cards where possible, add/remove as needed
-        for idx, exp in enumerate(experiments):
+        for idx, exp in enumerate(visible):
             if idx < len(existing_cards):
                 existing_cards[idx].update_experiment(exp)
             else:
                 grid.mount(ScienceCardWidget(exp))
 
         # Remove excess cards
-        for card in existing_cards[len(experiments) :]:
+        for card in existing_cards[len(visible) :]:
             card.remove()
 
     def on_science_card_widget_selected(self, event: ScienceCardWidget.Selected) -> None:
