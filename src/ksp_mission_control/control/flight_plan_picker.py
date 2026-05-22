@@ -10,7 +10,7 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
 from textual.css.query import NoMatches
 from textual.screen import ModalScreen
-from textual.widgets import Button, DataTable, Static
+from textual.widgets import Button, DataTable, Input, Static
 
 from ksp_mission_control.control.actions.flight_plan import (
     FlightPlan,
@@ -48,6 +48,21 @@ def compute_plan_display_name(
     return str(relative.with_suffix("")).replace("\\", "/")
 
 
+def _plan_matches_query(display_name: str, plan: FlightPlan, query: str) -> bool:
+    """Whether a plan should appear given a search query.
+
+    Case-insensitive substring match against the display name and the
+    ``@craft`` value, so users can find plans either by where they live
+    in ``plans/`` or by which craft they declare.
+    """
+    if not query:
+        return True
+    q = query.lower()
+    if q in display_name.lower():
+        return True
+    return plan.craft is not None and q in plan.craft.lower()
+
+
 def format_plan_cell(display_name: str) -> Text:
     """Render a plan display name with the folder prefix dimmed.
 
@@ -69,11 +84,13 @@ def format_plan_cell(display_name: str) -> Text:
 class FlightPlanPicker(ModalScreen[FlightPlan | None]):
     """Modal dialog for selecting a flight plan from the plans/ directory.
 
-    Shows a two-column table (Plan, Craft). Plans are re-scanned each time
-    the dialog opens. Dismisses with the parsed FlightPlan or None on cancel.
+    Shows a two-column table (Plan, Craft) with a search box that filters
+    rows live. Plans are listed in alphabetic order by display name and
+    re-scanned each time the dialog opens. Dismisses with the parsed
+    FlightPlan or None on cancel.
     """
 
-    AUTO_FOCUS = ""
+    AUTO_FOCUS = "#picker-search"
 
     DEFAULT_CSS = """
     FlightPlanPicker {
@@ -91,6 +108,10 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
 
     #picker-title {
         padding: 0 0 1 0;
+    }
+
+    #picker-search {
+        margin: 0 0 1 0;
     }
 
     #picker-table {
@@ -173,13 +194,19 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
         for plan_file in parsed_by_path:
             folder_visible_counts[plan_file.parent] = folder_visible_counts.get(plan_file.parent, 0) + 1
 
+        unsorted: dict[str, FlightPlan] = {}
         for plan_file, plan in parsed_by_path.items():
             display_name = compute_plan_display_name(plan_file, self._plans_dir, folder_visible_counts)
-            self._parsed_plans[display_name] = plan
+            unsorted[display_name] = plan
+        # Re-sort alphabetically (case-insensitive) by display name so the
+        # picker order does not depend on filesystem traversal quirks
+        # (e.g. main-collapsed folders interleaving with top-level plans).
+        self._parsed_plans = dict(sorted(unsorted.items(), key=lambda item: item[0].lower()))
 
     def compose(self) -> ComposeResult:
         with VerticalScroll(id="picker-container"):
             yield Static("[b]Select Flight Plan[/b]", id="picker-title")
+            yield Input(placeholder="Search plans...", id="picker-search")
             yield Static("", id="picker-empty")
             yield DataTable(id="picker-table", cursor_type="row", zebra_stripes=True)
             yield Static("", id="picker-error")
@@ -200,12 +227,15 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
         table.show_cursor = False
 
     def _refresh_list(self) -> None:
-        """Rebuild the table and error display from loaded plans."""
+        """Rebuild the table and error display from loaded plans, applying the search filter."""
         table = self.query_one("#picker-table", DataTable)
         table.clear()
         self._plan_names = []
 
+        query = self._current_search_query()
         for name, plan in self._parsed_plans.items():
+            if not _plan_matches_query(name, plan, query):
+                continue
             craft_text = plan.craft if plan.craft else ""
             idx = len(self._plan_names)
             self._plan_names.append(name)
@@ -214,6 +244,8 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
         empty_widget = self.query_one("#picker-empty", Static)
         if not self._parsed_plans and not self._parse_errors:
             empty_widget.update(f"No .plan files found in {self._plans_dir}")
+        elif self._parsed_plans and not self._plan_names:
+            empty_widget.update("No plans match the search.")
         else:
             empty_widget.update("")
 
@@ -224,8 +256,23 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
         else:
             error_widget.update("")
 
+        # Filter changes invalidate any prior highlight, so reset cursor + button.
+        table.show_cursor = False
         self._highlighted_index = -1
         self._refresh_select_button()
+
+    def _current_search_query(self) -> str:
+        """Lowercase, trimmed search text, or '' when the input is not yet mounted."""
+        try:
+            search_input = self.query_one("#picker-search", Input)
+        except NoMatches:
+            return ""
+        return search_input.value.strip().lower()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Re-filter the plan list whenever the search query changes."""
+        if event.input.id == "picker-search":
+            self._refresh_list()
 
     def _refresh_select_button(self) -> None:
         """Enable Select only when a valid plan row is highlighted."""

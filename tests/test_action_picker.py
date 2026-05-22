@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import pytest
 from textual.app import App, ComposeResult
-from textual.widgets import Button, ListView
+from textual.pilot import Pilot
+from textual.widgets import Button, Input, ListView, Static
 
-from ksp_mission_control.control.action_picker import ActionPicker
+from ksp_mission_control.control.action_picker import ActionPicker, _action_matches_query
 from ksp_mission_control.control.actions.base import Action
 
 
@@ -98,3 +99,116 @@ class TestActionPickerSelectButton:
             await pilot.click("#action-picker-cancel-btn")
             await pilot.pause()
             assert app.dismissed_value is None
+
+
+class TestActionMatchesQuery:
+    """_action_matches_query: case-insensitive substring on label and description."""
+
+    def _make_action(self, label: str, description: str) -> Action:
+        class _StubAction:
+            pass
+
+        stub = _StubAction()
+        stub.label = label  # type: ignore[attr-defined]
+        stub.description = description  # type: ignore[attr-defined]
+        return stub  # type: ignore[return-value]
+
+    def test_empty_query_matches_everything(self) -> None:
+        action = self._make_action("Hover", "Hold altitude")
+        assert _action_matches_query(action, "") is True
+
+    def test_matches_label_case_insensitive(self) -> None:
+        action = self._make_action("Hover", "Hold altitude")
+        assert _action_matches_query(action, "HOVER") is True
+
+    def test_matches_description(self) -> None:
+        action = self._make_action("Hover", "Hold altitude with PD controller")
+        assert _action_matches_query(action, "controller") is True
+
+    def test_no_match_returns_false(self) -> None:
+        action = self._make_action("Hover", "Hold altitude")
+        assert _action_matches_query(action, "deploy") is False
+
+
+class TestActionPickerAlphabeticSort:
+    """Actions appear alphabetically by label, independent of registry order."""
+
+    @pytest.mark.asyncio
+    async def test_actions_are_sorted_by_label(self) -> None:
+        async with _ActionPickerTestApp().run_test() as pilot:
+            await pilot.pause()
+            picker = pilot.app.screen
+            assert isinstance(picker, ActionPicker)
+            labels = [a.label.lower() for a in picker._actions]
+            assert labels == sorted(labels)
+
+
+class TestActionPickerSearch:
+    """Search filters visible items; empty / no-match states render the right message."""
+
+    @staticmethod
+    async def _drain(pilot: Pilot[None]) -> None:
+        """Pause a few times so an awaited async refresh fully settles."""
+        for _ in range(4):
+            await pilot.pause()
+
+    @pytest.mark.asyncio
+    async def test_typing_filters_visible_actions(self) -> None:
+        async with _ActionPickerTestApp().run_test() as pilot:
+            await pilot.pause()
+            search = pilot.app.screen.query_one("#action-picker-search", Input)
+            search.value = "hover"
+            await self._drain(pilot)
+
+            picker = pilot.app.screen
+            assert isinstance(picker, ActionPicker)
+            assert len(picker._filtered_actions) >= 1
+            for action in picker._filtered_actions:
+                assert "hover" in action.label.lower() or "hover" in action.description.lower()
+
+    @pytest.mark.asyncio
+    async def test_clearing_search_restores_all_items(self) -> None:
+        async with _ActionPickerTestApp().run_test() as pilot:
+            await pilot.pause()
+            picker = pilot.app.screen
+            assert isinstance(picker, ActionPicker)
+            total = len(picker._actions)
+
+            search = pilot.app.screen.query_one("#action-picker-search", Input)
+            search.value = "hover"
+            await self._drain(pilot)
+            assert len(picker._filtered_actions) < total
+
+            search.value = ""
+            await self._drain(pilot)
+            assert len(picker._filtered_actions) == total
+
+    @pytest.mark.asyncio
+    async def test_no_match_shows_empty_message(self) -> None:
+        async with _ActionPickerTestApp().run_test() as pilot:
+            await pilot.pause()
+            search = pilot.app.screen.query_one("#action-picker-search", Input)
+            search.value = "definitely-not-an-action-zzz"
+            await self._drain(pilot)
+
+            empty_widget = pilot.app.screen.query_one("#action-picker-empty", Static)
+            assert "No actions match" in str(empty_widget._Static__content)
+
+    @pytest.mark.asyncio
+    async def test_filter_resets_highlight_and_disables_button(self) -> None:
+        async with _ActionPickerTestApp().run_test() as pilot:
+            await pilot.pause()
+            listview = pilot.app.screen.query_one("#action-picker-listview", ListView)
+            listview.focus()
+            await pilot.pause()
+            await pilot.press("down")
+            await pilot.pause()
+            select_btn = pilot.app.screen.query_one("#action-picker-select-btn", Button)
+            assert select_btn.disabled is False
+
+            search = pilot.app.screen.query_one("#action-picker-search", Input)
+            search.value = "hover"
+            await self._drain(pilot)
+
+            assert select_btn.disabled is True
+            assert listview.index is None

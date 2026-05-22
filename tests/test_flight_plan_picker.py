@@ -6,11 +6,12 @@ from pathlib import Path
 
 import pytest
 from textual.app import App, ComposeResult
-from textual.widgets import Button, DataTable
+from textual.widgets import Button, DataTable, Input
 
 from ksp_mission_control.control.actions.flight_plan import FlightPlan
 from ksp_mission_control.control.flight_plan_picker import (
     FlightPlanPicker,
+    _plan_matches_query,
     compute_plan_display_name,
     format_plan_cell,
 )
@@ -233,3 +234,122 @@ class TestSelectButton:
             await pilot.click("#picker-cancel-btn")
             await pilot.pause()
             assert app.dismissed_value is None
+
+
+class TestPlanMatchesQuery:
+    """_plan_matches_query: case-insensitive substring match on name and @craft."""
+
+    def test_empty_query_matches_everything(self) -> None:
+        plan = FlightPlan(name="any", steps=(), craft=None)
+        assert _plan_matches_query("anything", plan, "") is True
+
+    def test_matches_display_name_case_insensitive(self) -> None:
+        plan = FlightPlan(name="any", steps=(), craft=None)
+        assert _plan_matches_query("Hover-And-Land", plan, "hover") is True
+
+    def test_matches_craft_name(self) -> None:
+        plan = FlightPlan(name="any", steps=(), craft="fart-1")
+        assert _plan_matches_query("unrelated-name", plan, "fart") is True
+
+    def test_no_match_returns_false(self) -> None:
+        plan = FlightPlan(name="any", steps=(), craft="fart-1")
+        assert _plan_matches_query("land-it", plan, "hover") is False
+
+
+class TestPickerAlphabeticSort:
+    """Plans always appear in alphabetic (case-insensitive) order by display name."""
+
+    @pytest.mark.asyncio
+    async def test_plans_sort_alphabetically_regardless_of_creation_order(self, tmp_path: Path) -> None:
+        (tmp_path / "zebra.plan").write_text("hover\n")
+        (tmp_path / "apple.plan").write_text("hover\n")
+        (tmp_path / "mango.plan").write_text("hover\n")
+        async with _PickerTestApp(tmp_path).run_test() as pilot:
+            await pilot.pause()
+            picker = pilot.app.screen
+            assert isinstance(picker, FlightPlanPicker)
+            assert picker._plan_names == ["apple", "mango", "zebra"]
+
+
+class TestPickerSearch:
+    """Search filters visible rows; empty / no-match states render the right message."""
+
+    @pytest.mark.asyncio
+    async def test_typing_filters_visible_rows(self, tmp_path: Path) -> None:
+        (tmp_path / "hover-and-land.plan").write_text("hover\n")
+        (tmp_path / "altitude-steps.plan").write_text("hover\n")
+        (tmp_path / "square-patrol.plan").write_text("hover\n")
+        async with _PickerTestApp(tmp_path).run_test() as pilot:
+            await pilot.pause()
+            search = pilot.app.screen.query_one("#picker-search", Input)
+            search.value = "hover"
+            await pilot.pause()
+
+            picker = pilot.app.screen
+            assert isinstance(picker, FlightPlanPicker)
+            assert picker._plan_names == ["hover-and-land"]
+
+    @pytest.mark.asyncio
+    async def test_search_matches_craft_name(self, tmp_path: Path) -> None:
+        (tmp_path / "plan-a.plan").write_text("@craft fart-1\nhover\n")
+        (tmp_path / "plan-b.plan").write_text("@craft fart-2\nhover\n")
+        async with _PickerTestApp(tmp_path).run_test() as pilot:
+            await pilot.pause()
+            search = pilot.app.screen.query_one("#picker-search", Input)
+            search.value = "fart-1"
+            await pilot.pause()
+
+            picker = pilot.app.screen
+            assert isinstance(picker, FlightPlanPicker)
+            assert picker._plan_names == ["plan-a"]
+
+    @pytest.mark.asyncio
+    async def test_clearing_search_restores_all_rows(self, tmp_path: Path) -> None:
+        (tmp_path / "alpha.plan").write_text("hover\n")
+        (tmp_path / "beta.plan").write_text("hover\n")
+        async with _PickerTestApp(tmp_path).run_test() as pilot:
+            await pilot.pause()
+            search = pilot.app.screen.query_one("#picker-search", Input)
+            search.value = "alp"
+            await pilot.pause()
+            search.value = ""
+            await pilot.pause()
+
+            picker = pilot.app.screen
+            assert isinstance(picker, FlightPlanPicker)
+            assert picker._plan_names == ["alpha", "beta"]
+
+    @pytest.mark.asyncio
+    async def test_no_match_shows_empty_message(self, tmp_path: Path) -> None:
+        (tmp_path / "alpha.plan").write_text("hover\n")
+        async with _PickerTestApp(tmp_path).run_test() as pilot:
+            await pilot.pause()
+            search = pilot.app.screen.query_one("#picker-search", Input)
+            search.value = "definitely-not-here"
+            await pilot.pause()
+
+            from textual.widgets import Static
+
+            empty_widget = pilot.app.screen.query_one("#picker-empty", Static)
+            assert "No plans match" in str(empty_widget._Static__content)
+
+    @pytest.mark.asyncio
+    async def test_filter_resets_highlight_and_disables_button(self, tmp_path: Path) -> None:
+        (tmp_path / "alpha.plan").write_text("hover\n")
+        (tmp_path / "beta.plan").write_text("hover\n")
+        async with _PickerTestApp(tmp_path).run_test() as pilot:
+            await pilot.pause()
+            table = pilot.app.screen.query_one("#picker-table", DataTable)
+            table.focus()
+            await pilot.pause()
+            await pilot.press("down")
+            await pilot.pause()
+            select_btn = pilot.app.screen.query_one("#picker-select-btn", Button)
+            assert select_btn.disabled is False
+
+            search = pilot.app.screen.query_one("#picker-search", Input)
+            search.value = "alpha"
+            await pilot.pause()
+
+            assert select_btn.disabled is True
+            assert table.show_cursor is False
