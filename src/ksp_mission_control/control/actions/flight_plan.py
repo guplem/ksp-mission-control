@@ -122,12 +122,14 @@ def _parse_line_params(tokens: list[str], action: Action) -> dict[str, Any]:
     return result
 
 
-def parse_flight_plan(path: Path) -> FlightPlan:
-    """Parse a .plan file into a FlightPlan.
+def parse_flight_plan_text(text: str, name: str = "inline") -> FlightPlan:
+    """Parse raw plan text into a FlightPlan.
 
-    Lines starting with ``@parallel <path>`` become ``ParallelStep`` entries
-    at their position in the step list. Paths are relative to the
-    ``plans/`` directory.
+    Same syntax as .plan files on disk: blank lines and ``#`` comments are
+    ignored, ``@parallel <path>`` becomes a ``ParallelStep``, ``@craft <name>``
+    sets the required craft, and a bare ``@hidden`` marks the plan as a
+    sub-plan. ``name`` is stored on the resulting FlightPlan and used in
+    error messages.
 
     Raises ValueError on unknown actions, invalid params, or empty plans.
     """
@@ -136,7 +138,6 @@ def parse_flight_plan(path: Path) -> FlightPlan:
     craft: str | None = None
     is_hidden: bool = False
 
-    text = path.read_text(encoding="utf-8")
     for line_number, raw_line in enumerate(text.splitlines(), start=1):
         line = raw_line.strip()
         if not line or line.startswith("#"):
@@ -175,12 +176,21 @@ def parse_flight_plan(path: Path) -> FlightPlan:
         steps.append(FlightPlanStep(action_id=action_id, param_values=param_values))
 
     if not steps:
-        raise ValueError(f"Flight plan {path.name} has no steps")
+        raise ValueError(f"Flight plan {name!r} has no steps")
 
-    plan_name = path.stem
     return FlightPlan(
-        name=plan_name,
+        name=name,
         steps=tuple(steps),
         craft=craft,
         is_hidden=is_hidden,
     )
+
+
+def parse_flight_plan(path: Path) -> FlightPlan:
+    """Parse a .plan file into a FlightPlan.
+
+    Reads the file and delegates to :func:`parse_flight_plan_text`. The
+    resulting FlightPlan's ``name`` is the file stem.
+    """
+    text = path.read_text(encoding="utf-8")
+    return parse_flight_plan_text(text, name=path.stem)

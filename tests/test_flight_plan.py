@@ -11,6 +11,7 @@ from ksp_mission_control.control.actions.flight_plan import (
     FlightPlanStep,
     ParallelStep,
     parse_flight_plan,
+    parse_flight_plan_text,
 )
 
 
@@ -305,3 +306,32 @@ class TestParseHiddenDirective:
             ParallelStep(plan_path="science/collect.plan"),
             FlightPlanStep(action_id="hover", param_values={}),
         )
+
+
+class TestParseFlightPlanText:
+    """Tests for parse_flight_plan_text (string input, no file required)."""
+
+    def test_parses_inline_plan(self) -> None:
+        plan = parse_flight_plan_text("hover  target_altitude=200\nland\n")
+        assert plan.name == "inline"
+        assert len(plan.steps) == 2
+        assert plan.steps[0] == FlightPlanStep(action_id="hover", param_values={"target_altitude": 200.0})
+        assert plan.steps[1] == FlightPlanStep(action_id="land", param_values={})
+
+    def test_uses_explicit_name(self) -> None:
+        plan = parse_flight_plan_text("hover\n", name="pasted")
+        assert plan.name == "pasted"
+
+    def test_supports_directives(self) -> None:
+        plan = parse_flight_plan_text("@craft fart-1\n@parallel sub.plan\nhover\n", name="pasted")
+        assert plan.craft == "fart-1"
+        assert plan.steps[0] == ParallelStep(plan_path="sub.plan")
+        assert plan.steps[1].action_id == "hover"
+
+    def test_empty_text_raises_with_name(self) -> None:
+        with pytest.raises(ValueError, match="'pasted' has no steps"):
+            parse_flight_plan_text("# only comment\n", name="pasted")
+
+    def test_line_numbers_propagate(self) -> None:
+        with pytest.raises(ValueError, match="Line 3"):
+            parse_flight_plan_text("hover\n# comment\nbogus_action\n")

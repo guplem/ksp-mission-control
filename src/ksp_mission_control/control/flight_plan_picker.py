@@ -14,6 +14,7 @@ from ksp_mission_control.control.actions.flight_plan import (
     FlightPlan,
     parse_flight_plan,
 )
+from ksp_mission_control.control.paste_plan_dialog import PastePlanDialog
 
 _PLANS_DIR_NAME = "plans"
 _FOLDER_ENTRYPOINT_STEM = "main"
@@ -179,6 +180,7 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
             yield DataTable(id="picker-table", cursor_type="row", zebra_stripes=True)
             yield Static("", id="picker-error")
             with Horizontal(id="picker-buttons"):
+                yield Button("Paste Plan", id="picker-paste-btn", variant="primary")
                 yield Button("Cancel", id="picker-cancel-btn", variant="error")
 
     def on_mount(self) -> None:
@@ -229,8 +231,15 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
                 self.dismiss(plan)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "picker-cancel-btn":
+        if event.button.id == "picker-paste-btn":
+            self.app.push_screen(PastePlanDialog(), callback=self._on_paste_result)
+        elif event.button.id == "picker-cancel-btn":
             self.dismiss(None)
+
+    def _on_paste_result(self, plan: FlightPlan | None) -> None:
+        """Forward a pasted plan to the picker's caller; stay open on cancel."""
+        if plan is not None:
+            self.dismiss(plan)
 
     def action_cancel(self) -> None:
         self.dismiss(None)

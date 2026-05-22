@@ -56,6 +56,7 @@ src/ksp_mission_control/
 │   ├── param_input_modal.py    # ParamInputModal (parameter collection before action start)
 │   ├── action_picker.py       # ActionPicker (modal for selecting an action to run)
 │   ├── flight_plan_picker.py  # FlightPlanPicker (modal for selecting .plan files)
+│   ├── paste_plan_dialog.py   # PastePlanDialog (modal for pasting and parsing inline plan text)
 │   ├── confirm_exit_dialog.py  # ConfirmExitDialog (leave control room confirmation)
 │   ├── plan_failure_dialog.py # PlanFailureDialog (continue/abort on step failure)
 │   ├── manual_command_dialog.py   # ManualCommandDialog (one-shot manual VesselCommands)
@@ -66,7 +67,7 @@ src/ksp_mission_control/
 │   │   ├── runner.py     # ActionRunner (step-based executor), StepResult
 │   │   ├── plan_executor.py # PlanExecutor (wraps ActionRunner, chains plan steps)
 │   │   ├── multi_track_executor.py # MultiTrackExecutor (parallel plan tracks, command merging)
-│   │   ├── flight_plan.py   # FlightPlan, FlightPlanStep, parse_flight_plan(), @parallel directive
+│   │   ├── flight_plan.py   # FlightPlan, FlightPlanStep, parse_flight_plan(), parse_flight_plan_text(), @parallel / @craft / @hidden directives
 │   │   ├── registry.py   # get_available_actions() factory
 │   │   ├── helpers/      # Shared helpers called BY actions (not lifecycle executors)
 │   │   │   ├── maneuver_node.py  # Drive vessel through a maneuver node (used by circularize, change_apse)
