@@ -84,16 +84,16 @@ class TestCircularizeStartValidation:
     def test_accepts_valid_apse_values(self) -> None:
         action = CircularizeAction()
         action.start(State(), {"apse": "apoapsis", "staging_mode": None})
-        assert action._apse is Apse.APOAPSIS
+        assert action._apse.value == Apse.APOAPSIS.value
 
         action_p = CircularizeAction()
         action_p.start(State(), {"apse": "periapsis", "staging_mode": None})
-        assert action_p._apse is Apse.PERIAPSIS
+        assert action_p._apse.value == Apse.PERIAPSIS.value
 
     def test_normalizes_case(self) -> None:
         action = CircularizeAction()
         action.start(State(), {"apse": "APOAPSIS", "staging_mode": None})
-        assert action._apse is Apse.APOAPSIS
+        assert action._apse.value == Apse.APOAPSIS.value
 
     def test_raises_on_invalid_apse(self) -> None:
         action = CircularizeAction()

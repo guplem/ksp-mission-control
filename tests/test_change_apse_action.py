@@ -89,16 +89,16 @@ class TestChangeApseStartValidation:
     def test_accepts_valid_target_values(self) -> None:
         action = ChangeApseAction()
         action.start(_orbit_state(), {"target": "apoapsis", "target_altitude": 200_000.0, "staging_mode": None})
-        assert action._target is ApseTarget.APOAPSIS
+        assert action._target.value == ApseTarget.APOAPSIS.value
 
         action_p = ChangeApseAction()
         action_p.start(_orbit_state(), {"target": "periapsis", "target_altitude": 50_000.0, "staging_mode": None})
-        assert action_p._target is ApseTarget.PERIAPSIS
+        assert action_p._target.value == ApseTarget.PERIAPSIS.value
 
     def test_normalizes_case(self) -> None:
         action = ChangeApseAction()
         action.start(_orbit_state(), {"target": "APOAPSIS", "target_altitude": 200_000.0, "staging_mode": None})
-        assert action._target is ApseTarget.APOAPSIS
+        assert action._target.value == ApseTarget.APOAPSIS.value
 
     def test_raises_on_invalid_target(self) -> None:
         action = ChangeApseAction()
