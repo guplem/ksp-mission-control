@@ -5,8 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from rich.text import Text
+from textual import events
 from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
+from textual.css.query import NoMatches
 from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Static
 
@@ -130,6 +132,8 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
         self._parse_errors: dict[str, str] = {}
         self._require_craft = require_craft
         self._plan_names: list[str] = []
+        self._highlighted_index: int = -1
+        """Row index of the currently highlighted plan (-1 when none)."""
 
     def _load_plans(self) -> None:
         """Scan the plans directory recursively for .plan files.
@@ -180,7 +184,8 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
             yield DataTable(id="picker-table", cursor_type="row", zebra_stripes=True)
             yield Static("", id="picker-error")
             with Horizontal(id="picker-buttons"):
-                yield Button("Paste Plan", id="picker-paste-btn", variant="primary")
+                yield Button("Paste Plan", id="picker-paste-btn")
+                yield Button("Select", id="picker-select-btn", variant="primary")
                 yield Button("Cancel", id="picker-cancel-btn", variant="error")
 
     def on_mount(self) -> None:
@@ -189,6 +194,10 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
         table.add_columns("Plan", "Craft")
         self._load_plans()
         self._refresh_list()
+        # Hide the DataTable cursor so no plan appears pre-selected. The
+        # cursor (and Select button) only activate after explicit user
+        # interaction (click or keyboard navigation).
+        table.show_cursor = False
 
     def _refresh_list(self) -> None:
         """Rebuild the table and error display from loaded plans."""
@@ -215,8 +224,61 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
         else:
             error_widget.update("")
 
+        self._highlighted_index = -1
+        self._refresh_select_button()
+
+    def _refresh_select_button(self) -> None:
+        """Enable Select only when a valid plan row is highlighted."""
+        select_btn = self.query_one("#picker-select-btn", Button)
+        select_btn.disabled = not (0 <= self._highlighted_index < len(self._plan_names))
+
+    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        """Track the highlighted row, but only after the cursor has been revealed."""
+        try:
+            table = self.query_one("#picker-table", DataTable)
+        except NoMatches:
+            return
+        if not table.show_cursor:
+            # Cursor is hidden: this fires during mount or while the user
+            # has not yet interacted with the table. Ignore it so no plan
+            # appears pre-selected.
+            return
+        self._highlighted_index = event.cursor_row
+        self._refresh_select_button()
+
+    def on_click(self, event: events.Click) -> None:
+        """Reveal the cursor (and enable Select) when the user clicks the table."""
+        if event.widget is None:
+            return
+        try:
+            table = self.query_one("#picker-table", DataTable)
+        except NoMatches:
+            return
+        in_table = event.widget is table or any(ancestor is table for ancestor in event.widget.ancestors_with_self)
+        if not in_table or table.show_cursor:
+            return
+        table.show_cursor = True
+        if 0 <= table.cursor_row < len(self._plan_names):
+            self._highlighted_index = table.cursor_row
+            self._refresh_select_button()
+
+    def on_key(self, event: events.Key) -> None:
+        """Reveal the cursor on keyboard navigation while the table is focused."""
+        if event.key not in ("up", "down", "home", "end", "pageup", "pagedown"):
+            return
+        try:
+            table = self.query_one("#picker-table", DataTable)
+        except NoMatches:
+            return
+        if not table.has_focus or table.show_cursor:
+            return
+        table.show_cursor = True
+        if 0 <= table.cursor_row < len(self._plan_names):
+            self._highlighted_index = table.cursor_row
+            self._refresh_select_button()
+
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        """Select and dismiss with the chosen plan."""
+        """Dismiss with the double-clicked / Enter-selected plan."""
         key = event.row_key.value
         if key is None:
             return
@@ -224,17 +286,24 @@ class FlightPlanPicker(ModalScreen[FlightPlan | None]):
             idx = int(key)
         except ValueError:
             return
-        if 0 <= idx < len(self._plan_names):
-            plan_name = self._plan_names[idx]
-            plan = self._parsed_plans.get(plan_name)
-            if plan is not None:
-                self.dismiss(plan)
+        self._dismiss_with_plan_at(idx)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "picker-paste-btn":
             self.app.push_screen(PastePlanDialog(), callback=self._on_paste_result)
+        elif event.button.id == "picker-select-btn":
+            self._dismiss_with_plan_at(self._highlighted_index)
         elif event.button.id == "picker-cancel-btn":
             self.dismiss(None)
+
+    def _dismiss_with_plan_at(self, idx: int) -> None:
+        """Dismiss with the plan at *idx* in the visible row order; no-op if out of range."""
+        if not (0 <= idx < len(self._plan_names)):
+            return
+        plan_name = self._plan_names[idx]
+        plan = self._parsed_plans.get(plan_name)
+        if plan is not None:
+            self.dismiss(plan)
 
     def _on_paste_result(self, plan: FlightPlan | None) -> None:
         """Forward a pasted plan to the picker's caller; stay open on cancel."""

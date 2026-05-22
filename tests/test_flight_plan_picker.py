@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+from textual.app import App, ComposeResult
+from textual.widgets import Button, DataTable
+
+from ksp_mission_control.control.actions.flight_plan import FlightPlan
 from ksp_mission_control.control.flight_plan_picker import (
     FlightPlanPicker,
     compute_plan_display_name,
@@ -130,3 +135,101 @@ class TestFormatPlanCell:
         assert cell.plain == "science/1-low-atmospheric-hop/vessel_control"
         dim_ranges = [cell.plain[span.start : span.end] for span in cell.spans if span.style == "dim"]
         assert dim_ranges == ["science/1-low-atmospheric-hop/"]
+
+
+class _PickerTestApp(App[None]):
+    """Host app that pushes a FlightPlanPicker and records its dismiss value."""
+
+    def __init__(self, plans_dir: Path) -> None:
+        super().__init__()
+        self._plans_dir = plans_dir
+        self.dismissed_value: FlightPlan | None | str = "NOT_SET"
+
+    def compose(self) -> ComposeResult:
+        yield from ()
+
+    def on_mount(self) -> None:
+        self.push_screen(FlightPlanPicker(plans_dir=self._plans_dir), callback=self._on_dismiss)
+
+    def _on_dismiss(self, result: FlightPlan | None) -> None:
+        self.dismissed_value = result
+
+
+class TestSelectButton:
+    """The Select button confirms the currently highlighted plan.
+
+    No plan is highlighted by default: the DataTable cursor is hidden on
+    mount and only revealed once the user clicks a row or navigates with
+    the keyboard. The button mirrors that state.
+    """
+
+    @pytest.mark.asyncio
+    async def test_select_button_disabled_when_no_plans(self, tmp_path: Path) -> None:
+        async with _PickerTestApp(tmp_path).run_test() as pilot:
+            await pilot.pause()
+            select_btn = pilot.app.screen.query_one("#picker-select-btn", Button)
+            assert select_btn.disabled is True
+
+    @pytest.mark.asyncio
+    async def test_select_button_disabled_by_default_even_with_plans(self, tmp_path: Path) -> None:
+        (tmp_path / "a.plan").write_text("hover\n")
+        (tmp_path / "b.plan").write_text("hover\n")
+        async with _PickerTestApp(tmp_path).run_test() as pilot:
+            await pilot.pause()
+            select_btn = pilot.app.screen.query_one("#picker-select-btn", Button)
+            assert select_btn.disabled is True
+
+    @pytest.mark.asyncio
+    async def test_cursor_hidden_until_user_interacts(self, tmp_path: Path) -> None:
+        (tmp_path / "a.plan").write_text("hover\n")
+        (tmp_path / "b.plan").write_text("hover\n")
+        async with _PickerTestApp(tmp_path).run_test() as pilot:
+            await pilot.pause()
+            table = pilot.app.screen.query_one("#picker-table", DataTable)
+            assert table.show_cursor is False
+
+    @pytest.mark.asyncio
+    async def test_keyboard_navigation_reveals_cursor_and_enables_button(self, tmp_path: Path) -> None:
+        (tmp_path / "a.plan").write_text("hover\n")
+        (tmp_path / "b.plan").write_text("land\n")
+        async with _PickerTestApp(tmp_path).run_test() as pilot:
+            await pilot.pause()
+            table = pilot.app.screen.query_one("#picker-table", DataTable)
+            table.focus()
+            await pilot.pause()
+            await pilot.press("down")
+            await pilot.pause()
+
+            assert table.show_cursor is True
+            select_btn = pilot.app.screen.query_one("#picker-select-btn", Button)
+            assert select_btn.disabled is False
+
+    @pytest.mark.asyncio
+    async def test_select_button_dismisses_with_highlighted_plan(self, tmp_path: Path) -> None:
+        (tmp_path / "a.plan").write_text("hover\n")
+        (tmp_path / "b.plan").write_text("land\n")
+        app = _PickerTestApp(tmp_path)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            table = pilot.app.screen.query_one("#picker-table", DataTable)
+            table.focus()
+            await pilot.pause()
+            await pilot.press("down")  # reveal cursor at row 0
+            await pilot.press("down")  # move to row 1
+            await pilot.pause()
+            await pilot.click("#picker-select-btn")
+            await pilot.pause()
+
+            plan = app.dismissed_value
+            assert isinstance(plan, FlightPlan)
+            assert plan.name == "b"
+
+    @pytest.mark.asyncio
+    async def test_cancel_button_still_dismisses_with_none(self, tmp_path: Path) -> None:
+        (tmp_path / "a.plan").write_text("hover\n")
+        app = _PickerTestApp(tmp_path)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.click("#picker-cancel-btn")
+            await pilot.pause()
+            assert app.dismissed_value is None
