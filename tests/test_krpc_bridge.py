@@ -1658,7 +1658,7 @@ class TestReadVesselStateEquatorialNodes:
         assert state.orbit_ascending_node_ut == current_ut - 100.0 + 2400.0
         assert state.orbit_descending_node_ut == current_ut - 200.0 + 2400.0
 
-    def test_resilient_when_kRPC_lacks_argument_of_periapsis(self) -> None:
+    def test_resilient_when_krpc_lacks_argument_of_periapsis(self) -> None:
         # Base mock has no ``argument_of_periapsis``: the helper must fall
         # back to undefined nodes rather than raising.
         conn = _make_mock_conn()

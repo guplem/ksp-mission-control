@@ -795,7 +795,10 @@ class State:
     orbit_descending_node_ut: float = float("inf")
     """Universal time of the next descending node (orbit crossing the equator going south), in seconds. ``inf`` when the orbit is equatorial."""
     orbit_ascending_node_speed: float = 0.0
-    """Orbital speed at the next ascending node, in m/s. 0.0 when undefined (equatorial orbit). Used by plane-change planners to pick the cheaper crossing."""
+    """Orbital speed at the next ascending node, in m/s. 0.0 when undefined (equatorial orbit).
+
+    Used by plane-change planners to pick the cheaper crossing.
+    """
     orbit_descending_node_speed: float = 0.0
     """Orbital speed at the next descending node, in m/s. 0.0 when undefined (equatorial orbit)."""
 
@@ -839,7 +842,10 @@ class State:
     body_soi: float = 0.0
     """Sphere of influence radius of the orbited body, in meters."""
     body_rotational_period: float = 21549.425
-    """Sidereal rotation period of the orbited body, in seconds. Defaults to Kerbin (~5h 59m). Used to translate impact-longitude errors into burn-timing adjustments."""
+    """Sidereal rotation period of the orbited body, in seconds. Defaults to Kerbin (~5h 59m).
+
+    Used to translate impact-longitude errors into burn-timing adjustments.
+    """
     position_biome: str = ""
     """Current biome (e.g. 'Grasslands', 'Midlands', 'Highlands')."""
     position_latitude: float = 0.0
