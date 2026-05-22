@@ -345,6 +345,20 @@ def _format_orbit(state: State, colors: dict[AlertLevel, str]) -> str:
                 f"Planned:         {len(state.nodes)}",
             ]
         )
+    if state.predicted_impact is not None:
+        impact = state.predicted_impact
+        source_label = "current orbit" if impact.source == "current_orbit" else "next node orbit"
+        lines.extend(
+            [
+                "",
+                "[b]Predicted Impact[/b]",
+                f"Latitude:        {impact.latitude:+.3f} deg",
+                f"Longitude:       {impact.longitude:+.3f} deg",
+                f"Terrain:         {_format_altitude(impact.altitude_terrain)}",
+                f"T to impact:     {_format_time(impact.time_to)}",
+                f"Source:          {source_label}",
+            ]
+        )
     lines.extend(
         [
             "",

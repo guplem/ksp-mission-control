@@ -526,6 +526,34 @@ class ManeuverNode:
 
 
 @dataclass(frozen=True)
+class ImpactPrediction:
+    """Predicted ground impact for the active trajectory.
+
+    Computed by the bridge by walking the active orbit (or the next maneuver
+    node's post-burn orbit, when one is planned) forward in time until the
+    trajectory crosses sea level. The bridge does the bisection in the
+    body's rotating reference frame, so the resulting lat/lon already
+    account for body rotation between now and impact.
+
+    The prediction is purely ballistic: atmospheric drag is not modeled.
+    Real impact will land *short* of this point during a powered or drag-
+    affected descent. Use ``altitude_terrain`` for context (impact is
+    reported at sea level even when terrain at that lat/lon is higher).
+    """
+
+    latitude: float
+    """Geographic latitude where the trajectory crosses sea level, in degrees."""
+    longitude: float
+    """Geographic longitude where the trajectory crosses sea level, in degrees. Wrapped to (-180, 180]."""
+    altitude_terrain: float
+    """Terrain altitude at (latitude, longitude), in meters above sea level. Negative over oceans."""
+    time_to: float
+    """Seconds from current universal time until the predicted sea-level crossing."""
+    source: str
+    """Which orbit produced this prediction: ``'current_orbit'`` or ``'next_node_orbit'``."""
+
+
+@dataclass(frozen=True)
 class PartInfo:
     """Immutable snapshot of a single part's stage and state.
 
@@ -762,6 +790,14 @@ class State:
     """True when apoapsis is the next apse (true anomaly in 0..pi)."""
     orbit_soi_time_to_change: float = float("inf")
     """Time until sphere of influence transition, in seconds. inf if no transition upcoming."""
+    orbit_ascending_node_ut: float = float("inf")
+    """Universal time of the next ascending node (orbit crossing the equator going north), in seconds. ``inf`` when the orbit is equatorial."""
+    orbit_descending_node_ut: float = float("inf")
+    """Universal time of the next descending node (orbit crossing the equator going south), in seconds. ``inf`` when the orbit is equatorial."""
+    orbit_ascending_node_speed: float = 0.0
+    """Orbital speed at the next ascending node, in m/s. 0.0 when undefined (equatorial orbit). Used by plane-change planners to pick the cheaper crossing."""
+    orbit_descending_node_speed: float = 0.0
+    """Orbital speed at the next descending node, in m/s. 0.0 when undefined (equatorial orbit)."""
 
     # --- Vessel ---
     universal_time: float = 0.0
@@ -802,6 +838,8 @@ class State:
     """Gravitational parameter (GM) of the orbited body, in m^3/s^2."""
     body_soi: float = 0.0
     """Sphere of influence radius of the orbited body, in meters."""
+    body_rotational_period: float = 21549.425
+    """Sidereal rotation period of the orbited body, in seconds. Defaults to Kerbin (~5h 59m). Used to translate impact-longitude errors into burn-timing adjustments."""
     position_biome: str = ""
     """Current biome (e.g. 'Grasslands', 'Midlands', 'Highlands')."""
     position_latitude: float = 0.0
@@ -945,6 +983,16 @@ class State:
     # --- Maneuver nodes ---
     nodes: tuple[ManeuverNode, ...] = ()
     """All maneuver nodes on the vessel, sorted by ut (first to last)."""
+
+    # --- Predictions ---
+    predicted_impact: ImpactPrediction | None = None
+    """Predicted ground impact for the active trajectory, or ``None`` when the trajectory does not intersect the surface within one period.
+
+    When a future maneuver node is planned, the prediction follows that
+    node's post-burn orbit. Otherwise it follows the current orbit. The
+    bridge resamples this every poll, so refining a node and watching this
+    field is the feedback signal a targeted-landing planner uses.
+    """
 
     # --- Parts ---
     parts: Parts = field(default_factory=Parts)

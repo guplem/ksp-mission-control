@@ -1557,3 +1557,244 @@ class TestLaunchVesselFromVab:
         conn = self._make_spawn_conn([])
         launch_vessel_from_vab(conn, "fart-1")
         assert conn.space_center._launched == ["fart-1"]
+
+
+# ---------------------------------------------------------------------------
+# read_vessel_state tests: equatorial nodes (AN/DN)
+# ---------------------------------------------------------------------------
+
+
+def _patch_orbit_for_nodes(
+    conn: SimpleNamespace,
+    *,
+    inclination: float = 0.5,
+    argument_of_periapsis: float = 0.0,
+    period: float = 2400.0,
+    semi_major_axis: float = 675_000.0,
+    ut_at_true_anomaly: dict[float, float] | None = None,
+    radius_at: dict[float, float] | None = None,
+) -> None:
+    """Wire AN/DN kRPC fields onto the existing mock orbit.
+
+    Tests that exercise AN/DN reading need ``argument_of_periapsis``,
+    ``ut_at_true_anomaly`` and ``radius_at`` on the orbit. The base mock
+    omits them so existing tests stay focused; this helper attaches them
+    just for the tests that care.
+    """
+    orbit = conn.space_center.active_vessel.orbit
+    orbit.inclination = inclination
+    orbit.argument_of_periapsis = argument_of_periapsis
+    orbit.period = period
+    orbit.semi_major_axis = semi_major_axis
+
+    ut_lookup = ut_at_true_anomaly or {}
+
+    def _ut(nu: float) -> float:
+        # Match by closeness; tests pass either the exact ν or a nearby float.
+        for key, value in ut_lookup.items():
+            if abs(nu - key) < 1e-6:
+                return value
+        return 0.0
+
+    orbit.ut_at_true_anomaly = _ut
+
+    radius_lookup = radius_at or {}
+
+    def _radius(ut: float) -> float:
+        for key, value in radius_lookup.items():
+            if abs(ut - key) < 1e-3:
+                return value
+        return semi_major_axis
+
+    orbit.radius_at = _radius
+
+
+class TestReadVesselStateEquatorialNodes:
+    """Tests for orbit ascending/descending node UTs and speeds."""
+
+    def test_equatorial_orbit_yields_infinite_node_uts(self) -> None:
+        conn = _make_mock_conn()
+        conn.space_center.active_vessel.orbit.inclination = 0.0
+        state = read_vessel_state(conn)
+        assert math.isinf(state.orbit_ascending_node_ut)
+        assert math.isinf(state.orbit_descending_node_ut)
+        assert state.orbit_ascending_node_speed == 0.0
+        assert state.orbit_descending_node_speed == 0.0
+
+    def test_inclined_orbit_reads_an_and_dn_ut(self) -> None:
+        # ω = π/2: AN is at true anomaly = -π/2 (mod 2π) = 3π/2,
+        # DN at π - π/2 = π/2.
+        conn = _make_mock_conn()
+        _patch_orbit_for_nodes(
+            conn,
+            inclination=0.5,
+            argument_of_periapsis=math.pi / 2.0,
+            ut_at_true_anomaly={3.0 * math.pi / 2.0: 1_001_200.0, math.pi / 2.0: 1_000_400.0},
+            radius_at={1_001_200.0: 680_000.0, 1_000_400.0: 670_000.0},
+        )
+        state = read_vessel_state(conn)
+        assert state.orbit_ascending_node_ut == 1_001_200.0
+        assert state.orbit_descending_node_ut == 1_000_400.0
+        # vis-viva at AN: sqrt(mu * (2/r - 1/a)); mu and sma from the mock fixture.
+        expected_an_speed = math.sqrt(3.5316e12 * (2.0 / 680_000.0 - 1.0 / 675_000.0))
+        expected_dn_speed = math.sqrt(3.5316e12 * (2.0 / 670_000.0 - 1.0 / 675_000.0))
+        assert abs(state.orbit_ascending_node_speed - expected_an_speed) < 0.5
+        assert abs(state.orbit_descending_node_speed - expected_dn_speed) < 0.5
+
+    def test_node_in_the_past_is_bumped_one_period_forward(self) -> None:
+        # kRPC may return a UT slightly before current_ut; the bridge bumps
+        # forward by full periods until it is in the future.
+        conn = _make_mock_conn()
+        current_ut = float(conn.space_center.ut)
+        _patch_orbit_for_nodes(
+            conn,
+            inclination=0.5,
+            argument_of_periapsis=0.0,
+            period=2400.0,
+            ut_at_true_anomaly={0.0: current_ut - 100.0, math.pi: current_ut - 200.0},
+            radius_at={current_ut - 100.0 + 2400.0: 700_000.0, current_ut - 200.0 + 2400.0: 700_000.0},
+        )
+        state = read_vessel_state(conn)
+        assert state.orbit_ascending_node_ut == current_ut - 100.0 + 2400.0
+        assert state.orbit_descending_node_ut == current_ut - 200.0 + 2400.0
+
+    def test_resilient_when_kRPC_lacks_argument_of_periapsis(self) -> None:
+        # Base mock has no ``argument_of_periapsis``: the helper must fall
+        # back to undefined nodes rather than raising.
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        assert math.isinf(state.orbit_ascending_node_ut)
+        assert math.isinf(state.orbit_descending_node_ut)
+
+
+# ---------------------------------------------------------------------------
+# read_vessel_state tests: impact prediction
+# ---------------------------------------------------------------------------
+
+
+def _patch_body_for_impact(
+    conn: SimpleNamespace,
+    *,
+    altitude_at_position: object,
+    latitude_at_position: object,
+    longitude_at_position: object,
+    surface_height: object = lambda _lat, _lon: 0.0,
+) -> None:
+    """Attach the body-side queries the impact predictor uses."""
+    body = conn.space_center.active_vessel.orbit.body
+    body.altitude_at_position = altitude_at_position
+    body.latitude_at_position = latitude_at_position
+    body.longitude_at_position = longitude_at_position
+    body.surface_height = surface_height
+
+
+class TestReadVesselStateImpactPrediction:
+    """Tests for State.predicted_impact populated by the bridge."""
+
+    def test_returns_none_when_periapsis_above_terrain(self) -> None:
+        # The mock orbit has periapsis = 70 km, well above the 10 km cheap-
+        # reject threshold. No impact expected.
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        assert state.predicted_impact is None
+
+    def test_returns_none_when_orbit_has_no_period(self) -> None:
+        conn = _make_mock_conn()
+        conn.space_center.active_vessel.orbit.periapsis_altitude = -1000.0
+        conn.space_center.active_vessel.orbit.period = 0.0  # parabolic/hyperbolic
+        state = read_vessel_state(conn)
+        assert state.predicted_impact is None
+
+    def test_returns_prediction_when_periapsis_below_sea_level(self) -> None:
+        conn = _make_mock_conn()
+        orbit = conn.space_center.active_vessel.orbit
+        orbit.periapsis_altitude = -2_000.0
+        orbit.period = 1_800.0
+
+        # Simulate altitude descending from +5km at ut=current to -5km at
+        # ut=current+900s; lat/lon stay constant for simplicity.
+        current_ut = float(conn.space_center.ut)
+
+        def altitude_at_position(pos: tuple[float, float, float], _frame: object) -> float:
+            # pos carries the UT we generated, see position_at below.
+            ut_local: float = pos[0]
+            return 5_000.0 - 10.0 * (ut_local - current_ut)
+
+        orbit.position_at = lambda ut, _frame: (ut, 0.0, 0.0)
+
+        _patch_body_for_impact(
+            conn,
+            altitude_at_position=altitude_at_position,
+            latitude_at_position=lambda _pos, _frame: -1.5,
+            longitude_at_position=lambda _pos, _frame: -71.9,
+            surface_height=lambda _lat, _lon: 250.0,
+        )
+
+        state = read_vessel_state(conn)
+        assert state.predicted_impact is not None
+        assert state.predicted_impact.source == "current_orbit"
+        # Crossing at ut = current_ut + 500 (altitude = 0).
+        assert abs(state.predicted_impact.time_to - 500.0) < 1.0
+        assert state.predicted_impact.latitude == -1.5
+        assert state.predicted_impact.longitude == -71.9
+        assert state.predicted_impact.altitude_terrain == 250.0
+
+    def test_uses_post_node_orbit_when_future_node_exists(self) -> None:
+        conn = _make_mock_conn()
+        current_ut = float(conn.space_center.ut)
+        post_orbit = SimpleNamespace(
+            apoapsis_altitude=80_000.0,
+            periapsis_altitude=-1_000.0,  # drops below sea level
+            eccentricity=0.05,
+            inclination=0.5,
+            period=1_800.0,
+            semi_major_axis=670_000.0,
+            position_at=lambda ut, _frame: (ut, 0.0, 0.0),
+        )
+        node = _make_mock_krpc_node(ut=current_ut + 60.0)
+        node.orbit = post_orbit
+        conn.space_center.active_vessel.control.nodes = [node]
+
+        def altitude_at_position(pos: tuple[float, float, float], _frame: object) -> float:
+            ut_local: float = pos[0]
+            # Above sea level until ut = node.ut + 300s, then below.
+            return (current_ut + 60.0 + 300.0) - ut_local
+
+        _patch_body_for_impact(
+            conn,
+            altitude_at_position=altitude_at_position,
+            latitude_at_position=lambda _pos, _frame: 12.0,
+            longitude_at_position=lambda _pos, _frame: 45.0,
+        )
+
+        state = read_vessel_state(conn)
+        assert state.predicted_impact is not None
+        assert state.predicted_impact.source == "next_node_orbit"
+        # time_to measured from current_ut; impact at current_ut + 60 + 300.
+        assert abs(state.predicted_impact.time_to - 360.0) < 1.0
+
+    def test_longitude_wrapped_to_signed_range(self) -> None:
+        conn = _make_mock_conn()
+        orbit = conn.space_center.active_vessel.orbit
+        orbit.periapsis_altitude = -1_000.0
+        orbit.period = 1_800.0
+        orbit.position_at = lambda _ut, _frame: (0.0, 0.0, 0.0)
+
+        _patch_body_for_impact(
+            conn,
+            altitude_at_position=lambda _pos, _frame: -1.0,  # already below
+            latitude_at_position=lambda _pos, _frame: 0.0,
+            longitude_at_position=lambda _pos, _frame: 220.0,  # > 180
+        )
+        state = read_vessel_state(conn)
+        assert state.predicted_impact is not None
+        # 220 -> -140
+        assert state.predicted_impact.longitude == -140.0
+
+    def test_resilient_when_body_lacks_position_queries(self) -> None:
+        # Base mock body lacks altitude_at_position et al. With a low
+        # periapsis the helper will try them and must fall back to None.
+        conn = _make_mock_conn()
+        conn.space_center.active_vessel.orbit.periapsis_altitude = -1_000.0
+        state = read_vessel_state(conn)
+        assert state.predicted_impact is None

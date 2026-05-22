@@ -11,6 +11,7 @@ import math
 from dataclasses import fields
 
 from ksp_mission_control.control.actions.base import (
+    ImpactPrediction,
     ManeuverNode,
     ParachuteInfo,
     PartInfo,
@@ -25,7 +26,18 @@ from ksp_mission_control.control.actions.base import (
     VesselCommands,
     VesselSituation,
 )
+from ksp_mission_control.control.actions.helpers.impact_prediction import find_impact_ut
 from ksp_mission_control.control.actions.helpers.maneuver_node import tsiolkovsky_burn_time
+
+# Cheap reject for impact prediction: if the trajectory's periapsis is above
+# this altitude (in meters above sea level), the orbit does not intersect any
+# KSP terrain. Kerbin's highest peak is roughly 6.8 km; this margin keeps the
+# bisection from being invoked for any stable orbit.
+_IMPACT_PREDICTION_MAX_PERIAPSIS: float = 10_000.0
+
+# Inclination (radians) below which the equatorial ascending/descending nodes
+# are not well defined. 0.001 rad is roughly 0.057 degrees.
+_EQUATORIAL_INCLINATION_TOLERANCE: float = 0.001
 
 # Tolerance for matching a maneuver node by ut. kRPC does not change the
 # ut of a node after creation (unless someone drags it in-game), so an
@@ -206,6 +218,123 @@ def _apply_science_action(experiment: object, action: ScienceAction) -> None:
         experiment.dump()  # type: ignore[attr-defined]
     elif action == ScienceAction.TRANSMIT:
         experiment.transmit()  # type: ignore[attr-defined]
+
+
+def _compute_equatorial_nodes(orbit: object, current_ut: float) -> tuple[float, float, float, float]:
+    """Compute the next ascending/descending node UTs and orbital speeds.
+
+    AN (ascending node) is where the orbit crosses the equator going
+    north; DN where it crosses going south. In Keplerian terms, AN sits
+    at true anomaly ``-argument_of_periapsis`` (mod 2 pi) and DN at
+    ``pi - argument_of_periapsis``. kRPC's ``ut_at_true_anomaly`` then
+    propagates through Kepler's equation to give the next universal time.
+
+    Returns ``(an_ut, dn_ut, an_speed, dn_speed)``. Infinite UTs and zero
+    speeds are returned when the orbit is too close to equatorial for AN/DN
+    to be meaningful, or when any kRPC field needed for the computation is
+    unavailable.
+    """
+    try:
+        inclination = float(orbit.inclination)  # type: ignore[attr-defined]
+        if abs(inclination) < _EQUATORIAL_INCLINATION_TOLERANCE:
+            return float("inf"), float("inf"), 0.0, 0.0
+        omega = float(orbit.argument_of_periapsis)  # type: ignore[attr-defined]
+    except (AttributeError, Exception):
+        return float("inf"), float("inf"), 0.0, 0.0
+
+    two_pi = 2.0 * math.pi
+    an_true_anomaly = (-omega) % two_pi
+    dn_true_anomaly = (math.pi - omega) % two_pi
+
+    try:
+        an_ut = float(orbit.ut_at_true_anomaly(an_true_anomaly))  # type: ignore[attr-defined]
+        dn_ut = float(orbit.ut_at_true_anomaly(dn_true_anomaly))  # type: ignore[attr-defined]
+        period = float(orbit.period)  # type: ignore[attr-defined]
+        # ut_at_true_anomaly can return a UT in the past; bump to the next
+        # crossing so callers always get a future event.
+        while an_ut < current_ut and period > 0.0:
+            an_ut += period
+        while dn_ut < current_ut and period > 0.0:
+            dn_ut += period
+        an_radius = float(orbit.radius_at(an_ut))  # type: ignore[attr-defined]
+        dn_radius = float(orbit.radius_at(dn_ut))  # type: ignore[attr-defined]
+        mu = float(orbit.body.gravitational_parameter)  # type: ignore[attr-defined]
+        sma = float(orbit.semi_major_axis)  # type: ignore[attr-defined]
+        an_speed = math.sqrt(mu * (2.0 / an_radius - 1.0 / sma))
+        dn_speed = math.sqrt(mu * (2.0 / dn_radius - 1.0 / sma))
+    except (AttributeError, ValueError, ZeroDivisionError, Exception):
+        return float("inf"), float("inf"), 0.0, 0.0
+
+    return an_ut, dn_ut, an_speed, dn_speed
+
+
+def _compute_impact_prediction(vessel: object, body: object, current_ut: float) -> ImpactPrediction | None:
+    """Predict where the active trajectory crosses sea level.
+
+    Uses the first future maneuver node's post-burn orbit when one is
+    planned; otherwise uses the vessel's current orbit. Returns ``None``
+    when the trajectory does not impact within one period.
+    """
+    try:
+        nodes = list(vessel.control.nodes)  # type: ignore[attr-defined]
+    except (AttributeError, Exception):
+        nodes = []
+
+    target_orbit: object
+    start_ut: float
+    source: str
+    if nodes and float(getattr(nodes[0], "ut", current_ut)) > current_ut:
+        target_orbit = nodes[0].orbit  # type: ignore[attr-defined]
+        start_ut = float(nodes[0].ut)  # type: ignore[attr-defined]
+        source = "next_node_orbit"
+    else:
+        target_orbit = vessel.orbit  # type: ignore[attr-defined]
+        start_ut = current_ut
+        source = "current_orbit"
+
+    try:
+        periapsis_altitude = float(target_orbit.periapsis_altitude)  # type: ignore[attr-defined]
+        period = float(target_orbit.period)  # type: ignore[attr-defined]
+    except (AttributeError, Exception):
+        return None
+
+    if periapsis_altitude > _IMPACT_PREDICTION_MAX_PERIAPSIS:
+        return None
+    if period <= 0.0:
+        # Parabolic / hyperbolic trajectories: no closed period. Skip for now.
+        return None
+
+    try:
+        frame = body.reference_frame  # type: ignore[attr-defined]
+
+        def sample_altitude(ut: float) -> float:
+            position = target_orbit.position_at(ut, frame)  # type: ignore[attr-defined]
+            return float(body.altitude_at_position(position, frame))  # type: ignore[attr-defined]
+
+        impact_ut = find_impact_ut(sample_altitude, start_ut=start_ut, end_ut=start_ut + period)
+        if impact_ut is None:
+            return None
+        impact_position = target_orbit.position_at(impact_ut, frame)  # type: ignore[attr-defined]
+        latitude = float(body.latitude_at_position(impact_position, frame))  # type: ignore[attr-defined]
+        longitude = float(body.longitude_at_position(impact_position, frame))  # type: ignore[attr-defined]
+    except (AttributeError, Exception):
+        return None
+
+    # Wrap longitude into (-180, 180].
+    longitude = ((longitude + 180.0) % 360.0) - 180.0
+
+    try:
+        terrain = float(body.surface_height(latitude, longitude))  # type: ignore[attr-defined]
+    except (AttributeError, Exception):
+        terrain = 0.0
+
+    return ImpactPrediction(
+        latitude=latitude,
+        longitude=longitude,
+        altitude_terrain=terrain,
+        time_to=impact_ut - current_ut,
+        source=source,
+    )
 
 
 class NoActiveVesselError(Exception):
@@ -557,6 +686,13 @@ def read_vessel_state(conn: object) -> State:
         altitude_sea=flight.mean_altitude,
         body=orbit.body,
     )
+
+    # Equatorial nodes (AN/DN) and ballistic impact prediction.
+    # Both are best-effort: failures fall back to "undefined" rather than
+    # propagating, so older kRPC versions or partial test mocks still work.
+    current_ut: float = float(conn.space_center.ut)  # type: ignore[attr-defined]
+    an_ut, dn_ut, an_speed, dn_speed = _compute_equatorial_nodes(orbit, current_ut)
+    predicted_impact = _compute_impact_prediction(vessel, orbit.body, current_ut)
     # Vessel forward (nose) direction in each frame the wait_for orientation
     # checks need. kRPC returns a unit vector in the requested frame.
     direction_orbital: tuple[float, float, float] = tuple(vessel.direction(vessel.orbital_reference_frame))
@@ -591,7 +727,11 @@ def read_vessel_state(conn: object) -> State:
         orbit_periapsis_time_from=orbit.period - orbit.time_to_periapsis,
         orbit_periapsis_passed=0 < orbit.true_anomaly < math.pi,
         orbit_soi_time_to_change=orbit_soi_time_to_change,
-        universal_time=conn.space_center.ut,  # type: ignore[attr-defined]
+        orbit_ascending_node_ut=an_ut,
+        orbit_descending_node_ut=dn_ut,
+        orbit_ascending_node_speed=an_speed,
+        orbit_descending_node_speed=dn_speed,
+        universal_time=current_ut,
         met=vessel.met,
         name=vessel.name,
         situation=vessel_situation,
@@ -609,6 +749,7 @@ def read_vessel_state(conn: object) -> State:
         body_atmosphere_depth=orbit.body.atmosphere_depth if orbit.body.has_atmosphere else 0.0,
         body_gm=orbit.body.gravitational_parameter,
         body_soi=orbit.body.sphere_of_influence,
+        body_rotational_period=getattr(orbit.body, "rotational_period", 21549.425),
         position_biome=vessel.biome,
         position_latitude=flight.latitude,
         position_longitude=flight.longitude,
@@ -668,6 +809,7 @@ def read_vessel_state(conn: object) -> State:
         science_experiments=tuple(science_experiments),
         science_situation=science_situation,
         nodes=tuple(maneuver_nodes),
+        predicted_impact=predicted_impact,
         parts=Parts(
             parachutes=tuple(parts_parachutes),
             legs=tuple(parts_legs),

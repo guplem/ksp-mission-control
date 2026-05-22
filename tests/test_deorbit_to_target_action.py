@@ -1,0 +1,412 @@
+"""Tests for DeorbitToTargetAction."""
+
+from __future__ import annotations
+
+import math
+
+import pytest
+
+from ksp_mission_control.control.actions.base import (
+    ActionLogger,
+    ActionStatus,
+    ImpactPrediction,
+    ManeuverNode,
+    State,
+    VesselCommands,
+)
+from ksp_mission_control.control.actions.deorbit_to_target.action import DeorbitToTargetAction
+
+_KERBIN_RADIUS = 600_000.0
+_KERBIN_GM = 3.5316e12
+_KERBIN_ROTATIONAL_PERIOD = 21_549.425
+
+
+def _params(
+    *,
+    target_latitude: float = -15.0,
+    target_longitude: float = -70.0,
+    target_periapsis_altitude: float = -5_000.0,
+    drag_bias_km: float = 0.0,
+    tolerance_deg: float = 0.5,
+    max_planning_ticks: int = 60,
+    staging_mode: str | None = None,
+) -> dict[str, object]:
+    return {
+        "target_latitude": target_latitude,
+        "target_longitude": target_longitude,
+        "target_periapsis_altitude": target_periapsis_altitude,
+        "drag_bias_km": drag_bias_km,
+        "tolerance_deg": tolerance_deg,
+        "max_planning_ticks": max_planning_ticks,
+        "staging_mode": staging_mode,
+    }
+
+
+def _orbit_state(
+    *,
+    inclination_deg: float = 20.0,
+    universal_time: float = 1_000.0,
+    apoapsis_alt: float = 100_000.0,
+    periapsis_alt: float = 95_000.0,
+    apoapsis_time_to: float = 600.0,
+    period: float = 1_800.0,
+    predicted_impact: ImpactPrediction | None = None,
+) -> State:
+    r_apo = apoapsis_alt + _KERBIN_RADIUS
+    r_peri = periapsis_alt + _KERBIN_RADIUS
+    return State(
+        orbit_inclination=math.radians(inclination_deg),
+        orbit_apoapsis=apoapsis_alt,
+        orbit_periapsis=periapsis_alt,
+        orbit_apoapsis_time_to=apoapsis_time_to,
+        orbit_periapsis_time_to=apoapsis_time_to + period / 2.0,
+        orbit_period=period,
+        orbit_semi_major_axis=(r_apo + r_peri) / 2.0,
+        universal_time=universal_time,
+        body_radius=_KERBIN_RADIUS,
+        body_gm=_KERBIN_GM,
+        body_rotational_period=_KERBIN_ROTATIONAL_PERIOD,
+        predicted_impact=predicted_impact,
+    )
+
+
+def _node_for(
+    action: DeorbitToTargetAction,
+    *,
+    delta_v_remaining: float = 100.0,
+    burn_time_estimate: float = 5.0,
+) -> ManeuverNode:
+    assert action._node_ut is not None
+    return ManeuverNode(
+        index=0,
+        ut=action._node_ut,
+        time_to=10.0,
+        delta_v=100.0,
+        delta_v_remaining=delta_v_remaining,
+        prograde=-100.0,
+        normal=0.0,
+        radial=0.0,
+        burn_vector=(0.0, -100.0, 0.0),
+        burn_vector_remaining=(0.0, -delta_v_remaining, 0.0),
+        burn_time_estimate=burn_time_estimate,
+        post_burn_orbit_apoapsis=100_000.0,
+        post_burn_orbit_periapsis=-5_000.0,
+        post_burn_orbit_eccentricity=0.2,
+        post_burn_orbit_inclination=math.radians(20.0),
+        post_burn_orbit_period=1_500.0,
+        post_burn_orbit_semi_major_axis=_KERBIN_RADIUS + 47_500.0,
+    )
+
+
+class TestDeorbitMetadata:
+    def test_action_id(self) -> None:
+        assert DeorbitToTargetAction.action_id == "deorbit_to_target"
+
+    def test_required_params(self) -> None:
+        required = {p.param_id for p in DeorbitToTargetAction.params if p.required}
+        assert required == {"target_latitude", "target_longitude"}
+
+
+class TestDeorbitStartValidation:
+    def test_rejects_out_of_range_latitude(self) -> None:
+        action = DeorbitToTargetAction()
+        with pytest.raises(ValueError, match="target_latitude must be in"):
+            action.start(_orbit_state(), _params(target_latitude=120.0))
+
+    def test_rejects_out_of_range_longitude(self) -> None:
+        action = DeorbitToTargetAction()
+        with pytest.raises(ValueError, match="target_longitude must be in"):
+            action.start(_orbit_state(), _params(target_longitude=200.0))
+
+    def test_rejects_zero_tolerance(self) -> None:
+        action = DeorbitToTargetAction()
+        with pytest.raises(ValueError, match="tolerance_deg must be positive"):
+            action.start(_orbit_state(), _params(tolerance_deg=0.0))
+
+    def test_rejects_zero_max_planning_ticks(self) -> None:
+        action = DeorbitToTargetAction()
+        with pytest.raises(ValueError, match="max_planning_ticks must be positive"):
+            action.start(_orbit_state(), _params(max_planning_ticks=0))
+
+    def test_fails_when_target_latitude_exceeds_inclination(self) -> None:
+        # inclination=5°, target_latitude=-30°: orbit cannot reach -30 lat.
+        action = DeorbitToTargetAction()
+        action.start(_orbit_state(inclination_deg=5.0), _params(target_latitude=-30.0))
+        result = action.tick(_orbit_state(inclination_deg=5.0), VesselCommands(), dt=0.5, log=ActionLogger())
+        assert result.status == ActionStatus.FAILED
+        assert "align_plane" in result.message
+
+
+class TestDeorbitInitialPlan:
+    """First tick (no node yet) computes burn UT at apoapsis and retrograde dv."""
+
+    def test_initial_node_at_apoapsis(self) -> None:
+        action = DeorbitToTargetAction()
+        state = _orbit_state(universal_time=1_000.0, apoapsis_time_to=400.0)
+        action.start(state, _params(target_latitude=-15.0, target_longitude=-70.0))
+
+        commands = VesselCommands()
+        result = action.tick(state, commands, dt=0.5, log=ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+        assert commands.create_node is not None
+        # Burn UT = current_ut + apoapsis_time_to.
+        assert commands.create_node.ut == pytest.approx(1_400.0)
+        # Retrograde: prograde dv is negative.
+        assert commands.create_node.prograde < 0.0
+
+    def test_initial_dv_matches_vis_viva(self) -> None:
+        action = DeorbitToTargetAction()
+        state = _orbit_state(apoapsis_alt=100_000.0, periapsis_alt=100_000.0)  # circular
+        action.start(state, _params(target_periapsis_altitude=-5_000.0))
+
+        commands = VesselCommands()
+        action.tick(state, commands, dt=0.5, log=ActionLogger())
+        assert commands.create_node is not None
+
+        r_burn = 100_000.0 + _KERBIN_RADIUS
+        r_peri_target = -5_000.0 + _KERBIN_RADIUS
+        new_sma = (r_burn + r_peri_target) / 2.0
+        # Current circular orbit: sma == r_burn.
+        v_current = math.sqrt(_KERBIN_GM / r_burn)
+        v_new = math.sqrt(_KERBIN_GM * (2.0 / r_burn - 1.0 / new_sma))
+        expected_dv = v_new - v_current
+        assert commands.create_node.prograde == pytest.approx(expected_dv, rel=1e-4)
+
+    def test_fails_when_target_periapsis_above_apoapsis(self) -> None:
+        action = DeorbitToTargetAction()
+        state = _orbit_state(apoapsis_alt=50_000.0)
+        action.start(state, _params(target_periapsis_altitude=100_000.0))
+        result = action.tick(state, VesselCommands(), dt=0.5, log=ActionLogger())
+        assert result.status == ActionStatus.FAILED
+        assert "change_apse" in result.message
+
+
+class TestDeorbitRefinement:
+    """Once the bridge fills predicted_impact, the action nudges burn UT toward zero longitude error."""
+
+    def _node_then_refine(
+        self,
+        action: DeorbitToTargetAction,
+        seed_state: State,
+        predicted_impact: ImpactPrediction,
+    ) -> tuple[VesselCommands, ManeuverNode]:
+        """Plan an initial node, then run one refinement tick with the given prediction."""
+        action.tick(seed_state, VesselCommands(), dt=0.5, log=ActionLogger())  # initial plan
+        node = _node_for(action)
+        refine_state = _orbit_state(
+            inclination_deg=20.0,
+            universal_time=seed_state.universal_time + 1.0,  # one tick later
+            apoapsis_time_to=599.0,  # node still in the future
+            period=seed_state.orbit_period,
+            predicted_impact=predicted_impact,
+        )
+        # Bridge would write nodes tuple too.
+        refine_state = State(
+            **{**refine_state.__dict__, "nodes": (node,), "predicted_impact": predicted_impact},
+        )
+        commands = VesselCommands()
+        action.tick(refine_state, commands, dt=0.5, log=ActionLogger())
+        return commands, node
+
+    def test_shifts_burn_ut_earlier_when_predicted_east_of_target(self) -> None:
+        action = DeorbitToTargetAction()
+        seed = _orbit_state(universal_time=1_000.0, apoapsis_time_to=600.0, period=1_800.0)
+        action.start(seed, _params(target_latitude=-15.0, target_longitude=-70.0, tolerance_deg=0.1))
+
+        # Predicted impact 5° east of target -> action should burn earlier.
+        impact = ImpactPrediction(
+            latitude=-15.0,
+            longitude=-65.0,  # 5° east of target -70
+            altitude_terrain=200.0,
+            time_to=1_500.0,
+            source="next_node_orbit",
+        )
+        commands, original_node = self._node_then_refine(action, seed, impact)
+        assert commands.create_node is not None
+        assert commands.remove_node_at_ut == pytest.approx(original_node.ut)
+        # New burn UT must be earlier (lower) than the original to drift impact west.
+        assert commands.create_node.ut < original_node.ut
+
+    def test_shifts_burn_ut_later_when_predicted_west_of_target(self) -> None:
+        action = DeorbitToTargetAction()
+        seed = _orbit_state(universal_time=1_000.0, apoapsis_time_to=600.0, period=1_800.0)
+        action.start(seed, _params(target_latitude=-15.0, target_longitude=-70.0, tolerance_deg=0.1))
+
+        impact = ImpactPrediction(
+            latitude=-15.0,
+            longitude=-75.0,  # 5° west of target -70
+            altitude_terrain=200.0,
+            time_to=1_500.0,
+            source="next_node_orbit",
+        )
+        commands, original_node = self._node_then_refine(action, seed, impact)
+        assert commands.create_node is not None
+        assert commands.create_node.ut > original_node.ut
+
+    def test_converges_when_errors_within_tolerance(self) -> None:
+        action = DeorbitToTargetAction()
+        seed = _orbit_state(universal_time=1_000.0, apoapsis_time_to=600.0, period=1_800.0)
+        action.start(seed, _params(target_latitude=-15.0, target_longitude=-70.0, tolerance_deg=0.5))
+
+        # Both errors within tolerance: should mark converged and not replace node.
+        impact = ImpactPrediction(
+            latitude=-15.1,
+            longitude=-70.1,
+            altitude_terrain=200.0,
+            time_to=1_500.0,
+            source="next_node_orbit",
+        )
+        commands, original_node = self._node_then_refine(action, seed, impact)
+        assert commands.create_node is None
+        assert commands.remove_node_at_ut is None
+        assert action._converged is True
+
+    def test_waits_when_prediction_is_for_current_orbit(self) -> None:
+        # source != "next_node_orbit" means the bridge has not yet picked up
+        # our node; the action should wait one tick rather than refine.
+        action = DeorbitToTargetAction()
+        seed = _orbit_state(universal_time=1_000.0, apoapsis_time_to=600.0, period=1_800.0)
+        action.start(seed, _params(target_latitude=-15.0, target_longitude=-70.0, tolerance_deg=0.5))
+        impact = ImpactPrediction(
+            latitude=-15.0,
+            longitude=-70.0,
+            altitude_terrain=0.0,
+            time_to=1_500.0,
+            source="current_orbit",
+        )
+        commands, _original = self._node_then_refine(action, seed, impact)
+        assert commands.create_node is None
+        assert action._converged is False
+
+    def test_fails_after_max_planning_ticks_without_convergence(self) -> None:
+        action = DeorbitToTargetAction()
+        seed = _orbit_state(universal_time=1_000.0, apoapsis_time_to=600.0, period=1_800.0)
+        action.start(seed, _params(target_latitude=-15.0, target_longitude=-70.0, tolerance_deg=0.0001, max_planning_ticks=2))
+        action.tick(seed, VesselCommands(), dt=0.5, log=ActionLogger())  # plans node
+
+        # Build a never-converging state: prediction sits at constant 5deg lon error.
+        node = _node_for(action)
+        for _ in range(3):
+            impact = ImpactPrediction(
+                latitude=-15.0,
+                longitude=-65.0,  # always 5deg east
+                altitude_terrain=0.0,
+                time_to=1_500.0,
+                source="next_node_orbit",
+            )
+            refine_state = State(
+                orbit_inclination=math.radians(20.0),
+                orbit_apoapsis=100_000.0,
+                orbit_periapsis=95_000.0,
+                orbit_apoapsis_time_to=600.0,
+                orbit_period=1_800.0,
+                orbit_semi_major_axis=_KERBIN_RADIUS + 97_500.0,
+                universal_time=seed.universal_time + 1.0,
+                body_radius=_KERBIN_RADIUS,
+                body_gm=_KERBIN_GM,
+                body_rotational_period=_KERBIN_ROTATIONAL_PERIOD,
+                predicted_impact=impact,
+                nodes=(node,),
+            )
+            result = action.tick(refine_state, VesselCommands(), dt=0.5, log=ActionLogger())
+            node = _node_for(action)  # refresh against any new UT
+        assert result.status == ActionStatus.FAILED
+        assert "did not converge" in result.message
+
+    def test_drag_bias_shifts_target_eastward(self) -> None:
+        # With drag_bias_km > 0, vacuum prediction target is east of the
+        # user-supplied target. So a prediction sitting AT the user target
+        # is now WEST of the (biased) target and the action should burn later.
+        action = DeorbitToTargetAction()
+        seed = _orbit_state(universal_time=1_000.0, apoapsis_time_to=600.0, period=1_800.0)
+        action.start(seed, _params(target_latitude=-15.0, target_longitude=-70.0, drag_bias_km=50.0, tolerance_deg=0.1))
+
+        impact = ImpactPrediction(
+            latitude=-15.0,
+            longitude=-70.0,  # at the raw user target = west of the drag-biased target
+            altitude_terrain=200.0,
+            time_to=1_500.0,
+            source="next_node_orbit",
+        )
+        commands, original_node = self._node_then_refine(action, seed, impact)
+        assert commands.create_node is not None
+        # Burn shifts later -> impact moves east (toward the drag-bias target).
+        assert commands.create_node.ut > original_node.ut
+
+
+class TestDeorbitExecutePhase:
+    """When the burn window is near, the action stops refining and drives execute_node."""
+
+    def test_executes_when_within_refinement_deadline(self) -> None:
+        action = DeorbitToTargetAction()
+        seed = _orbit_state(universal_time=1_000.0, apoapsis_time_to=600.0)
+        action.start(seed, _params())
+        action.tick(seed, VesselCommands(), dt=0.5, log=ActionLogger())  # plan node at 1600
+
+        node = _node_for(action, delta_v_remaining=80.0, burn_time_estimate=10.0)
+        # State at burn window: ut = node.ut, so burn_start = node.ut - 5 = ut - 5.
+        # time_to_burn_start = -5, well past the deadline.
+        burn_state = State(
+            universal_time=node.ut + 0.0,  # at the node ut
+            thrust_available=50_000.0,
+            engine_impulse_specific_vacuum=300.0,
+            mass=5_000.0,
+            orbit_inclination=math.radians(20.0),
+            orbit_semi_major_axis=_KERBIN_RADIUS + 97_500.0,
+            body_radius=_KERBIN_RADIUS,
+            body_gm=_KERBIN_GM,
+            body_rotational_period=_KERBIN_ROTATIONAL_PERIOD,
+            nodes=(node,),
+        )
+        commands = VesselCommands()
+        result = action.tick(burn_state, commands, dt=0.5, log=ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+        # execute_node drives the burn.
+        assert commands.throttle == 1.0
+        assert commands.autopilot is True
+
+    def test_succeeds_when_burn_completes(self) -> None:
+        action = DeorbitToTargetAction()
+        seed = _orbit_state(universal_time=1_000.0, apoapsis_time_to=600.0)
+        action.start(seed, _params())
+        action.tick(seed, VesselCommands(), dt=0.5, log=ActionLogger())
+
+        node = _node_for(action, delta_v_remaining=0.0)
+        done_state = State(
+            universal_time=node.ut,
+            thrust_available=50_000.0,
+            mass=5_000.0,
+            orbit_inclination=math.radians(20.0),
+            orbit_semi_major_axis=_KERBIN_RADIUS + 50_000.0,
+            body_radius=_KERBIN_RADIUS,
+            body_gm=_KERBIN_GM,
+            body_rotational_period=_KERBIN_ROTATIONAL_PERIOD,
+            nodes=(node,),
+        )
+        commands = VesselCommands()
+        result = action.tick(done_state, commands, dt=0.5, log=ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+        assert commands.remove_node_at_ut == pytest.approx(action._node_ut)
+        assert commands.throttle == 0.0
+        assert commands.autopilot is False
+
+
+class TestDeorbitStop:
+    def test_stop_removes_node(self) -> None:
+        action = DeorbitToTargetAction()
+        state = _orbit_state()
+        action.start(state, _params())
+        action.tick(state, VesselCommands(), dt=0.5, log=ActionLogger())
+
+        commands = VesselCommands()
+        action.stop(state, commands, log=ActionLogger())
+        assert commands.throttle == 0.0
+        assert commands.autopilot is False
+        assert commands.remove_node_at_ut == pytest.approx(action._node_ut)
+
+    def test_stop_before_planning_is_safe(self) -> None:
+        action = DeorbitToTargetAction()
+        action.start(_orbit_state(), _params())
+        commands = VesselCommands()
+        action.stop(_orbit_state(), commands, log=ActionLogger())
+        assert commands.remove_node_at_ut is None
