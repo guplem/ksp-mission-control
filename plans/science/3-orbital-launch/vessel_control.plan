@@ -12,7 +12,7 @@ autopilot_config restore_defaults=true
 circularize  apse=apoapsis
 
 # Raise orbit to "far space" 
-change_apse target=apoapsis target_altitude=260_000_000
+change_apse target=apoapsis target_altitude=260_000
 
 # Reach the target apoapsis
 wait_for   apoapsis=True
