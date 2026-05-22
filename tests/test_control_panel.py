@@ -12,7 +12,10 @@ from ksp_mission_control.control.actions.multi_track_executor import (
     TrackSnapshot,
 )
 from ksp_mission_control.control.actions.plan_executor import PlanSnapshot, StepStatus
-from ksp_mission_control.control.widgets.control_panel import ControlPanelWidget
+from ksp_mission_control.control.widgets.control_panel import (
+    ControlPanelWidget,
+    format_step_tooltip,
+)
 
 
 class ControlPanelApp(App[None]):
@@ -353,3 +356,102 @@ class TestStatusUpdatesPreserveSelection:
             widget.update_plan(done_snap, multi_snap=done_multi)
             await pilot.pause()
             assert list_view.index == 0
+
+
+class TestFormatStepTooltip:
+    """format_step_tooltip renders param dicts as multi-line text or None."""
+
+    def test_empty_params_returns_none(self) -> None:
+        assert format_step_tooltip({}) is None
+
+    def test_single_param_one_line(self) -> None:
+        assert format_step_tooltip({"target_altitude": 100.0}) == "target_altitude = 100.0"
+
+    def test_multiple_params_one_line_each(self) -> None:
+        tooltip = format_step_tooltip({"target_altitude": 100.0, "hover_duration": 30.0})
+        assert tooltip == "target_altitude = 100.0\nhover_duration = 30.0"
+
+    def test_parallel_step_plan_path(self) -> None:
+        assert format_step_tooltip({"plan_path": "science/collect.plan"}) == "plan_path = science/collect.plan"
+
+
+class TestStepTooltips:
+    """Each plan step ListItem carries a tooltip built from its params."""
+
+    @pytest.mark.asyncio
+    async def test_step_with_params_has_tooltip(self) -> None:
+        async with ControlPanelApp().run_test(size=(120, 40)) as pilot:
+            widget = pilot.app.query_one("#control-panel", ControlPanelWidget)
+            plan_snap = PlanSnapshot(
+                plan_name="test",
+                current_step_index=0,
+                total_steps=1,
+                step_statuses=(StepStatus.RUNNING,),
+                step_action_ids=("hover",),
+                step_action_labels=("Hover",),
+                step_params=({"target_altitude": 100.0, "hover_duration": 30.0},),
+            )
+            multi_snap = MultiTrackSnapshot(tracks=(TrackSnapshot(track_name="test", plan_snapshot=plan_snap),))
+            widget.update_plan(plan_snap, multi_snap=multi_snap)
+            await pilot.pause()
+
+            list_view = pilot.app.query_one("#plan-steps-list", ListView)
+            assert list_view.children[0].tooltip == "target_altitude = 100.0\nhover_duration = 30.0"
+
+    @pytest.mark.asyncio
+    async def test_step_without_params_has_no_tooltip(self) -> None:
+        async with ControlPanelApp().run_test(size=(120, 40)) as pilot:
+            widget = pilot.app.query_one("#control-panel", ControlPanelWidget)
+            plan_snap = PlanSnapshot(
+                plan_name="test",
+                current_step_index=0,
+                total_steps=1,
+                step_statuses=(StepStatus.RUNNING,),
+                step_action_ids=("hover",),
+                step_action_labels=("Hover",),
+                step_params=({},),
+            )
+            multi_snap = MultiTrackSnapshot(tracks=(TrackSnapshot(track_name="test", plan_snapshot=plan_snap),))
+            widget.update_plan(plan_snap, multi_snap=multi_snap)
+            await pilot.pause()
+
+            list_view = pilot.app.query_one("#plan-steps-list", ListView)
+            assert list_view.children[0].tooltip is None
+
+    @pytest.mark.asyncio
+    async def test_multi_track_header_has_no_tooltip(self) -> None:
+        async with ControlPanelApp().run_test(size=(120, 40)) as pilot:
+            widget = pilot.app.query_one("#control-panel", ControlPanelWidget)
+            main = PlanSnapshot(
+                plan_name="main",
+                current_step_index=0,
+                total_steps=1,
+                step_statuses=(StepStatus.RUNNING,),
+                step_action_ids=("hover",),
+                step_action_labels=("Hover",),
+                step_params=({"target_altitude": 50.0},),
+            )
+            side = PlanSnapshot(
+                plan_name="side",
+                current_step_index=0,
+                total_steps=1,
+                step_statuses=(StepStatus.RUNNING,),
+                step_action_ids=("hover",),
+                step_action_labels=("Hover",),
+                step_params=({"target_altitude": 200.0},),
+            )
+            multi_snap = MultiTrackSnapshot(
+                tracks=(
+                    TrackSnapshot(track_name="main", plan_snapshot=main),
+                    TrackSnapshot(track_name="side", plan_snapshot=side),
+                ),
+            )
+            widget.update_plan(main, multi_snap=multi_snap)
+            await pilot.pause()
+
+            list_view = pilot.app.query_one("#plan-steps-list", ListView)
+            # Items: [main header, main step 1, side header, side step 1]
+            assert list_view.children[0].tooltip is None
+            assert list_view.children[1].tooltip == "target_altitude = 50.0"
+            assert list_view.children[2].tooltip is None
+            assert list_view.children[3].tooltip == "target_altitude = 200.0"

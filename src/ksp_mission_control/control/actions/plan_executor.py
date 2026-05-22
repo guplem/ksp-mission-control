@@ -59,6 +59,10 @@ class PlanSnapshot:
     step_statuses: tuple[StepStatus, ...] = ()
     step_action_ids: tuple[str, ...] = ()
     step_action_labels: tuple[str, ...] = ()
+    step_params: tuple[dict[str, Any], ...] = ()
+    """Per-step parameter values. ``FlightPlanStep`` carries its ``param_values``;
+    ``ParallelStep`` is exposed as ``{"plan_path": ...}`` so the UI can render
+    both kinds uniformly (e.g. as hover tooltips)."""
     runner: RunnerSnapshot = field(default_factory=RunnerSnapshot)
 
 
@@ -273,6 +277,7 @@ class PlanExecutor:
                 step_statuses=tuple(self._step_statuses),
                 step_action_ids=tuple(self._step_action_id(step) for step in self._plan.steps),
                 step_action_labels=tuple(self._step_label(index, step) for index, step in enumerate(self._plan.steps)),
+                step_params=tuple(self._step_params(step) for step in self._plan.steps),
                 runner=runner_snap,
             )
         return PlanSnapshot(runner=runner_snap)
@@ -289,6 +294,12 @@ class PlanExecutor:
             return f"→ {step.plan_name}"
         action = self._step_actions[index]
         return action.label if action is not None else step.action_id
+
+    def _step_params(self, step: FlightPlanStep | ParallelStep) -> dict[str, Any]:
+        """Step params for snapshot consumers (UI tooltips)."""
+        if isinstance(step, ParallelStep):
+            return {"plan_path": step.plan_path}
+        return dict(step.param_values)
 
     def _clear_plan(self) -> None:
         """Reset all plan state."""

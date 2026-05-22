@@ -15,6 +15,8 @@ return the panel to idle.
 
 from __future__ import annotations
 
+from typing import Any
+
 from textual.app import ComposeResult
 from textual.css.query import NoMatches
 from textual.message import Message
@@ -45,6 +47,17 @@ _STATUS_LABELS: dict[StepStatus, str] = {
 }
 
 _STATUS_LABEL_WIDTH = max(len(label) for label in _STATUS_LABELS.values())
+
+
+def format_step_tooltip(params: dict[str, Any]) -> str | None:
+    """Render a step's params as a multi-line ``key = value`` tooltip.
+
+    Returns ``None`` when the step has no params, so callers can leave
+    the tooltip unset (Textual hides the tooltip when it is ``None``).
+    """
+    if not params:
+        return None
+    return "\n".join(f"{key} = {value}" for key, value in params.items())
 
 
 class ControlPanelWidget(Static):
@@ -426,12 +439,12 @@ class ControlPanelWidget(Static):
         primary_name = primary.plan_name or "plan"
         title.update(f"[b]Flight Plan: {primary_name}[/b]")
 
-        items: list[tuple[StepKey | None, str]] = []
+        items: list[tuple[StepKey | None, str, str | None]] = []
         for track_snap in multi_snap.tracks:
             plan = track_snap.plan_snapshot
             if plan.plan_name is None:
                 continue
-            items.append((None, f"[b dim]\\[{track_snap.track_name}][/b dim]"))
+            items.append((None, f"[b dim]\\[{track_snap.track_name}][/b dim]", None))
             items.extend(self._build_step_items_for_track(plan, track_name=track_snap.track_name))
         self._render_step_items(items, list_view)
 
@@ -439,10 +452,10 @@ class ControlPanelWidget(Static):
         self,
         plan_snap: PlanSnapshot,
         track_name: str | None,
-    ) -> list[tuple[StepKey | None, str]]:
-        """Build (key, markup) items for one track's steps, updating cached statuses."""
+    ) -> list[tuple[StepKey | None, str, str | None]]:
+        """Build (key, markup, tooltip) items for one track's steps, updating cached statuses."""
         colors = self._resolve_status_colors()
-        items: list[tuple[StepKey | None, str]] = []
+        items: list[tuple[StepKey | None, str, str | None]] = []
         for index, step_status in enumerate(plan_snap.step_statuses):
             label_text = plan_snap.step_action_labels[index]
             color = colors[step_status]
@@ -459,20 +472,25 @@ class ControlPanelWidget(Static):
 
             key: StepKey = (track_name, step_number)
             self._step_statuses[key] = step_status
-            items.append((key, f"{status_part}  {name_part}"))
+
+            params = plan_snap.step_params[index] if index < len(plan_snap.step_params) else {}
+            tooltip = format_step_tooltip(params)
+
+            items.append((key, f"{status_part}  {name_part}", tooltip))
         return items
 
     def _render_step_items(
         self,
-        items: list[tuple[StepKey | None, str]],
+        items: list[tuple[StepKey | None, str, str | None]],
         list_view: ListView,
     ) -> None:
         """Update the ListView, preserving selection when the structure is unchanged."""
-        new_keys = [key for key, _ in items]
+        new_keys = [key for key, _, _ in items]
         if new_keys == self._visible_step_keys and len(list_view.children) == len(items):
-            for index, (_, markup) in enumerate(items):
-                static = list_view.children[index].query_one(Static)
-                static.update(markup)
+            for index, (_, markup, tooltip) in enumerate(items):
+                list_item = list_view.children[index]
+                list_item.query_one(Static).update(markup)
+                list_item.tooltip = tooltip
             return
 
         current_index = list_view.index
@@ -481,10 +499,11 @@ class ControlPanelWidget(Static):
             selected_key = self._visible_step_keys[current_index]
 
         list_view.clear()
-        for key, markup in items:
+        for key, markup, tooltip in items:
             item = ListItem(Static(markup, markup=True))
             if key is None:
                 item.disabled = True
+            item.tooltip = tooltip
             list_view.append(item)
 
         self._visible_step_keys = new_keys

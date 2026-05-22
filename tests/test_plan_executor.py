@@ -16,7 +16,7 @@ from ksp_mission_control.control.actions.base import (
     State,
     VesselCommands,
 )
-from ksp_mission_control.control.actions.flight_plan import FlightPlan, FlightPlanStep
+from ksp_mission_control.control.actions.flight_plan import FlightPlan, FlightPlanStep, ParallelStep
 from ksp_mission_control.control.actions.plan_executor import (
     PlanExecutor,
     PlanSnapshot,
@@ -278,3 +278,41 @@ class TestPlanSnapshot:
         snap = PlanSnapshot()
         with pytest.raises(AttributeError):
             snap.plan_name = "test"  # type: ignore[misc]
+
+
+class TestSnapshotStepParams:
+    """step_params exposes per-step parameter values for UI tooltips."""
+
+    def test_action_step_params_are_copied_into_snapshot(self) -> None:
+        executor = PlanExecutor()
+        actions = [StubAction(), StubAction()]
+        steps = (
+            FlightPlanStep(action_id="stub", param_values={"speed": 12.0}),
+            FlightPlanStep(action_id="stub", param_values={}),
+        )
+        plan = FlightPlan(name="test", steps=steps)
+        executor.start_plan(plan, State(), actions=actions)
+
+        snap = executor.snapshot()
+        assert snap.step_params == ({"speed": 12.0}, {})
+
+    def test_parallel_step_exposes_plan_path(self) -> None:
+        executor = PlanExecutor()
+        actions = [StubAction()]
+        steps = (
+            ParallelStep(plan_path="science/collect.plan"),
+            FlightPlanStep(action_id="stub", param_values={"speed": 5.0}),
+        )
+        plan = FlightPlan(name="test", steps=steps)
+        executor.start_plan(plan, State(), actions=actions, spawn_parallel=lambda _path, _state: None)
+
+        snap = executor.snapshot()
+        assert snap.step_params == (
+            {"plan_path": "science/collect.plan"},
+            {"speed": 5.0},
+        )
+
+    def test_no_plan_yields_empty_step_params(self) -> None:
+        executor = PlanExecutor()
+        snap = executor.snapshot()
+        assert snap.step_params == ()
