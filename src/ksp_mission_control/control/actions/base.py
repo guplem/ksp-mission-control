@@ -547,8 +547,14 @@ class ImpactPrediction:
     """Geographic longitude where the trajectory crosses sea level, in degrees. Wrapped to (-180, 180]."""
     altitude_terrain: float
     """Terrain altitude at (latitude, longitude), in meters above sea level. Negative over oceans."""
-    time_to: float
-    """Seconds from current universal time until the predicted sea-level crossing."""
+    time_to_ballistic_impact: float
+    """Seconds from current universal time until the predicted sea-level crossing.
+
+    The orbital, drag-free prediction. Use this when reasoning about a
+    deorbit burn or coast. For atmospheric descent under drag, prefer
+    ``State.linear_time_to_impact`` which extrapolates from current
+    vertical speed.
+    """
     source: str
     """Which orbit produced this prediction: ``'current_orbit'`` or ``'next_node_orbit'``."""
 
@@ -1084,11 +1090,19 @@ class State:
         return self.resource_mono_propellant / self.resource_mono_propellant_max
 
     @property
-    def altitude_time_to_impact(self) -> float:
-        """Estimated seconds until surface contact, assuming constant descent rate.
+    def linear_time_to_impact(self) -> float:
+        """Seconds until surface contact, linearly extrapolated from current vertical speed.
 
-        Returns ``float('inf')`` if the vessel is not descending or is on the ground.
-        Uses altitude_surface / abs(speed_vertical) as a linear estimate.
+        Returns ``float('inf')`` if the vessel is not descending or is on the
+        ground. Computed as ``altitude_surface / abs(speed_vertical)``.
+
+        This is the right signal for atmospheric descent and freefall, where
+        the trajectory is essentially "straight down at the current rate".
+        For an in-orbit deorbit coast use
+        ``State.predicted_impact.time_to_ballistic_impact`` instead, which
+        propagates the orbit through Kepler's equation. The two answer
+        different questions and the right one to read depends on which
+        flight phase you are in.
         """
         if self.speed_vertical >= 0.0 or self.altitude_surface <= 0.0:
             return float("inf")

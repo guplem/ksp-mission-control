@@ -1734,7 +1734,7 @@ class TestReadVesselStateImpactPrediction:
         assert state.predicted_impact is not None
         assert state.predicted_impact.source == "current_orbit"
         # Crossing at ut = current_ut + 500 (altitude = 0).
-        assert abs(state.predicted_impact.time_to - 500.0) < 1.0
+        assert abs(state.predicted_impact.time_to_ballistic_impact - 500.0) < 1.0
         assert state.predicted_impact.latitude == -1.5
         assert state.predicted_impact.longitude == -71.9
         assert state.predicted_impact.altitude_terrain == 250.0
@@ -1771,7 +1771,7 @@ class TestReadVesselStateImpactPrediction:
         assert state.predicted_impact is not None
         assert state.predicted_impact.source == "next_node_orbit"
         # time_to measured from current_ut; impact at current_ut + 60 + 300.
-        assert abs(state.predicted_impact.time_to - 360.0) < 1.0
+        assert abs(state.predicted_impact.time_to_ballistic_impact - 360.0) < 1.0
 
     def test_longitude_wrapped_to_signed_range(self) -> None:
         conn = _make_mock_conn()

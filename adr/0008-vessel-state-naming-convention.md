@@ -87,7 +87,7 @@ Computed values that combine multiple raw fields are implemented as `@property` 
 - `max_twr` (thrust_peak / weight)
 - `delta_v` (Tsiolkovsky equation)
 - `fuel_fraction` (mass ratio)
-- `altitude_time_to_impact` (altitude / descent rate)
+- `linear_time_to_impact` (altitude / descent rate; the ballistic prediction lives on `predicted_impact.time_to_ballistic_impact`)
 - `in_atmosphere`, `above_atmosphere`, `is_landed`, `is_flying`, etc.
 
 ### Deciding which group a new field belongs to

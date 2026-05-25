@@ -218,7 +218,7 @@ class TestDeorbitRefinement:
             latitude=-15.0,
             longitude=-65.0,  # 5° east of target -70
             altitude_terrain=200.0,
-            time_to=1_500.0,
+            time_to_ballistic_impact=1_500.0,
             source="next_node_orbit",
         )
         commands, original_node = self._node_then_refine(action, seed, impact)
@@ -236,7 +236,7 @@ class TestDeorbitRefinement:
             latitude=-15.0,
             longitude=-75.0,  # 5° west of target -70
             altitude_terrain=200.0,
-            time_to=1_500.0,
+            time_to_ballistic_impact=1_500.0,
             source="next_node_orbit",
         )
         commands, original_node = self._node_then_refine(action, seed, impact)
@@ -253,7 +253,7 @@ class TestDeorbitRefinement:
             latitude=-15.1,
             longitude=-70.1,
             altitude_terrain=200.0,
-            time_to=1_500.0,
+            time_to_ballistic_impact=1_500.0,
             source="next_node_orbit",
         )
         commands, original_node = self._node_then_refine(action, seed, impact)
@@ -271,7 +271,7 @@ class TestDeorbitRefinement:
             latitude=-15.0,
             longitude=-70.0,
             altitude_terrain=0.0,
-            time_to=1_500.0,
+            time_to_ballistic_impact=1_500.0,
             source="current_orbit",
         )
         commands, _original = self._node_then_refine(action, seed, impact)
@@ -291,7 +291,7 @@ class TestDeorbitRefinement:
                 latitude=-15.0,
                 longitude=-65.0,  # always 5deg east
                 altitude_terrain=0.0,
-                time_to=1_500.0,
+                time_to_ballistic_impact=1_500.0,
                 source="next_node_orbit",
             )
             refine_state = State(
@@ -325,7 +325,7 @@ class TestDeorbitRefinement:
             latitude=-15.0,
             longitude=-70.0,  # at the raw user target = west of the drag-biased target
             altitude_terrain=200.0,
-            time_to=1_500.0,
+            time_to_ballistic_impact=1_500.0,
             source="next_node_orbit",
         )
         commands, original_node = self._node_then_refine(action, seed, impact)

@@ -406,7 +406,7 @@ def _format_flight(state: State, colors: dict[AlertLevel, str]) -> str:
             "[b]Altitude[/b]",
             f"Surface:         {_format_altitude(state.altitude_surface)}",
             f"Sea level:       {_format_altitude(state.altitude_sea)}",
-            f"Time to impact:  {_color(_format_time(state.altitude_time_to_impact), evaluate_time_to_impact(state), colors)}",
+            f"Time to impact:  {_color(_format_time(state.linear_time_to_impact), evaluate_time_to_impact(state), colors)}",
             "",
             "[b]Speed[/b]",
             f"Vertical:        {state.speed_vertical:+,.1f} m/s",
@@ -474,7 +474,7 @@ def _format_orbit(state: State, colors: dict[AlertLevel, str]) -> str:
                 f"Latitude:        {impact.latitude:+.3f} deg",
                 f"Longitude:       {impact.longitude:+.3f} deg",
                 f"Terrain:         {_format_altitude(impact.altitude_terrain)}",
-                f"T to impact:     {_format_time(impact.time_to)}",
+                f"T to impact:     {_format_time(impact.time_to_ballistic_impact)}",
                 f"Source:          {source_label}",
             ]
         )

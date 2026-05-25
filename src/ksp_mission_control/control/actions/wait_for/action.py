@@ -287,10 +287,10 @@ class WaitForAction(Action):
                 message=(f"Waiting for dynamic pressure > {self._above_dynamic_pressure:,.1f}Pa (current: {state.pressure_dynamic:,.1f}Pa)"),
             )
 
-        if self._below_time_to_impact is not None and state.altitude_time_to_impact > self._below_time_to_impact:
+        if self._below_time_to_impact is not None and state.linear_time_to_impact > self._below_time_to_impact:
             return ActionResult(
                 status=ActionStatus.RUNNING,
-                message=(f"Waiting for time to impact < {self._below_time_to_impact:,.1f}s (current: {state.altitude_time_to_impact:,.1f}s)"),
+                message=(f"Waiting for time to impact < {self._below_time_to_impact:,.1f}s (current: {state.linear_time_to_impact:,.1f}s)"),
             )
 
         if self._time is not None and (state.universal_time - self._start_action_time) < self._time:

@@ -332,7 +332,7 @@ def _compute_impact_prediction(vessel: object, body: object, current_ut: float) 
         latitude=latitude,
         longitude=longitude,
         altitude_terrain=terrain,
-        time_to=impact_ut - current_ut,
+        time_to_ballistic_impact=impact_ut - current_ut,
         source=source,
     )
 

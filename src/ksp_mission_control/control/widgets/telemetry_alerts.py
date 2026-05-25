@@ -111,7 +111,7 @@ def evaluate_dynamic_pressure(state: State) -> AlertLevel:
 def evaluate_time_to_impact(state: State) -> AlertLevel:
     if state.is_landed or not state.is_descending:
         return AlertLevel.NORMAL
-    tti = state.altitude_time_to_impact
+    tti = state.linear_time_to_impact
     if tti <= 10.0:
         return AlertLevel.CRITICAL
     if tti <= 30.0:

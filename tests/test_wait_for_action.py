@@ -130,7 +130,7 @@ class TestBelowTimeToImpact:
         assert result.status == ActionStatus.SUCCEEDED
 
     def test_waits_when_not_descending(self) -> None:
-        # altitude_time_to_impact is inf when vessel is not descending.
+        # linear_time_to_impact is inf when vessel is not descending.
         action = WaitForAction()
         state = State(altitude_surface=1000.0, speed_vertical=10.0)
         action.start(state, _params(below_time_to_impact=10.0))
