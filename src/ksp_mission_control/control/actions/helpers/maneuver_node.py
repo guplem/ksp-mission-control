@@ -86,6 +86,7 @@ def execute_node(
     staging_mode: StagingMode | None,
     dt: float,
     log: ActionLogger,
+    restore_warp_rate: float = 1.0,
 ) -> bool:
     """Drive the vessel through one maneuver node.
 
@@ -97,8 +98,17 @@ def execute_node(
     ``True`` when ``node.delta_v_remaining`` falls below the completion
     threshold.
 
-    The caller is responsible for cleanup after completion (e.g. setting
-    ``commands.remove_node_at_ut`` and disengaging the autopilot).
+    ``restore_warp_rate`` is the warp multiplier the helper resets to once
+    the burn completes (ADR 0012). Pass ``self._initial_warp_rate`` from
+    the calling action so the user's pre-action warp rate is restored
+    automatically on a successful return. Defaults to ``1.0`` (no restore).
+    The caller's ``stop()`` should still restore the same rate as a safety
+    net for abort and failure paths, since this helper only restores on
+    its ``True`` returns.
+
+    The caller is also responsible for the rest of the cleanup after
+    completion: setting ``commands.remove_node_at_ut`` and disengaging the
+    autopilot.
     """
     # Always orient toward the remaining burn direction. Using the
     # remaining vector (not the initial one) means orientation tracks the
@@ -112,6 +122,8 @@ def execute_node(
     if node.delta_v_remaining <= _BURN_COMPLETE_DV:
         commands.throttle = 0.0
         log.info(f"Maneuver complete (dv_remaining={node.delta_v_remaining:.2f} m/s)")
+        if restore_warp_rate > 1.0:
+            commands.time_warp_rate = restore_warp_rate
         return True
 
     # Overshoot detection: once the remaining burn vector points retrograde
@@ -129,6 +141,8 @@ def execute_node(
     if burn_dot <= 0.0:
         commands.throttle = 0.0
         log.info(f"Maneuver complete (overshoot detected, dv_remaining={node.delta_v_remaining:.2f} m/s)")
+        if restore_warp_rate > 1.0:
+            commands.time_warp_rate = restore_warp_rate
         return True
 
     # Auto-stage before throttle decisions so a spent stage is dropped

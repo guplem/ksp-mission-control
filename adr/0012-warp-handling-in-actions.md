@@ -23,14 +23,16 @@ Actions that have a critical section requiring 1x **capture the user's warp rate
 
 ### The contract
 
-Every action that performs a maneuver burn or runs an iterative replanning loop:
+Every action that performs a maneuver burn, runs an iterative replanning loop, or runs a tick-to-tick feedback controller (PD throttle, position-derivative velocity estimator, etc.):
 
 1. In `start()`, set `self._initial_warp_rate: float = state.time_warp_rate`.
-2. In `tick()`, update `self._initial_warp_rate = max(self._initial_warp_rate, state.time_warp_rate)` at the top of the body, before any other state-dependent logic.
-3. At the start of each critical section, write `commands.time_warp_rate = 1.0`. For burn-driven actions this happens inside `execute_node` automatically; for other critical sections (e.g. `deorbit_to_target`'s refinement) the action does it itself and returns `RUNNING` with a clear message.
-4. In `stop()`, if `self._initial_warp_rate > 1.0`, write `commands.time_warp_rate = self._initial_warp_rate`. The runner calls `stop()` on every termination path (`SUCCEEDED`, `FAILED`, user abort), so this single block handles restoration uniformly.
+2. In `tick()`, update `self._initial_warp_rate = max(self._initial_warp_rate, state.time_warp_rate)` at the top of the body, before any other state-dependent logic. Max-tracking handles the same-tick race where the preceding plan step's `time_warp` command has been written to the buffer but not yet applied to kRPC.
+3. At the start of each critical section, write `commands.time_warp_rate = 1.0`. Where this lives depends on the action shape:
+   - **Burn-driven actions** delegate to `execute_node`. The helper drops warp once the burn is within a real-time buffer (5 seconds, scaled by current warp rate) and restores `restore_warp_rate` on every burn-complete return path. Pass `restore_warp_rate=self._initial_warp_rate` so the helper handles success cleanup symmetrically.
+   - **Other critical sections** (e.g. `deorbit_to_target`'s iterative refinement loop, or atmospheric controllers in `land` / `hover` / `translate` / `aerobreak`) drop warp directly in `tick()` and return `RUNNING` with a message. Subsequent ticks see `state.time_warp_rate` at 1x and the critical code runs.
+4. In `stop()`, if `self._initial_warp_rate > 1.0`, write `commands.time_warp_rate = self._initial_warp_rate`. The runner calls `stop()` on every termination path (`SUCCEEDED`, `FAILED`, user abort). Even though `execute_node` already restored on successful burn-complete returns, this `stop()` write covers abort and failure paths that bypass that helper return.
 
-`execute_node` already implements step 3 for the burn: it drops warp once the burn is within a real-time buffer (5 seconds, scaled by current warp rate). The action only has to handle steps 1, 2, and 4 plus any additional critical sections it owns.
+The "drop and restore go as close to the critical code as possible" principle means the drop is local to the loop that needs 1x, not at the action's entry point. For burn actions that boils down to `execute_node`. For atmospheric controllers it boils down to the first thing `tick()` does. The action-level `stop()` restore is a safety net, not the primary restore path.
 
 ### Why max-tracking
 

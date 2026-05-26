@@ -207,7 +207,7 @@ class AlignPlaneAction(Action):
         if node is None:
             return self._plan_burn(state, commands, delta_inc_rad, log)
 
-        if execute_node(state, commands, node, self._staging_mode, dt, log):
+        if execute_node(state, commands, node, self._staging_mode, dt, log, restore_warp_rate=self._initial_warp_rate):
             commands.remove_node_at_ut = node.ut
             commands.autopilot = False
             commands.throttle = 0.0

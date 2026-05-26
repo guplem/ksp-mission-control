@@ -277,7 +277,7 @@ class TestExecuteNodeWarpDrop:
     """When the burn window approaches, active time warp is dropped to 1x."""
 
     def test_drops_warp_near_burn_window(self) -> None:
-        # burn_start_ut = 500 - 10/2 = 495. universal_time 470 => 25s away (< 60s buffer).
+        # buffer = 5s real * 100x = 500s game; burn_start_ut = 495; now = 470 -> 25s away (< buffer).
         node = _make_node(ut=500.0, delta_v_remaining=100.0, burn_time_estimate=10.0)
         state = _make_burning_state(universal_time=470.0, time_warp_rate=100.0)
         commands = VesselCommands()
@@ -316,4 +316,50 @@ class TestExecuteNodeWarpDrop:
         state = _make_burning_state(universal_time=470.0, time_warp_rate=1.0)
         commands = VesselCommands()
         execute_node(state, commands, node, None, 0.5, ActionLogger())
+        assert commands.time_warp_rate is None
+
+
+class TestExecuteNodeWarpRestore:
+    """When the burn completes, the helper restores the caller's pre-action warp."""
+
+    def test_restores_warp_on_burn_complete(self) -> None:
+        # delta_v_remaining below threshold -> burn-complete return path.
+        node = _make_node(ut=500.0, delta_v_remaining=0.0, burn_time_estimate=10.0)
+        state = _make_burning_state(universal_time=500.0, time_warp_rate=1.0)
+        commands = VesselCommands()
+        complete = execute_node(state, commands, node, None, 0.5, ActionLogger(), restore_warp_rate=100.0)
+        assert complete is True
+        assert commands.time_warp_rate == 100.0
+
+    def test_restores_warp_on_overshoot_return(self) -> None:
+        # burn_vector_remaining anti-parallel to burn_vector (helper default
+        # burn_vector is (0, delta_v, 0), so a negative-y remaining vector
+        # produces a non-positive dot product and trips the overshoot path).
+        node = _make_node(
+            ut=500.0,
+            delta_v_remaining=2.0,
+            burn_vector_remaining=(0.0, -2.0, 0.0),
+        )
+        state = _make_burning_state(universal_time=500.0, time_warp_rate=1.0)
+        commands = VesselCommands()
+        complete = execute_node(state, commands, node, None, 0.5, ActionLogger(), restore_warp_rate=50.0)
+        assert complete is True
+        assert commands.time_warp_rate == 50.0
+
+    def test_does_not_restore_when_restore_rate_is_one(self) -> None:
+        # Default restore_warp_rate=1.0 (caller did not pass anything).
+        node = _make_node(ut=500.0, delta_v_remaining=0.0, burn_time_estimate=10.0)
+        state = _make_burning_state(universal_time=500.0, time_warp_rate=1.0)
+        commands = VesselCommands()
+        execute_node(state, commands, node, None, 0.5, ActionLogger())
+        assert commands.time_warp_rate is None
+
+    def test_does_not_restore_while_still_burning(self) -> None:
+        # delta_v_remaining > threshold and warp already at 1x: no restore command yet.
+        node = _make_node(ut=500.0, delta_v_remaining=50.0, burn_time_estimate=5.0)
+        state = _make_burning_state(universal_time=500.0, time_warp_rate=1.0)
+        commands = VesselCommands()
+        complete = execute_node(state, commands, node, None, 0.5, ActionLogger(), restore_warp_rate=100.0)
+        assert complete is False
+        # Mid-burn, restore must not fire; only the burn-complete return paths restore.
         assert commands.time_warp_rate is None

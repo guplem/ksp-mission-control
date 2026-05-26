@@ -217,3 +217,34 @@ class TestLandActionStop:
         controls = VesselCommands()
         action.stop(state, controls, log=ActionLogger())
         assert controls.brakes is True
+
+
+class TestLandActionWarpHandling:
+    """The PD descent controller forces 1x and restores the user's warp on completion (ADR 0012)."""
+
+    def test_drops_warp_before_controller_runs(self) -> None:
+        action = LandAction()
+        state = State(time_warp_rate=100.0, altitude_surface=500.0, speed_vertical=-30.0)
+        action.start(state, {"target_speed": 2.0})
+        commands = VesselCommands()
+        result = action.tick(state, commands, dt=0.5, log=ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+        assert commands.time_warp_rate == 1.0
+        # PD controller did NOT fire this tick: throttle command should not be set.
+        assert commands.throttle is None
+
+    def test_controller_runs_at_one(self) -> None:
+        action = LandAction()
+        state = State(time_warp_rate=1.0, altitude_surface=500.0, speed_vertical=-30.0)
+        action.start(state, {"target_speed": 2.0})
+        commands = VesselCommands()
+        action.tick(state, commands, dt=0.5, log=ActionLogger())
+        # PD controller ran: throttle should be set.
+        assert commands.throttle is not None
+
+    def test_stop_restores_captured_warp(self) -> None:
+        action = LandAction()
+        action.start(State(time_warp_rate=50.0), {"target_speed": 2.0})
+        commands = VesselCommands()
+        action.stop(State(), commands, log=ActionLogger())
+        assert commands.time_warp_rate == 50.0

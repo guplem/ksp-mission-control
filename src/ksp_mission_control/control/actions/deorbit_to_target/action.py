@@ -248,7 +248,7 @@ class DeorbitToTargetAction(Action):
             self._refinement_warp_resumed = True
 
         # Burn window is near or open. Execute.
-        if execute_node(state, commands, node, self._staging_mode, dt, log):
+        if execute_node(state, commands, node, self._staging_mode, dt, log, restore_warp_rate=self._initial_warp_rate):
             commands.remove_node_at_ut = node.ut
             commands.autopilot = False
             commands.throttle = 0.0

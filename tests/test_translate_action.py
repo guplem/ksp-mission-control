@@ -434,3 +434,33 @@ class TestTranslateActionStop:
         assert controls.translate_forward == 0.0
         assert controls.translate_right == 0.0
         assert controls.translate_up == 0.0
+
+
+class TestTranslateActionWarpHandling:
+    """The position-derivative velocity estimator forces 1x and restores captured warp on stop (ADR 0012)."""
+
+    def test_drops_warp_before_controller_runs(self) -> None:
+        action = TranslateAction()
+        state = State(
+            time_warp_rate=100.0,
+            position_latitude=0.0,
+            position_longitude=0.0,
+            body_radius=600_000.0,
+        )
+        action.start(state, {"distance_north": 100.0, "distance_east": 0.0, "max_speed": 10.0})
+        commands = VesselCommands()
+        result = action.tick(state, commands, dt=0.5, log=ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+        assert commands.time_warp_rate == 1.0
+        # Controller did not fire: no RCS translation commands.
+        assert commands.translate_forward is None
+
+    def test_stop_restores_captured_warp(self) -> None:
+        action = TranslateAction()
+        action.start(
+            State(time_warp_rate=50.0, body_radius=600_000.0),
+            {"distance_north": 100.0, "distance_east": 0.0, "max_speed": 10.0},
+        )
+        commands = VesselCommands()
+        action.stop(State(), commands, log=ActionLogger())
+        assert commands.time_warp_rate == 50.0

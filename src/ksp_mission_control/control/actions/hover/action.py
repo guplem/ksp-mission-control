@@ -71,8 +71,23 @@ class HoverAction(Action):
         self._reached_target: bool = False
         self._hover_elapsed: float = 0.0
         self._initial_altitude: float = state.altitude_surface
+        # Warp capture for the restore in stop() (ADR 0012).
+        self._initial_warp_rate: float = state.time_warp_rate
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
+        # Track the highest warp seen so ``stop()`` can restore it.
+        if state.time_warp_rate > self._initial_warp_rate:
+            self._initial_warp_rate = state.time_warp_rate
+
+        # The cascaded velocity controller below uses tick-to-tick state and
+        # breaks under high warp. Drop warp and wait for KSP to settle.
+        if state.time_warp_rate > 1.0:
+            commands.time_warp_rate = 1.0
+            return ActionResult(
+                status=ActionStatus.RUNNING,
+                message=f"Dropping warp ({state.time_warp_rate:g}x -> 1x) before hover.",
+            )
+
         # --- Throttle control (cascaded velocity controller) ---
         # Outer loop: how fast should we be climbing/descending right now?
         # At 100m below target -> desired_vspeed = 50 m/s (capped)
@@ -147,3 +162,6 @@ class HoverAction(Action):
         commands.throttle = 0.0
         commands.sas = False
         commands.rcs = False
+        # Restore the warp rate the user had before the action ran (ADR 0012).
+        if self._initial_warp_rate > 1.0:
+            commands.time_warp_rate = self._initial_warp_rate

@@ -99,8 +99,24 @@ class AerobreakAction(Action):
         self._max_dynamic_pressure: float = float(param_values["max_dynamic_pressure"])
         self._staging_mode: StagingMode | None = parse_staging_mode(param_values["staging_mode"])
         self._engine_brake_started: bool = False
+        # Warp capture for the restore in stop() (ADR 0012).
+        self._initial_warp_rate: float = state.time_warp_rate
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
+        # Track the highest warp seen so ``stop()`` can restore it.
+        if state.time_warp_rate > self._initial_warp_rate:
+            self._initial_warp_rate = state.time_warp_rate
+
+        # The aerobrake feedback loop reads dynamic pressure and throttle
+        # responses each tick; both are meaningless at high warp. Drop warp
+        # before any other physics-coupled command goes out.
+        if state.time_warp_rate > 1.0:
+            commands.time_warp_rate = 1.0
+            return ActionResult(
+                status=ActionStatus.RUNNING,
+                message=f"Dropping warp ({state.time_warp_rate:g}x -> 1x) before aerobreak.",
+            )
+
         # Point retrograde
         commands.autopilot = True
         commands.autopilot_direction = _RETROGRADE_DIRECTION
@@ -195,3 +211,6 @@ class AerobreakAction(Action):
 
     def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
         commands.throttle = 0.0
+        # Restore the warp rate the user had before the action ran (ADR 0012).
+        if self._initial_warp_rate > 1.0:
+            commands.time_warp_rate = self._initial_warp_rate
