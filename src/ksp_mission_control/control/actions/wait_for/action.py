@@ -135,6 +135,44 @@ class WaitForAction(Action):
             default=None,
         ),
         ActionParam(
+            param_id="time_before_next_maneuver",
+            label="Time Before Next Maneuver",
+            description=(
+                "Wait until the first maneuver node is at most this many seconds away. "
+                "Pair this with ``time_warp`` to drop back to real time shortly before a planned burn: "
+                "set warp high, then ``wait_for time_before_next_maneuver=60``, then set warp back to 1. "
+                "Fails immediately when no maneuver node exists."
+            ),
+            required=False,
+            param_type=ParamType.FLOAT,
+            default=None,
+            unit="s",
+        ),
+        ActionParam(
+            param_id="time_before_apoapsis",
+            label="Time Before Apoapsis",
+            description=(
+                "Wait until the next apoapsis is at most this many seconds away. "
+                "Useful for dropping out of time warp shortly before an apoapsis-timed event."
+            ),
+            required=False,
+            param_type=ParamType.FLOAT,
+            default=None,
+            unit="s",
+        ),
+        ActionParam(
+            param_id="time_before_periapsis",
+            label="Time Before Periapsis",
+            description=(
+                "Wait until the next periapsis is at most this many seconds away. "
+                "Useful for dropping out of time warp shortly before a periapsis-timed event."
+            ),
+            required=False,
+            param_type=ParamType.FLOAT,
+            default=None,
+            unit="s",
+        ),
+        ActionParam(
             param_id="biome",
             label="Biome",
             description="Wait until the vessel is in this biome before proceeding.",
@@ -212,6 +250,12 @@ class WaitForAction(Action):
         raw_time = param_values["time"]
         self._time: float | None = float(raw_time) if raw_time is not None else None
         self._start_action_time: float = state.universal_time
+        raw_time_before_maneuver = param_values["time_before_next_maneuver"]
+        self._time_before_next_maneuver: float | None = float(raw_time_before_maneuver) if raw_time_before_maneuver is not None else None
+        raw_time_before_apoapsis = param_values["time_before_apoapsis"]
+        self._time_before_apoapsis: float | None = float(raw_time_before_apoapsis) if raw_time_before_apoapsis is not None else None
+        raw_time_before_periapsis = param_values["time_before_periapsis"]
+        self._time_before_periapsis: float | None = float(raw_time_before_periapsis) if raw_time_before_periapsis is not None else None
         self._biome: str | None = param_values["biome"]
         raw_situation = param_values["situation"]
         self._situation: VesselSituation | None = VesselSituation(raw_situation.lower()) if raw_situation is not None else None
@@ -297,6 +341,35 @@ class WaitForAction(Action):
             return ActionResult(
                 status=ActionStatus.RUNNING,
                 message=(f"Waiting for time > {self._time:.1f}s (elapsed: {state.universal_time - self._start_action_time:.1f}s)"),
+            )
+
+        if self._time_before_next_maneuver is not None:
+            if not state.nodes:
+                return ActionResult(
+                    status=ActionStatus.FAILED,
+                    message="Failed: time_before_next_maneuver requires a maneuver node, but none exists.",
+                )
+            next_node = state.nodes[0]
+            if next_node.time_to > self._time_before_next_maneuver:
+                return ActionResult(
+                    status=ActionStatus.RUNNING,
+                    message=(
+                        f"Waiting until {self._time_before_next_maneuver:,.1f}s before next maneuver (currently {next_node.time_to:,.1f}s away)"
+                    ),
+                )
+
+        if self._time_before_apoapsis is not None and state.orbit_apoapsis_time_to > self._time_before_apoapsis:
+            return ActionResult(
+                status=ActionStatus.RUNNING,
+                message=(f"Waiting until {self._time_before_apoapsis:,.1f}s before apoapsis (currently {state.orbit_apoapsis_time_to:,.1f}s away)"),
+            )
+
+        if self._time_before_periapsis is not None and state.orbit_periapsis_time_to > self._time_before_periapsis:
+            return ActionResult(
+                status=ActionStatus.RUNNING,
+                message=(
+                    f"Waiting until {self._time_before_periapsis:,.1f}s before periapsis (currently {state.orbit_periapsis_time_to:,.1f}s away)"
+                ),
             )
 
         if self._biome is not None and state.position_biome != self._biome:

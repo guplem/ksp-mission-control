@@ -32,6 +32,9 @@ _DEFAULT_PARAMS: dict[str, float | bool | str | None] = {
     "above_dynamic_pressure": None,
     "below_time_to_impact": None,
     "time": None,
+    "time_before_next_maneuver": None,
+    "time_before_apoapsis": None,
+    "time_before_periapsis": None,
     "biome": None,
     "situation": None,
     "science_situation": None,
@@ -652,5 +655,85 @@ class TestOrientation:
         # Direction is zero vector (no real data) but no orientation param set.
         state = State()
         action.start(state, _params(orientation=None))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+
+def _node_at(time_to: float) -> ManeuverNode:
+    """Build a ManeuverNode with the specified time_to and benign defaults."""
+    return ManeuverNode(
+        index=0,
+        ut=1_000.0 + time_to,
+        time_to=time_to,
+        delta_v=100.0,
+        delta_v_remaining=100.0,
+        prograde=100.0,
+        normal=0.0,
+        radial=0.0,
+        burn_vector=(0.0, 100.0, 0.0),
+        burn_vector_remaining=(0.0, 100.0, 0.0),
+        burn_time_estimate=10.0,
+        post_burn_orbit_apoapsis=80_000.0,
+        post_burn_orbit_periapsis=80_000.0,
+        post_burn_orbit_eccentricity=0.0,
+        post_burn_orbit_inclination=0.0,
+        post_burn_orbit_period=2_400.0,
+        post_burn_orbit_semi_major_axis=680_000.0,
+    )
+
+
+class TestTimeBeforeNextManeuver:
+    def test_waits_when_node_is_far_away(self) -> None:
+        action = WaitForAction()
+        state = State(nodes=(_node_at(time_to=300.0),))
+        action.start(state, _params(time_before_next_maneuver=60.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+        assert "300" in result.message
+
+    def test_succeeds_when_node_is_close(self) -> None:
+        action = WaitForAction()
+        state = State(nodes=(_node_at(time_to=45.0),))
+        action.start(state, _params(time_before_next_maneuver=60.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+    def test_fails_when_no_node_exists(self) -> None:
+        action = WaitForAction()
+        state = State(nodes=())
+        action.start(state, _params(time_before_next_maneuver=60.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.FAILED
+        assert "maneuver node" in result.message.lower()
+
+
+class TestTimeBeforeApoapsis:
+    def test_waits_when_apoapsis_is_far(self) -> None:
+        action = WaitForAction()
+        state = State(orbit_apoapsis_time_to=600.0)
+        action.start(state, _params(time_before_apoapsis=60.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+
+    def test_succeeds_when_apoapsis_is_close(self) -> None:
+        action = WaitForAction()
+        state = State(orbit_apoapsis_time_to=30.0)
+        action.start(state, _params(time_before_apoapsis=60.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+
+
+class TestTimeBeforePeriapsis:
+    def test_waits_when_periapsis_is_far(self) -> None:
+        action = WaitForAction()
+        state = State(orbit_periapsis_time_to=600.0)
+        action.start(state, _params(time_before_periapsis=60.0))
+        result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+
+    def test_succeeds_when_periapsis_is_close(self) -> None:
+        action = WaitForAction()
+        state = State(orbit_periapsis_time_to=15.0)
+        action.start(state, _params(time_before_periapsis=60.0))
         result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
         assert result.status == ActionStatus.SUCCEEDED

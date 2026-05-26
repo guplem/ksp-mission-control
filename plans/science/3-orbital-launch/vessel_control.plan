@@ -11,16 +11,34 @@ circularize  apse=apoapsis
 # Booster should have dropped; restore default autopilot tuning for the lighter upper stage.
 autopilot_config restore_defaults=true
 
-# Raise orbit to "far space" 
+# Raise orbit to "far space" with a burn at periapsis.
+# change_apse plans a node and runs its own coast-to-burn internally,
+# so we let it do its thing in real time.
 change_apse target=apoapsis target_altitude=260_000
 
-# Reach the target apoapsis
+# Long climb to the 260 km apoapsis (~17 min on the elliptical transfer).
+# Warp at 100x until one minute before apoapsis, then drop back to 1x.
+time_warp  target_multiplier=100
+wait_for   time_before_apoapsis=60
+time_warp  target_multiplier=1
+
+# Wait the remaining seconds so we land exactly at apoapsis.
 wait_for   apoapsis=True
 
-# Circularize again at periapsis, lowering apoapsis prepare for reentry
+# Circularize at apoapsis... but apse=periapsis lowers the OTHER apse:
+# it burns at the next periapsis to drop apoapsis. The action coasts to
+# that periapsis internally; warp before it so the coast is cheap.
+time_warp  target_multiplier=100
+wait_for   time_before_periapsis=60
+time_warp  target_multiplier=1
 circularize  apse=periapsis
 
-# TODO: Create a node so we have an expected landing in the desert. Meanwhile simply retrograde burn
+# TODO: Create a node so we have an expected landing in the desert. Meanwhile simply retrograde burn.
+# Same trick: change_apse target=periapsis burns at apoapsis, so warp
+# until shortly before apoapsis to skip the half-orbit coast.
+time_warp  target_multiplier=100
+wait_for   time_before_apoapsis=60
+time_warp  target_multiplier=1
 change_apse target=periapsis target_altitude=35_000
 
 # Get rid of all the remaining stages to be left with the heatshield exposed

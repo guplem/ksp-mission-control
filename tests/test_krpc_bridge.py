@@ -1798,3 +1798,100 @@ class TestReadVesselStateImpactPrediction:
         conn.space_center.active_vessel.orbit.periapsis_altitude = -1_000.0
         state = read_vessel_state(conn)
         assert state.predicted_impact is None
+
+
+# ---------------------------------------------------------------------------
+# Time-warp read/write
+# ---------------------------------------------------------------------------
+
+
+class TestReadTimeWarp:
+    """``State.time_warp_rate`` and ``time_warp_rate_max`` mirror kRPC space_center."""
+
+    def test_defaults_to_one_when_krpc_fields_missing(self) -> None:
+        conn = _make_mock_conn()
+        state = read_vessel_state(conn)
+        # Mock space_center has no warp_rate / maximum_rails_warp_factor.
+        assert state.time_warp_rate == 1.0
+        assert state.time_warp_rate_max == 1.0
+
+    def test_reads_current_rate(self) -> None:
+        conn = _make_mock_conn()
+        conn.space_center.warp_rate = 100.0
+        state = read_vessel_state(conn)
+        assert state.time_warp_rate == 100.0
+
+    def test_max_rate_follows_maximum_rails_warp_factor(self) -> None:
+        conn = _make_mock_conn()
+        conn.space_center.warp_rate = 1.0
+        conn.space_center.maximum_rails_warp_factor = 4  # corresponds to 100x
+        state = read_vessel_state(conn)
+        assert state.time_warp_rate_max == 100.0
+
+    def test_max_rate_caps_at_table_end_for_out_of_range_factor(self) -> None:
+        conn = _make_mock_conn()
+        conn.space_center.warp_rate = 1.0
+        conn.space_center.maximum_rails_warp_factor = 99
+        state = read_vessel_state(conn)
+        assert state.time_warp_rate_max == 100_000.0
+
+
+class TestApplyTimeWarp:
+    """``commands.time_warp_rate`` writes the chosen factor to kRPC."""
+
+    def _make_warp_conn(self, max_rails: int = 7) -> SimpleNamespace:
+        conn = _make_mock_conn()
+        conn.space_center.warp_rate = 1.0
+        conn.space_center.maximum_rails_warp_factor = max_rails
+        conn.space_center.rails_warp_factor = 0
+        conn.space_center.physics_warp_factor = 0
+        return conn
+
+    def test_target_one_resets_rails_factor_to_zero(self) -> None:
+        conn = self._make_warp_conn()
+        conn.space_center.rails_warp_factor = 5
+        apply_controls(conn, VesselCommands(time_warp_rate=1.0))
+        assert conn.space_center.rails_warp_factor == 0
+
+    def test_target_above_threshold_uses_rails(self) -> None:
+        conn = self._make_warp_conn()
+        apply_controls(conn, VesselCommands(time_warp_rate=1000.0))
+        # 1000x is rails factor 5.
+        assert conn.space_center.rails_warp_factor == 5
+
+    def test_target_below_threshold_uses_physics(self) -> None:
+        conn = self._make_warp_conn()
+        apply_controls(conn, VesselCommands(time_warp_rate=3.0))
+        # 3x is physics factor 2 (0->1, 1->2, 2->3, 3->4).
+        assert conn.space_center.physics_warp_factor == 2
+
+    def test_picks_largest_factor_not_exceeding_target(self) -> None:
+        conn = self._make_warp_conn()
+        # 73x: largest rails level <= 73 is 50 (factor 3).
+        apply_controls(conn, VesselCommands(time_warp_rate=73.0))
+        assert conn.space_center.rails_warp_factor == 3
+
+    def test_caps_at_maximum_rails_warp_factor(self) -> None:
+        conn = self._make_warp_conn(max_rails=2)  # cap = 10x
+        apply_controls(conn, VesselCommands(time_warp_rate=1000.0))
+        assert conn.space_center.rails_warp_factor == 2  # 10x, the cap
+
+    def test_resets_physics_factor_when_switching_to_rails(self) -> None:
+        conn = self._make_warp_conn()
+        conn.space_center.physics_warp_factor = 3
+        apply_controls(conn, VesselCommands(time_warp_rate=100.0))
+        assert conn.space_center.physics_warp_factor == 0
+        assert conn.space_center.rails_warp_factor == 4  # 100x
+
+    def test_resets_rails_factor_when_switching_to_physics(self) -> None:
+        conn = self._make_warp_conn()
+        conn.space_center.rails_warp_factor = 5
+        apply_controls(conn, VesselCommands(time_warp_rate=2.0))
+        assert conn.space_center.rails_warp_factor == 0
+        assert conn.space_center.physics_warp_factor == 1  # 2x
+
+    def test_none_command_leaves_warp_unchanged(self) -> None:
+        conn = self._make_warp_conn()
+        conn.space_center.rails_warp_factor = 4
+        apply_controls(conn, VesselCommands())  # time_warp_rate is None
+        assert conn.space_center.rails_warp_factor == 4

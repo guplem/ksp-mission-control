@@ -7,6 +7,7 @@ module stays decoupled from the game connection.
 
 from __future__ import annotations
 
+import contextlib
 import math
 from dataclasses import fields
 
@@ -38,6 +39,19 @@ _IMPACT_PREDICTION_MAX_PERIAPSIS: float = 10_000.0
 # Inclination (radians) below which the equatorial ascending/descending nodes
 # are not well defined. 0.001 rad is roughly 0.057 degrees.
 _EQUATORIAL_INCLINATION_TOLERANCE: float = 0.001
+
+# KSP rails-warp multipliers, indexed by ``space_center.rails_warp_factor``.
+# Used to translate a target multiplier into the highest factor whose
+# multiplier does not exceed the request.
+_RAILS_WARP_MULTIPLIERS: tuple[float, ...] = (1.0, 5.0, 10.0, 50.0, 100.0, 1000.0, 10000.0, 100000.0)
+
+# KSP physics-warp multipliers, indexed by ``space_center.physics_warp_factor``.
+_PHYSICS_WARP_MULTIPLIERS: tuple[float, ...] = (1.0, 2.0, 3.0, 4.0)
+
+# Threshold above which the bridge uses rails warp; at or below, physics warp.
+# Rails warp jumps from 1x straight to 5x with nothing in between, so any
+# request in (1, 5) is best served by physics warp's 2/3/4 levels.
+_RAILS_WARP_THRESHOLD: float = 5.0
 
 # Tolerance for matching a maneuver node by ut. kRPC does not change the
 # ut of a node after creation (unless someone drags it in-game), so an
@@ -335,6 +349,87 @@ def _compute_impact_prediction(vessel: object, body: object, current_ut: float) 
         time_to_ballistic_impact=impact_ut - current_ut,
         source=source,
     )
+
+
+def _pick_warp_factor(target_rate: float, max_rails_factor: int) -> tuple[str, int]:
+    """Return ``(mode, factor)`` for a desired warp multiplier.
+
+    ``mode`` is ``'rails'`` or ``'physics'``; ``factor`` is the kRPC index
+    into the matching multiplier table. The function picks rails warp for
+    targets at or above ``_RAILS_WARP_THRESHOLD`` and physics warp below
+    it. Rails warp is further capped by ``max_rails_factor`` (KSP's current
+    altitude/situation limit).
+
+    For ``target_rate <= 1`` the returned factor is 0 in either mode, which
+    drops back to real time.
+    """
+    if target_rate <= 1.0:
+        return "rails", 0
+
+    if target_rate >= _RAILS_WARP_THRESHOLD:
+        cap = max(0, min(len(_RAILS_WARP_MULTIPLIERS) - 1, max_rails_factor))
+        best = 0
+        for idx in range(cap + 1):
+            if _RAILS_WARP_MULTIPLIERS[idx] <= target_rate:
+                best = idx
+        return "rails", best
+
+    best = 0
+    for idx, multiplier in enumerate(_PHYSICS_WARP_MULTIPLIERS):
+        if multiplier <= target_rate:
+            best = idx
+    return "physics", best
+
+
+def _read_time_warp(space_center: object) -> tuple[float, float]:
+    """Return ``(current_rate, max_rate)`` for the current physics situation.
+
+    Both default to ``1.0`` if the kRPC fields are unavailable (older
+    versions or partial test mocks).
+    """
+    try:
+        current_rate = float(space_center.warp_rate)  # type: ignore[attr-defined]
+    except (AttributeError, Exception):
+        current_rate = 1.0
+    try:
+        max_factor = int(space_center.maximum_rails_warp_factor)  # type: ignore[attr-defined]
+        max_factor = max(0, min(len(_RAILS_WARP_MULTIPLIERS) - 1, max_factor))
+        max_rate = _RAILS_WARP_MULTIPLIERS[max_factor]
+    except (AttributeError, Exception):
+        max_rate = 1.0
+    return current_rate, max_rate
+
+
+def _apply_time_warp(space_center: object, target_rate: float) -> None:
+    """Write the closest achievable warp factor for ``target_rate``.
+
+    Reads ``maximum_rails_warp_factor`` to honor KSP's current cap, then
+    sets either ``rails_warp_factor`` or ``physics_warp_factor`` depending
+    on the picked mode. The other mode's factor is reset to 0 to avoid the
+    transition leaving stale warp from the previous mode.
+    """
+    try:
+        max_factor = int(space_center.maximum_rails_warp_factor)  # type: ignore[attr-defined]
+    except (AttributeError, Exception):
+        max_factor = len(_RAILS_WARP_MULTIPLIERS) - 1
+
+    mode, factor = _pick_warp_factor(target_rate, max_factor)
+
+    try:
+        if mode == "rails":
+            # Reset any physics warp so the transition is clean (KSP ignores
+            # rails-factor changes while physics warp is active).
+            with contextlib.suppress(AttributeError, Exception):
+                space_center.physics_warp_factor = 0  # type: ignore[attr-defined]
+            space_center.rails_warp_factor = factor  # type: ignore[attr-defined]
+        else:
+            with contextlib.suppress(AttributeError, Exception):
+                space_center.rails_warp_factor = 0  # type: ignore[attr-defined]
+            space_center.physics_warp_factor = factor  # type: ignore[attr-defined]
+    except (AttributeError, Exception):
+        # kRPC unavailable or refused; the caller can detect this via
+        # ``State.time_warp_rate`` not changing.
+        pass
 
 
 class NoActiveVesselError(Exception):
@@ -693,6 +788,7 @@ def read_vessel_state(conn: object) -> State:
     current_ut: float = float(conn.space_center.ut)  # type: ignore[attr-defined]
     an_ut, dn_ut, an_speed, dn_speed = _compute_equatorial_nodes(orbit, current_ut)
     predicted_impact = _compute_impact_prediction(vessel, orbit.body, current_ut)
+    time_warp_rate, time_warp_rate_max = _read_time_warp(conn.space_center)  # type: ignore[attr-defined]
     # Vessel forward (nose) direction in each frame the wait_for orientation
     # checks need. kRPC returns a unit vector in the requested frame.
     direction_orbital: tuple[float, float, float] = tuple(vessel.direction(vessel.orbital_reference_frame))
@@ -798,6 +894,8 @@ def read_vessel_state(conn: object) -> State:
         control_deployable_radiators=control.radiators,
         comms_connected=comms_connected,
         comms_signal_strength=comms_signal_strength,
+        time_warp_rate=time_warp_rate,
+        time_warp_rate_max=time_warp_rate_max,
         resource_electric_charge=vessel.resources.amount("ElectricCharge"),
         resource_liquid_fuel=vessel.resources.amount("LiquidFuel"),
         resource_oxidizer=vessel.resources.amount("Oxidizer"),
@@ -1006,6 +1104,11 @@ def apply_controls(conn: object, controls: VesselCommands) -> None:
     if controls.create_node is not None:
         burn = controls.create_node
         vc.add_node(burn.ut, prograde=burn.prograde, normal=burn.normal, radial=burn.radial)
+
+    # Time warp: applied last so any prior writes (e.g. throttle to 0
+    # ahead of a long coast) take effect before KSP fast-forwards.
+    if controls.time_warp_rate is not None:
+        _apply_time_warp(conn.space_center, controls.time_warp_rate)  # type: ignore[attr-defined]
 
 
 def list_launchable_vessels(conn: object) -> list[str]:

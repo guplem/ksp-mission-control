@@ -962,6 +962,21 @@ class State:
     control_deployable_radiators: bool = False
     """Whether radiators are deployed."""
 
+    # --- Time warp ---
+    time_warp_rate: float = 1.0
+    """Current actual time-warp multiplier (e.g. 1.0, 5.0, 100.0).
+
+    KSP exposes two distinct warp modes: rails warp (1, 5, 10, 50, 100, 1000,
+    10000, 100000) and physics warp (1, 2, 3, 4). This field reports the
+    multiplier that is in effect right now regardless of which mode.
+    """
+    time_warp_rate_max: float = 1.0
+    """Highest time-warp multiplier permitted under current conditions.
+
+    KSP caps the available rails-warp factor based on altitude and situation
+    (lower in atmosphere, near a body, or in physics-warp-only regimes).
+    """
+
     # --- Comms ---
     comms_connected: bool = False
     """Whether the vessel can communicate with KSC."""
@@ -1260,6 +1275,17 @@ class VesselCommands:
     """One-shot request to create a maneuver node. Applied after remove_node_at_ut."""
     remove_node_at_ut: float | None = None
     """Remove the maneuver node whose ut matches this value (tolerance 0.001s). Applied before create_node."""
+
+    # --- Time warp ---
+    time_warp_rate: float | None = None
+    """Target time-warp multiplier (e.g. 100.0, 1000.0). 1.0 returns to real time.
+
+    The bridge selects the highest available factor whose multiplier does not
+    exceed the requested value, choosing rails warp for >= 5x and physics
+    warp for <= 4x. KSP further caps the rate when the vessel's altitude or
+    situation forbids higher rails factors, so the achieved
+    ``State.time_warp_rate`` may be lower than the request.
+    """
 
     # --- Deployables ---
     deployable_solar_panels: bool | None = None
