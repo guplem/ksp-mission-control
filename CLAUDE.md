@@ -305,6 +305,7 @@ Format: `adr/NNNN-short-title.md` with Context, Decision, Consequences sections.
 | [0009](adr/0009-action-lifecycle-contract.md) | Action lifecycle contract (start/tick/stop) | Adding new actions or modifying existing action lifecycle methods |
 | [0010](adr/0010-vocabulary-and-verbs.md) | Vocabulary and verbs (craft/vessel, export/load/spawn, launch/start/stop) | Naming any new module, button, log message, or dialog string |
 | [0011](adr/0011-atomic-actions-and-wait-for.md) | Atomic actions; preconditions belong in `wait_for` | Adding params to actions, deciding whether a gate belongs on the action or in a separate plan step |
+| [0012](adr/0012-warp-handling-in-actions.md) | Capture-and-restore time warp around critical sections | Adding an action that burns a maneuver node, iterates over state, or otherwise needs to run at 1x |
 
 When to create a new ADR: any decision involving trade-offs between alternatives, especially around dependencies, architecture boundaries, or data flow.
 

@@ -285,12 +285,29 @@ class TestExecuteNodeWarpDrop:
         assert commands.time_warp_rate == 1.0
 
     def test_does_not_drop_warp_when_burn_is_far_away(self) -> None:
-        # burn_start_ut = 495. universal_time 100 => 395s away, well outside buffer.
-        node = _make_node(ut=500.0, delta_v_remaining=100.0, burn_time_estimate=10.0)
-        state = _make_burning_state(universal_time=100.0, time_warp_rate=100.0)
+        # Buffer = 5s real * 10x warp = 50s game-time. burn_start_ut = 5_000 - 5 = 4_995.
+        # universal_time 100 => 4_895s away, well outside the 50s buffer.
+        node = _make_node(ut=5_000.0, delta_v_remaining=100.0, burn_time_estimate=10.0)
+        state = _make_burning_state(universal_time=100.0, time_warp_rate=10.0)
         commands = VesselCommands()
         execute_node(state, commands, node, None, 0.5, ActionLogger())
         assert commands.time_warp_rate is None
+
+    def test_buffer_scales_with_warp_rate(self) -> None:
+        # At 100x, the buffer is 500s game. burn 400s away should drop;
+        # the same setup at 10x (buffer 50s game) should not.
+        node = _make_node(ut=405.0, delta_v_remaining=100.0, burn_time_estimate=10.0)
+        # burn_start_ut = 405 - 5 = 400. universal_time 0 => 400s away.
+        high_warp = _make_burning_state(universal_time=0.0, time_warp_rate=100.0)
+        low_warp = _make_burning_state(universal_time=0.0, time_warp_rate=10.0)
+
+        high_commands = VesselCommands()
+        execute_node(high_warp, high_commands, node, None, 0.5, ActionLogger())
+        assert high_commands.time_warp_rate == 1.0
+
+        low_commands = VesselCommands()
+        execute_node(low_warp, low_commands, node, None, 0.5, ActionLogger())
+        assert low_commands.time_warp_rate is None
 
     def test_no_op_when_already_at_real_time(self) -> None:
         # Even near the burn, the helper must not send a redundant warp=1x

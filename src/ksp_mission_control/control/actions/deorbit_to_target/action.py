@@ -179,7 +179,14 @@ class DeorbitToTargetAction(Action):
         self._node_ut: float | None = None
         self._planning_ticks_used: int = 0
         self._converged: bool = False
+        self._refinement_warp_resumed: bool = False
         self._fail_message: str | None = None
+
+        # Capture the warp rate to restore on completion (see ADR 0012).
+        # The refinement phase forces 1x because the iterative node-replanning
+        # loop must read stable state; the cold coast between refinement and
+        # the burn is restored to this captured rate so it can be warped.
+        self._initial_warp_rate: float = state.time_warp_rate
 
         # Reject infeasible plans up front (deferred to first tick).
         current_inclination_deg = math.degrees(state.orbit_inclination)
@@ -191,12 +198,25 @@ class DeorbitToTargetAction(Action):
             )
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
+        # Track the highest warp seen so ``stop()`` can restore it (ADR 0012).
+        if state.time_warp_rate > self._initial_warp_rate:
+            self._initial_warp_rate = state.time_warp_rate
+
         if self._fail_message is not None:
             return ActionResult(status=ActionStatus.FAILED, message=self._fail_message)
 
         node = self._find_our_node(state)
 
         if node is None:
+            # Pre-planning: force 1x so the initial node ends up at the
+            # apoapsis the bridge reports right now, not one that the next
+            # warp tick has already slid past.
+            if state.time_warp_rate > 1.0:
+                commands.time_warp_rate = 1.0
+                return ActionResult(
+                    status=ActionStatus.RUNNING,
+                    message="Dropping warp to 1x before planning the deorbit node.",
+                )
             return self._plan_initial_node(state, commands, log)
 
         # Decide whether there is still time to refine or we should commit
@@ -208,7 +228,24 @@ class DeorbitToTargetAction(Action):
         time_to_burn_start = burn_start_ut - state.universal_time
 
         if not self._converged and time_to_burn_start > _REFINEMENT_DEADLINE_SECONDS:
+            # Refinement phase: must be at 1x. At higher warp each tick
+            # covers tens to hundreds of seconds of game time, and the
+            # iterative replanner cannot keep pace.
+            if state.time_warp_rate > 1.0:
+                commands.time_warp_rate = 1.0
+                return ActionResult(
+                    status=ActionStatus.RUNNING,
+                    message=(f"Dropping warp to 1x for refinement (current rate {state.time_warp_rate:g}x)."),
+                )
             return self._refine_node(state, commands, node, log)
+
+        # Refinement done. Resume the user's pre-action warp once so the
+        # cold coast to burn can fast-forward; execute_node will drop it
+        # again ~5 real seconds before the burn.
+        if self._converged and not self._refinement_warp_resumed and self._initial_warp_rate > 1.0:
+            if state.time_warp_rate < self._initial_warp_rate:
+                commands.time_warp_rate = self._initial_warp_rate
+            self._refinement_warp_resumed = True
 
         # Burn window is near or open. Execute.
         if execute_node(state, commands, node, self._staging_mode, dt, log):
@@ -240,6 +277,9 @@ class DeorbitToTargetAction(Action):
         commands.autopilot = False
         if self._node_ut is not None:
             commands.remove_node_at_ut = self._node_ut
+        # Restore the warp rate the user had before the action ran (ADR 0012).
+        if self._initial_warp_rate > 1.0:
+            commands.time_warp_rate = self._initial_warp_rate
 
     # ---- Helpers ------------------------------------------------------
 

@@ -370,3 +370,34 @@ class TestChangeApseStop:
         assert commands.throttle == 0.0
         assert commands.autopilot is False
         assert commands.remove_node_at_ut is None
+
+
+class TestChangeApseWarpRestore:
+    """The action restores the user's pre-action warp rate on completion (ADR 0012)."""
+
+    def _state_with_warp(self, time_warp_rate: float) -> State:
+        base = _orbit_state()
+        return State(
+            **{**base.__dict__, "time_warp_rate": time_warp_rate},
+        )
+
+    def test_stop_restores_warp_when_captured_above_one(self) -> None:
+        action = ChangeApseAction()
+        state = self._state_with_warp(100.0)
+        action.start(state, {"target": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": None})
+        commands = VesselCommands()
+        action.stop(state, commands, log=ActionLogger())
+        assert commands.time_warp_rate == 100.0
+
+    def test_stop_does_not_set_warp_when_captured_was_one(self) -> None:
+        action = ChangeApseAction()
+        action.start(_orbit_state(), {"target": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": None})
+        commands = VesselCommands()
+        action.stop(_orbit_state(), commands, log=ActionLogger())
+        assert commands.time_warp_rate is None
+
+    def test_tick_max_tracks_warp_rate(self) -> None:
+        action = ChangeApseAction()
+        action.start(_orbit_state(), {"target": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": None})
+        action.tick(self._state_with_warp(50.0), VesselCommands(), dt=0.5, log=ActionLogger())
+        assert action._initial_warp_rate == 50.0

@@ -117,6 +117,9 @@ class ChangeApseAction(Action):
         # can find it again across ticks even if other nodes get inserted.
         self._node_ut: float | None = None
 
+        # Capture the warp rate to restore on completion (see ADR 0012).
+        self._initial_warp_rate: float = state.time_warp_rate
+
         # Start-time validations whose failure is surfaced on the first tick.
         self._fail_message: str | None = None
         if self._target is ApseTarget.APOAPSIS and self._target_altitude < state.orbit_periapsis:
@@ -133,6 +136,10 @@ class ChangeApseAction(Action):
             )
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
+        # Track the highest warp seen so ``stop()`` can restore it (ADR 0012).
+        if state.time_warp_rate > self._initial_warp_rate:
+            self._initial_warp_rate = state.time_warp_rate
+
         if self._fail_message is not None:
             return ActionResult(status=ActionStatus.FAILED, message=self._fail_message)
 
@@ -171,6 +178,9 @@ class ChangeApseAction(Action):
         commands.autopilot = False
         if self._node_ut is not None:
             commands.remove_node_at_ut = self._node_ut
+        # Restore the warp rate the user had before the action ran (ADR 0012).
+        if self._initial_warp_rate > 1.0:
+            commands.time_warp_rate = self._initial_warp_rate
 
     # ---- Helpers ------------------------------------------------------
 

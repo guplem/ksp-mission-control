@@ -91,7 +91,14 @@ class CircularizeAction(Action):
         # can find it again across ticks even if other nodes get inserted.
         self._node_ut: float | None = None
 
+        # Capture the warp rate to restore on completion (see ADR 0012).
+        self._initial_warp_rate: float = state.time_warp_rate
+
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
+        # Track the highest warp seen so ``stop()`` can restore it (ADR 0012).
+        if state.time_warp_rate > self._initial_warp_rate:
+            self._initial_warp_rate = state.time_warp_rate
+
         node = self._find_our_node(state)
 
         if node is None:
@@ -127,6 +134,9 @@ class CircularizeAction(Action):
         commands.autopilot = False
         if self._node_ut is not None:
             commands.remove_node_at_ut = self._node_ut
+        # Restore the warp rate the user had before the action ran (ADR 0012).
+        if self._initial_warp_rate > 1.0:
+            commands.time_warp_rate = self._initial_warp_rate
 
     # ---- Helpers ------------------------------------------------------
 

@@ -11,50 +11,53 @@ circularize  apse=apoapsis
 # Booster should have dropped; restore default autopilot tuning for the lighter upper stage.
 autopilot_config restore_defaults=true
 
-# Raise orbit to "far space" with a burn at periapsis.
+# Engage warp for the orbital phase. Each maneuver action below captures
+# this rate, drops it locally for its critical sections (burn and any
+# iterative refinement), and restores it on completion. See ADR 0012.
+time_warp  target_multiplier=100
+
+# Raise apoapsis to 260 km with a burn at periapsis. The action runs at
+# 100x during its half-orbit coast to periapsis, drops to 1x for the
+# burn, and restores 100x on completion.
 change_apse target=apoapsis target_altitude=260_000
 
-# Wait for apoapsis
-time_warp  target_multiplier=100
+# Coast to the new 260 km apoapsis.
 wait_for   apoapsis=True
+
+# Brief real-time pause so the craft settles before the next burn.
 time_warp  target_multiplier=1
 wait_for   time=10
-
-# Circularize at periapsis
 time_warp  target_multiplier=100
-wait_for   time_before_periapsis=60
-time_warp  target_multiplier=1
+
+# Lower apoapsis to 260 km (burns at the next periapsis).
 circularize  apse=periapsis
 
 # Tilt the orbit so it can cross the desert's northern edge.
 # Target latitude -5 deg is roughly the equator-side boundary of the
-# Kerbin desert biome: any closer to the equator and we drift into the
-# coastal/lowland strip. align_plane burns normal at the cheaper of the
-# ascending/descending nodes; the burn-side helper auto-drops warp
-# 60s game-time before the burn, so it is safe to coast at 100x.
-time_warp    target_multiplier=100
+# Kerbin desert biome: any closer to the equator and the ground track
+# drifts into the coastal strip.
 align_plane  target_latitude=-5.0
 
 # Deorbit so the impact lands at the chosen lat/lon. The action plans a
-# retrograde burn at apoapsis, then iteratively nudges the burn UT so
-# the predicted vacuum impact matches (target_lat, target_lon + drag_bias).
+# retrograde burn at apoapsis, refines the burn UT so the predicted
+# vacuum impact matches (target_lat, target_lon + drag_bias), and
+# manages warp around both the refinement loop and the burn itself.
 # drag_bias_km=60 is a starting point for a stock capsule on Kerbin;
-# tune up if the real impact lands west of the target, down if it lands
-# east.
-time_warp          target_multiplier=100
-wait_for           time_before_apoapsis=60
-time_warp          target_multiplier=1
-deorbit_to_target  target_latitude=-5.0 target_longitude=-110.0 drag_bias_km=60
+# tune up if the real impact lands west of target, down if east.
+deorbit_to_target target_latitude=-5.0 target_longitude=-110.0 drag_bias_km=60
 
-# Get rid of all the remaining stages to be left with the heatshield exposed
+# Drop back to real time for atmospheric reentry.
+time_warp  target_multiplier=1
+
+# Get rid of all the remaining stages to be left with the heatshield exposed.
 sas        mode=prograde
 wait_for   orientation=prograde
 stage      until=1
 
-# Ensure the debris is far before turning on retrograde, to avoid collision
+# Ensure the debris is far before turning on retrograde, to avoid collision.
 wait_for   time=5
 sas        mode=retrograde
 
-# Ensure parachutes are deployed below 3500m, to avoid a very long descent with open parachutes
+# Ensure parachutes are deployed below 3500m, to avoid a very long descent with open parachutes.
 wait_for   below_altitude=3_500
 parachutes

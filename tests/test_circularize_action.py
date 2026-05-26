@@ -324,3 +324,46 @@ class TestCircularizeStop:
         assert commands.throttle == 0.0
         assert commands.autopilot is False
         assert commands.remove_node_at_ut is None
+
+
+class TestCircularizeWarpRestore:
+    """The action restores the user's pre-action warp rate on completion (ADR 0012)."""
+
+    def test_stop_restores_warp_when_captured_above_one(self) -> None:
+        action = CircularizeAction()
+        state = State(
+            time_warp_rate=100.0,
+            body_radius=_KERBIN_RADIUS,
+            body_gm=_KERBIN_GM,
+            orbit_semi_major_axis=680_000.0,
+        )
+        action.start(state, {"apse": "apoapsis", "staging_mode": None})
+        commands = VesselCommands()
+        action.stop(state, commands, log=ActionLogger())
+        assert commands.time_warp_rate == 100.0
+
+    def test_tick_max_tracks_warp_rate(self) -> None:
+        action = CircularizeAction()
+        action.start(_orbit_state(), {"apse": "apoapsis", "staging_mode": None})
+        assert action._initial_warp_rate == _orbit_state().time_warp_rate
+        action.tick(
+            State(
+                time_warp_rate=50.0,
+                orbit_apoapsis=100_000.0,
+                orbit_apoapsis_time_to=300.0,
+                orbit_semi_major_axis=680_000.0,
+                body_radius=_KERBIN_RADIUS,
+                body_gm=_KERBIN_GM,
+            ),
+            VesselCommands(),
+            dt=0.5,
+            log=ActionLogger(),
+        )
+        assert action._initial_warp_rate == 50.0
+
+    def test_stop_does_not_set_warp_when_captured_was_one(self) -> None:
+        action = CircularizeAction()
+        action.start(State(), {"apse": "apoapsis", "staging_mode": None})
+        commands = VesselCommands()
+        action.stop(State(), commands, log=ActionLogger())
+        assert commands.time_warp_rate is None

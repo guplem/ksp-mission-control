@@ -14,6 +14,7 @@ Read it first. This guide is silent on anything the ADR already specifies.
 Other relevant ADRs:
 - [0006 - Action Execution System](../../../../adr/0006-action-execution-system.md): architecture (pure `State -> Commands`, no kRPC in actions).
 - [0011 - Atomic Actions and `wait_for`](../../../../adr/0011-atomic-actions-and-wait-for.md): what belongs as an action param vs. a `wait_for` precondition.
+- [0012 - Warp Handling in Actions](../../../../adr/0012-warp-handling-in-actions.md): the capture-and-restore pattern actions follow when they need to drop time warp for a critical section.
 
 ## Folder layout
 
@@ -156,6 +157,42 @@ check fires. Use this only when a check needs `state`; never for plain input
 validation (raise `ValueError` for those, per ADR 0009).
 
 Examples in tree: `launch`, `change_apse`.
+
+## Time-warp capture-and-restore pattern
+
+Any action that performs a maneuver burn or iterates state across ticks
+has a critical section that needs 1x warp (see ADR 0012 for the full
+rationale). Such actions follow this pattern:
+
+```python
+def start(self, state: State, param_values: dict[str, Any]) -> None:
+    ...
+    # Capture the user's pre-action warp rate to restore on completion.
+    self._initial_warp_rate: float = state.time_warp_rate
+
+def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
+    # Track the highest warp seen so the restore picks up the user's
+    # target rate even when start() ran in the same tick as the
+    # preceding time_warp command (state was still pre-command then).
+    if state.time_warp_rate > self._initial_warp_rate:
+        self._initial_warp_rate = state.time_warp_rate
+    ...
+    # Drop warp explicitly at the start of any non-burn critical section
+    # (e.g. an iterative refinement loop). For burns, execute_node
+    # handles the drop automatically.
+
+def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
+    ...
+    if self._initial_warp_rate > 1.0:
+        commands.time_warp_rate = self._initial_warp_rate
+```
+
+The runner calls `stop()` on every termination path, so one restore in
+`stop()` covers `SUCCEEDED`, `FAILED`, and external abort.
+
+Examples in tree: `align_plane`, `circularize`, `change_apse`,
+`deorbit_to_target`. The latter has two critical sections (a refinement
+loop plus the burn) and shows how to drop, resume, drop again, and restore.
 
 ## Shared helpers (`helpers/`)
 

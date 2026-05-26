@@ -66,13 +66,17 @@ _STANDARD_GRAVITY: float = 9.80665
 # noise-dominated and a misaligned full-tick impulse easily overshoots).
 _TAPER_MARGIN: float = 3.0
 
-# Game-time seconds before burn start at which the helper drops any active
-# time warp back to 1x. Avoids the burn starting while KSP is still spinning
-# down from rails warp -- physics is unstable and the autopilot cannot settle
-# under high warp. The drop is a no-op when ``state.time_warp_rate`` is
-# already 1.0, so plans that don't use the time_warp action are unaffected.
-# Moderate warp (e.g. 100x) spins down in well under one minute real time.
-_WARP_DROP_GAME_SECONDS_BEFORE_BURN: float = 60.0
+# Real-time seconds before burn start at which the helper drops any active
+# time warp back to 1x. The buffer is scaled by the current warp rate so
+# that KSP gets the same wall-clock margin to spin warp down regardless of
+# the rate the user chose. KSP's spin-down animation is roughly a few
+# seconds end-to-end; 5 seconds is comfortable headroom.
+#
+# The drop is a no-op when ``state.time_warp_rate`` is already 1.0, so
+# plans that don't use the time_warp action are unaffected.
+#
+# See ADR 0012 (Warp handling in actions) for the full pattern.
+_WARP_DROP_REAL_SECONDS_BEFORE_BURN: float = 5.0
 
 
 def execute_node(
@@ -144,14 +148,17 @@ def execute_node(
     burn_start_ut = node.ut - node.burn_time_estimate / 2.0
 
     # If a plan put the vessel under time warp to cross the coast quickly,
-    # drop back to 1x once the burn window is close. The burn itself runs at
-    # 1x; this just makes sure we are not still warping when it starts.
-    if state.time_warp_rate > 1.0 and state.universal_time + _WARP_DROP_GAME_SECONDS_BEFORE_BURN >= burn_start_ut:
-        commands.time_warp_rate = 1.0
-        log.info(
-            f"Dropping time warp to 1x: burn starts in {burn_start_ut - state.universal_time:.1f}s game time "
-            f"(current rate {state.time_warp_rate:g}x)."
-        )
+    # drop back to 1x once the burn window is close. The buffer scales with
+    # the current warp rate so KSP gets the same wall-clock time to spin
+    # down regardless of how aggressive the warp was.
+    if state.time_warp_rate > 1.0:
+        warp_drop_game_buffer = _WARP_DROP_REAL_SECONDS_BEFORE_BURN * state.time_warp_rate
+        if state.universal_time + warp_drop_game_buffer >= burn_start_ut:
+            commands.time_warp_rate = 1.0
+            log.info(
+                f"Dropping time warp to 1x: burn starts in {burn_start_ut - state.universal_time:.1f}s game time "
+                f"(current rate {state.time_warp_rate:g}x, buffer {warp_drop_game_buffer:.0f}s game)."
+            )
 
     if state.universal_time < burn_start_ut:
         commands.throttle = 0.0

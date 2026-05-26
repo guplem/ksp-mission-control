@@ -410,3 +410,95 @@ class TestDeorbitStop:
         commands = VesselCommands()
         action.stop(_orbit_state(), commands, log=ActionLogger())
         assert commands.remove_node_at_ut is None
+
+
+class TestDeorbitWarpHandling:
+    """The action drops warp during refinement and restores on completion (ADR 0012)."""
+
+    def _state_with_warp(self, time_warp_rate: float) -> State:
+        base = _orbit_state()
+        return State(**{**base.__dict__, "time_warp_rate": time_warp_rate})
+
+    def test_drops_warp_before_planning_initial_node(self) -> None:
+        action = DeorbitToTargetAction()
+        state = self._state_with_warp(100.0)
+        action.start(state, _params(target_latitude=-15.0, target_longitude=-70.0))
+        commands = VesselCommands()
+        result = action.tick(state, commands, dt=0.5, log=ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+        assert commands.time_warp_rate == 1.0
+        # No node planned yet — the drop happens first, planning waits a tick.
+        assert commands.create_node is None
+
+    def test_drops_warp_during_refinement(self) -> None:
+        action = DeorbitToTargetAction()
+        seed = self._state_with_warp(100.0)
+        action.start(seed, _params(target_latitude=-15.0, target_longitude=-70.0, tolerance_deg=0.1))
+        # Drive past the initial drop tick at 1x and let the node get planned.
+        action.tick(_orbit_state(), VesselCommands(), dt=0.5, log=ActionLogger())
+
+        # Now still warping when refinement is needed: should drop again.
+        node = _node_for(action)
+        refine_state = State(
+            **{
+                **_orbit_state(
+                    universal_time=1_001.0,
+                    apoapsis_time_to=599.0,
+                ).__dict__,
+                "nodes": (node,),
+                "predicted_impact": ImpactPrediction(
+                    latitude=-15.0,
+                    longitude=-65.0,
+                    altitude_terrain=0.0,
+                    time_to_ballistic_impact=1_500.0,
+                    source="next_node_orbit",
+                ),
+                "time_warp_rate": 100.0,
+            }
+        )
+        commands = VesselCommands()
+        result = action.tick(refine_state, commands, dt=0.5, log=ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+        assert commands.time_warp_rate == 1.0
+        assert commands.create_node is None  # no replan this tick; just dropping
+
+    def test_resumes_warp_once_converged(self) -> None:
+        action = DeorbitToTargetAction()
+        seed = self._state_with_warp(100.0)
+        action.start(seed, _params(target_latitude=-15.0, target_longitude=-70.0, tolerance_deg=0.5))
+        action.tick(_orbit_state(), VesselCommands(), dt=0.5, log=ActionLogger())  # initial drop
+
+        # Converged on a sufficiently-precise prediction; warp should now resume.
+        action._converged = True
+        node = _node_for(action)
+        coast_state = State(
+            **{
+                **_orbit_state(universal_time=1_500.0, apoapsis_time_to=99.0).__dict__,
+                "nodes": (node,),
+                "predicted_impact": ImpactPrediction(
+                    latitude=-15.0,
+                    longitude=-70.0,
+                    altitude_terrain=0.0,
+                    time_to_ballistic_impact=1_500.0,
+                    source="next_node_orbit",
+                ),
+                "time_warp_rate": 1.0,  # currently 1x after refinement drop
+            }
+        )
+        commands = VesselCommands()
+        action.tick(coast_state, commands, dt=0.5, log=ActionLogger())
+        # Action requested 100x back; one-shot, so subsequent ticks should not re-issue.
+        assert commands.time_warp_rate == 100.0
+        assert action._refinement_warp_resumed is True
+
+        # Next tick: don't repeat the resume command.
+        commands2 = VesselCommands()
+        action.tick(coast_state, commands2, dt=0.5, log=ActionLogger())
+        assert commands2.time_warp_rate is None
+
+    def test_stop_restores_warp(self) -> None:
+        action = DeorbitToTargetAction()
+        action.start(self._state_with_warp(100.0), _params())
+        commands = VesselCommands()
+        action.stop(_orbit_state(), commands, log=ActionLogger())
+        assert commands.time_warp_rate == 100.0
