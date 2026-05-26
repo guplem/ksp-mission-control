@@ -55,6 +55,7 @@ def _make_burning_state(
     mass: float = 5_000.0,
     stage_current: int = 3,
     engine_states: tuple[str, ...] = (),
+    time_warp_rate: float = 1.0,
 ) -> State:
     """Build a State with vessel parameters that yield a finite burn time."""
     return State(
@@ -64,6 +65,7 @@ def _make_burning_state(
         mass=mass,
         stage_current=stage_current,
         parts=Parts(engines=tuple(PartInfo(stage=0, state=s) for s in engine_states)),
+        time_warp_rate=time_warp_rate,
     )
 
 
@@ -269,3 +271,32 @@ class TestTsiolkovsky:
         # exhaust = 300 * 9.80665 = 2941.995; m1 = 5000/exp(100/2941.995) ~= 4833;
         # flow = 50000/2941.995 ~= 16.99; burn ~= (5000-4833)/16.99 ~= 9.8s
         assert 9.0 < burn_time < 11.0
+
+
+class TestExecuteNodeWarpDrop:
+    """When the burn window approaches, active time warp is dropped to 1x."""
+
+    def test_drops_warp_near_burn_window(self) -> None:
+        # burn_start_ut = 500 - 10/2 = 495. universal_time 470 => 25s away (< 60s buffer).
+        node = _make_node(ut=500.0, delta_v_remaining=100.0, burn_time_estimate=10.0)
+        state = _make_burning_state(universal_time=470.0, time_warp_rate=100.0)
+        commands = VesselCommands()
+        execute_node(state, commands, node, None, 0.5, ActionLogger())
+        assert commands.time_warp_rate == 1.0
+
+    def test_does_not_drop_warp_when_burn_is_far_away(self) -> None:
+        # burn_start_ut = 495. universal_time 100 => 395s away, well outside buffer.
+        node = _make_node(ut=500.0, delta_v_remaining=100.0, burn_time_estimate=10.0)
+        state = _make_burning_state(universal_time=100.0, time_warp_rate=100.0)
+        commands = VesselCommands()
+        execute_node(state, commands, node, None, 0.5, ActionLogger())
+        assert commands.time_warp_rate is None
+
+    def test_no_op_when_already_at_real_time(self) -> None:
+        # Even near the burn, the helper must not send a redundant warp=1x
+        # command when warp is already 1x.
+        node = _make_node(ut=500.0, delta_v_remaining=100.0, burn_time_estimate=10.0)
+        state = _make_burning_state(universal_time=470.0, time_warp_rate=1.0)
+        commands = VesselCommands()
+        execute_node(state, commands, node, None, 0.5, ActionLogger())
+        assert commands.time_warp_rate is None

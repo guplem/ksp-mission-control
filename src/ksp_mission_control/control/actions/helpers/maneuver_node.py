@@ -66,6 +66,14 @@ _STANDARD_GRAVITY: float = 9.80665
 # noise-dominated and a misaligned full-tick impulse easily overshoots).
 _TAPER_MARGIN: float = 3.0
 
+# Game-time seconds before burn start at which the helper drops any active
+# time warp back to 1x. Avoids the burn starting while KSP is still spinning
+# down from rails warp -- physics is unstable and the autopilot cannot settle
+# under high warp. The drop is a no-op when ``state.time_warp_rate`` is
+# already 1.0, so plans that don't use the time_warp action are unaffected.
+# Moderate warp (e.g. 100x) spins down in well under one minute real time.
+_WARP_DROP_GAME_SECONDS_BEFORE_BURN: float = 60.0
+
 
 def execute_node(
     state: State,
@@ -134,6 +142,16 @@ def execute_node(
         return False
 
     burn_start_ut = node.ut - node.burn_time_estimate / 2.0
+
+    # If a plan put the vessel under time warp to cross the coast quickly,
+    # drop back to 1x once the burn window is close. The burn itself runs at
+    # 1x; this just makes sure we are not still warping when it starts.
+    if state.time_warp_rate > 1.0 and state.universal_time + _WARP_DROP_GAME_SECONDS_BEFORE_BURN >= burn_start_ut:
+        commands.time_warp_rate = 1.0
+        log.info(
+            f"Dropping time warp to 1x: burn starts in {burn_start_ut - state.universal_time:.1f}s game time "
+            f"(current rate {state.time_warp_rate:g}x)."
+        )
 
     if state.universal_time < burn_start_ut:
         commands.throttle = 0.0
