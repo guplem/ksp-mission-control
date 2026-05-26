@@ -12,30 +12,21 @@ circularize  apse=apoapsis
 autopilot_config restore_defaults=true
 
 # Raise orbit to "far space" with a burn at periapsis.
-# change_apse plans a node and runs its own coast-to-burn internally,
-# so we let it do its thing in real time.
 change_apse target=apoapsis target_altitude=260_000
 
-# Long climb to the 260 km apoapsis (~17 min on the elliptical transfer).
-# Warp at 100x until one minute before apoapsis, then drop back to 1x.
+# Wait for apoapsis
 time_warp  target_multiplier=100
-wait_for   time_before_apoapsis=60
-time_warp  target_multiplier=1
-
-# Wait the remaining seconds so we land exactly at apoapsis.
 wait_for   apoapsis=True
+time_warp  target_multiplier=1
+wait_for   time=10
 
-# Circularize at apoapsis... but apse=periapsis lowers the OTHER apse:
-# it burns at the next periapsis to drop apoapsis. The action coasts to
-# that periapsis internally; warp before it so the coast is cheap.
+# Circularize at periapsis
 time_warp  target_multiplier=100
 wait_for   time_before_periapsis=60
 time_warp  target_multiplier=1
 circularize  apse=periapsis
 
-# TODO: Create a node so we have an expected landing in the desert. Meanwhile simply retrograde burn.
-# Same trick: change_apse target=periapsis burns at apoapsis, so warp
-# until shortly before apoapsis to skip the half-orbit coast.
+# TODO: Substitute for a node so we have an expected landing in the desert. Meanwhile simply retrograde burn.
 time_warp  target_multiplier=100
 wait_for   time_before_apoapsis=60
 time_warp  target_multiplier=1
@@ -46,10 +37,10 @@ sas        mode=prograde
 wait_for   orientation=prograde
 stage      until=1
 
-# Ensure the debries is far before turning on retrograde, to avoid collision
-wait_for   time=10
+# Ensure the debris is far before turning on retrograde, to avoid collision
+wait_for   time=5
 sas        mode=retrograde
 
-# Deploy parachutes below 3500m, to avoid a very long descent with open parachutes
+# Ensure parachutes are deployed below 3500m, to avoid a very long descent with open parachutes
 wait_for   below_altitude=3_500
 parachutes
