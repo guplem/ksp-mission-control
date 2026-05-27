@@ -73,8 +73,12 @@ _TAPER_MARGIN: float = 3.0
 _WARP_STEP_DOWN_TICK_MARGIN: float = 2.0
 
 # Fixed game-time slack added on top of the per-tick margin so the final
-# drop to 1x does not land in the same tick the burn starts.
-_WARP_STEP_DOWN_GAME_SECONDS_SAFETY: float = 5.0
+# drop to 1x lands well before the burn starts. The buffer here is paid
+# at 1x (after the drop), so 15 game seconds = 15 real seconds of cold
+# coast at 1x before the burn. That gives KSP physics time to settle
+# after the warp transition and the autopilot time to track the new burn
+# direction without entering the burn window mid-transient.
+_WARP_STEP_DOWN_GAME_SECONDS_SAFETY: float = 15.0
 
 # KSP rails-warp levels, ascending. The helper steps the warp rate down
 # through these levels one entry at a time, one drop per tick, so that
