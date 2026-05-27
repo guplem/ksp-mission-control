@@ -50,6 +50,17 @@ class TestTimeWarpTick:
         assert result.status == ActionStatus.SUCCEEDED
         assert commands.time_warp_rate == 1000.0
 
+    def test_also_updates_user_target_warp_rate(self) -> None:
+        # The action sets both the KSP-side rate and the session-level user
+        # target so burn-driven actions can read the user's intent later.
+        action = TimeWarpAction()
+        action.start(State(time_warp_rate=1.0, time_warp_rate_max=100_000.0), {"target_multiplier": 100.0})
+
+        commands = VesselCommands()
+        action.tick(State(time_warp_rate=1.0, time_warp_rate_max=100_000.0), commands, 0.5, ActionLogger())
+
+        assert commands.user_target_warp_rate == 100.0
+
     def test_warns_when_request_exceeds_cap(self) -> None:
         action = TimeWarpAction()
         state = State(time_warp_rate=1.0, time_warp_rate_max=100.0)
@@ -71,6 +82,7 @@ class TestTimeWarpTick:
         commands = VesselCommands()
         action.tick(State(time_warp_rate=100.0), commands, 0.5, ActionLogger())
         assert commands.time_warp_rate == 1.0
+        assert commands.user_target_warp_rate == 1.0
 
 
 class TestTimeWarpStopIsNoOp:

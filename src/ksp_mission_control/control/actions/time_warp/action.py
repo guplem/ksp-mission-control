@@ -76,7 +76,16 @@ class TimeWarpAction(Action):
             raise ValueError(f"target_multiplier must be >= 1, got {self._target_multiplier}.")
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
+        # Set both fields:
+        # - ``time_warp_rate`` so KSP receives the new rate now.
+        # - ``user_target_warp_rate`` so the session-level "user intent"
+        #   value updates too. Burn-driven actions consult that value when
+        #   they need to know what to restore to after a critical section.
+        #   Without this second write, an action launched after the burn
+        #   would see whatever rate KSP happened to settle on (or 1x if KSP
+        #   refused the request) and treat it as the user's intent.
         commands.time_warp_rate = self._target_multiplier
+        commands.user_target_warp_rate = self._target_multiplier
         if self._target_multiplier > state.time_warp_rate_max:
             log.warn(f"Requested {self._target_multiplier:g}x exceeds KSP's current cap {state.time_warp_rate_max:g}x; bridge will clamp to the cap.")
         log.info(f"Time warp request: {self._target_multiplier:g}x (current {state.time_warp_rate:g}x, KSP cap {state.time_warp_rate_max:g}x).")
