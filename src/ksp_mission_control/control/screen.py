@@ -43,6 +43,7 @@ from ksp_mission_control.control.widgets.command_history import (
 from ksp_mission_control.control.widgets.control_panel import ControlPanelWidget
 from ksp_mission_control.control.widgets.log_registry import LogRegistryWidget
 from ksp_mission_control.control.widgets.telemetry_display import TelemetryDisplayWidget
+from ksp_mission_control.control.widgets.warp_controller import WarpControllerWidget
 
 
 class ViewMode(Enum):
@@ -96,6 +97,7 @@ class ControlScreen(Screen[None]):
                 yield TelemetryDisplayWidget(id="telemetry-display")
                 yield LogRegistryWidget(id="log-registry")
             with Vertical(id="sidebar"):
+                yield WarpControllerWidget(id="warp-controller")
                 yield ControlPanelWidget(id="control-panel")
                 yield CommandHistoryWidget(id="command-history")
         yield Footer()
@@ -147,6 +149,10 @@ class ControlScreen(Screen[None]):
 
         plan_snap = multi_snap.primary
         self.query_one("#telemetry-display", TelemetryDisplayWidget).update_vessel_state(state)
+        self.query_one("#warp-controller", WarpControllerWidget).update_state(
+            target_rate=state.user_target_warp_rate,
+            actual_rate=state.time_warp_rate,
+        )
         control_panel = self.query_one("#control-panel", ControlPanelWidget)
         control_panel.update_running(runner_state.action_id)
         control_panel.update_plan(plan_snap, multi_snap=multi_snap)
@@ -377,6 +383,12 @@ class ControlScreen(Screen[None]):
         if commands is None or self._session is None:
             return
         self._session.send_manual_command(commands)
+
+    def on_warp_controller_widget_rate_selected(self, event: WarpControllerWidget.RateSelected) -> None:
+        """User clicked a warp rate button: update the session's user target."""
+        if self._session is None:
+            return
+        self._session.set_user_target_warp_rate(event.rate)
 
     def on_telemetry_display_widget_science_experiment_clicked(self, event: TelemetryDisplayWidget.ScienceExperimentClicked) -> None:
         """Open the science command dialog for the clicked experiment."""

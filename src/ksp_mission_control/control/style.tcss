@@ -25,6 +25,11 @@
     border-left: solid $accent;
 }
 
+#warp-controller {
+    height: auto;
+    border-bottom: solid $accent;
+}
+
 #control-panel {
     height: 1fr;
     padding: 1 2;
