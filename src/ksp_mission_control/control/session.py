@@ -13,6 +13,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from dataclasses import fields as dataclass_fields
+from dataclasses import replace as dataclass_replace
 from pathlib import Path
 from typing import Any
 
@@ -113,6 +114,14 @@ class ControlSession:
         self._stop_event = threading.Event()
         self._last_state: State = State()
         self._pending_manual_command: VesselCommands | None = None
+        self._user_target_warp_rate: float = 1.0
+        """User's intended warp multiplier. Source of truth for "what warp
+        do we want", decoupled from KSP's actual ``State.time_warp_rate``.
+        Injected into ``State.user_target_warp_rate`` every tick so actions
+        can read it without capturing at start time. Updated by (a) the warp
+        controller widget on the control screen (via ``set_user_target_warp_rate``)
+        and (b) actions that set ``commands.user_target_warp_rate`` in their
+        tick output (currently only the ``time_warp`` action)."""
 
     def run_poll_loop(self) -> None:
         """Blocking poll loop.
@@ -209,6 +218,9 @@ class ControlSession:
         through the same filter → apply → UI pipeline as action commands.
         """
         vessel_state = read_vessel_state(conn)
+        # Inject the session-owned user-target warp rate so actions read a
+        # single source of truth instead of capturing at start time.
+        vessel_state = dataclass_replace(vessel_state, user_target_warp_rate=self._user_target_warp_rate)
         self._last_state = vessel_state
         step_result = self._executor.step(vessel_state, dt=0.5)
 
@@ -224,6 +236,13 @@ class ControlSession:
                         message=f"Manual command: {', '.join(overridden)}",
                     )
                 )
+
+        # Capture any user-target warp update an action wrote this tick
+        # (e.g. the ``time_warp`` action). Clear the field afterwards so it
+        # never reaches kRPC: it is a session-only command, not a vessel one.
+        if step_result.commands.user_target_warp_rate is not None:
+            self._user_target_warp_rate = step_result.commands.user_target_warp_rate
+            step_result.commands.user_target_warp_rate = None
 
         filtered, applied_fields = filter_commands(step_result.commands, vessel_state)
         apply_controls(conn, filtered)
@@ -243,6 +262,20 @@ class ControlSession:
         if self._conn is not None:
             with contextlib.suppress(Exception):
                 apply_controls(self._conn, result.commands)
+
+    def set_user_target_warp_rate(self, rate: float) -> None:
+        """Update the user's intended warp rate and push it to KSP.
+
+        Called by the warp-controller widget when the user picks a new rate.
+        Updates the session value (so the next state injection reflects it)
+        and queues a manual command so kRPC receives the new rate now.
+        """
+        self._user_target_warp_rate = rate
+        self.send_manual_command(VesselCommands(time_warp_rate=rate))
+
+    def user_target_warp_rate(self) -> float:
+        """Return the current user-target warp rate (for the widget)."""
+        return self._user_target_warp_rate
 
     def send_manual_command(self, commands: VesselCommands) -> None:
         """Queue a one-shot manual command for the next poll tick.

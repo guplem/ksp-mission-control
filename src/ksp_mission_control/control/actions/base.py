@@ -976,6 +976,22 @@ class State:
     KSP caps the available rails-warp factor based on altitude and situation
     (lower in atmosphere, near a body, or in physics-warp-only regimes).
     """
+    user_target_warp_rate: float = 1.0
+    """The warp multiplier the user currently wants the vessel to run at.
+
+    Not a kRPC reading: this is a session-level value injected each tick by
+    ``ControlSession`` from its own internal field. The session field is
+    updated by (a) the warp-controller widget on the control screen, and
+    (b) the ``time_warp`` action when it appears in a plan.
+
+    Burn-driven actions read this to decide what rate to restore to after
+    a critical section, instead of capturing ``time_warp_rate`` at start
+    time. The capture pattern was fragile when KSP refused the rate (cap,
+    vessel instability, same-tick race with a preceding ``time_warp`` step):
+    the captured value would stick at 1.0 and the action would never
+    restore. The user-target value bypasses all of that because it
+    represents intent rather than achieved state.
+    """
 
     # --- Comms ---
     comms_connected: bool = False
@@ -1285,6 +1301,17 @@ class VesselCommands:
     warp for <= 4x. KSP further caps the rate when the vessel's altitude or
     situation forbids higher rails factors, so the achieved
     ``State.time_warp_rate`` may be lower than the request.
+    """
+    user_target_warp_rate: float | None = None
+    """Session-only field: update the user's intended warp rate.
+
+    Not sent to kRPC. ``ControlSession`` reads this in ``_poll_tick`` and
+    updates its own ``_user_target_warp_rate`` field (which then flows
+    back into ``State.user_target_warp_rate`` on the next tick).
+
+    The ``time_warp`` action sets this in addition to ``time_warp_rate`` so
+    that a plan-level warp change updates both the immediate KSP rate and
+    the user's intent. Other actions never set this field.
     """
 
     # --- Deployables ---
