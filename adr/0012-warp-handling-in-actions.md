@@ -15,39 +15,35 @@ But warp is incompatible with two things actions need to do:
 1. **Burning a maneuver node.** KSP's physics is unstable above 4x physics warp; rails warp pauses physics simulation entirely. A throttle command issued under rails warp has no effect, and even at modest physics warp the autopilot cannot settle on a target direction. The burn must happen at 1x.
 2. **Iterative refinement.** `deorbit_to_target` replans its node each tick based on the bridge's predicted impact. At 100x, one poll covers 50 seconds of game time, and the loop's burn UT shifts faster than the refinement can converge. Any action whose tick-to-tick reasoning depends on state being approximately the same at the next tick needs 1x.
 
-The first implementation of this was a unilateral drop inside `execute_node`: when the burn was about to start, set `commands.time_warp_rate = 1.0`. That works for the burn, but it is one-way -- warp stays at 1x after the action ends, so every flight plan grew a `time_warp target_multiplier=100` line after every maneuver to undo it. Plans became long and hard to read, and the asymmetry leaked into the user's mental model.
+### Earlier approach (deprecated)
+
+The first version of this captured `state.time_warp_rate` in `start()`, used `max(self._initial_warp_rate, state.time_warp_rate)` tracking in `tick()` to catch up after same-tick races, and restored the captured value in `stop()`. That worked for the happy path, but it had a subtle failure mode: the capture was only as good as `State.time_warp_rate`, which reports KSP's *achieved* rate, not the user's *intended* rate. When KSP refused a rate (altitude cap kicks in, vessel still rotating from autopilot-disengage, low-altitude orbits clamp to 50x even when the plan asked for 100x), the captured value stuck at 1x and the next action restored 1x. The bug showed up in the wild as `align_plane` running its whole coast at 1x because the preceding `circularize.stop()`'s 100x restore was silently dropped by KSP.
 
 ## Decision
 
-Actions that have a critical section requiring 1x **capture the user's warp rate before that critical section, drop to 1x for the duration, and restore the captured rate on completion**. The capture is best-effort: it is the highest warp rate the action observed across its ticks.
+Move the source of truth for "what warp does the user want" out of per-action captures into a single session-level value, surfaced to actions as `State.user_target_warp_rate`. Actions never capture; they always read.
 
 ### The contract
 
+`ControlSession._user_target_warp_rate` is the single source of truth, defaulting to `1.0`. It is mutated by exactly two things:
+
+- The **warp controller widget** on the control screen (the user clicking a rails-warp level).
+- The **`time_warp` action** when it runs in a plan, by writing `commands.user_target_warp_rate` alongside `commands.time_warp_rate`. The session reads and clears this field in `_poll_tick`, never sending it to kRPC.
+
+Every poll tick the session uses `dataclasses.replace` to inject its value into `State.user_target_warp_rate` before handing State to the executor. Actions read that field whenever they need to know what to restore to.
+
 Every action that performs a maneuver burn, runs an iterative replanning loop, or runs a tick-to-tick feedback controller (PD throttle, position-derivative velocity estimator, etc.):
 
-1. In `start()`, set `self._initial_warp_rate: float = state.time_warp_rate`.
-2. In `tick()`, update `self._initial_warp_rate = max(self._initial_warp_rate, state.time_warp_rate)` at the top of the body, before any other state-dependent logic. Max-tracking handles the same-tick race where the preceding plan step's `time_warp` command has been written to the buffer but not yet applied to kRPC.
-3. At the start of each critical section, write `commands.time_warp_rate = 1.0`. Where this lives depends on the action shape:
-   - **Burn-driven actions** delegate to `execute_node`. The helper steps the warp rate down one rails-warp level per tick (e.g. `1000x -> 100x -> 50x -> 10x -> 5x -> 1x`) once the burn is close enough that one tick at the current rate could put the next check past the burn. The threshold is `dt * current_rate * 2.0 + 5.0` game seconds: scaled to the current rate so high warp gets enough lead time, but progressive so we never drop to 1x while the burn is still hundreds of game seconds away. The helper restores `restore_warp_rate` on every burn-complete return path. Pass `restore_warp_rate=self._initial_warp_rate` so the helper handles success cleanup symmetrically.
-   - **Other critical sections** (e.g. `deorbit_to_target`'s iterative refinement loop, or atmospheric controllers in `land` / `hover` / `translate` / `aerobreak`) drop warp directly in `tick()` and return `RUNNING` with a message. Subsequent ticks see `state.time_warp_rate` at 1x and the critical code runs.
-4. In `stop()`, if `self._initial_warp_rate > 1.0`, write `commands.time_warp_rate = self._initial_warp_rate`. The runner calls `stop()` on every termination path (`SUCCEEDED`, `FAILED`, user abort). Even though `execute_node` already restored on successful burn-complete returns, this `stop()` write covers abort and failure paths that bypass that helper return.
+1. **No capture in `start()`.** Do not store `state.time_warp_rate` anywhere. No `self._initial_warp_rate` attribute, no max-tracking in `tick()`.
+2. At the start of each critical section, write `commands.time_warp_rate = 1.0` (or call `execute_node`, which does it progressively for burns).
+3. In `stop()`, if `state.user_target_warp_rate > 1.0`, write `commands.time_warp_rate = state.user_target_warp_rate`. The runner calls `stop()` on every termination path (`SUCCEEDED`, `FAILED`, user abort).
 
-The "drop and restore go as close to the critical code as possible" principle means the drop is local to the loop that needs 1x, not at the action's entry point. For burn actions that boils down to `execute_node`. For atmospheric controllers it boils down to the first thing `tick()` does. The action-level `stop()` restore is a safety net, not the primary restore path.
+`execute_node` reads `state.user_target_warp_rate` directly on every burn-complete return path: no `restore_warp_rate` parameter, no caller-supplied value. The two restores (helper on success, action's `stop()` on every path) write the same value, so success simply restores twice into the same `commands` buffer.
 
-### Why max-tracking
+### Two flavours of drop
 
-`start()` runs in the same poll cycle where the preceding plan step's commands are still in transit -- they have been written to the buffer but not yet applied to kRPC. A flight plan like
-
-```
-time_warp    target_multiplier=100
-align_plane  target_latitude=-5.0
-```
-
-starts `align_plane` while `state.time_warp_rate` still reads 1x. KSP ramps up over the next several poll cycles. Max-tracking in `tick()` lets the action observe the user's actual target rate as soon as KSP catches up, and never lowers the captured value when `execute_node` later drops warp for the burn.
-
-### Why restore lives in `stop()`
-
-`runner.step()` calls `action.stop()` on every terminal path: `SUCCEEDED`, `FAILED`, and external abort. `stop()` shares the same `VesselCommands` buffer that the final `tick()` wrote to, so whatever `stop()` writes is what the bridge sends. Putting the restore in `stop()` covers all three paths in one place; the action does not need separate restoration branches in its success and failure code.
+- **Burn-driven actions** delegate to `execute_node`. The helper steps the warp rate down one rails-warp level per tick (e.g. `1000x -> 100x -> 50x -> 10x -> 5x -> 1x`) once the burn is close enough that one tick at the current rate could put the next check past the burn. The threshold is `dt * current_rate * 2.0 + 5.0` game seconds: scaled to the current rate so high warp gets enough lead time, but progressive so we never drop to 1x while the burn is still hundreds of game seconds away.
+- **Other critical sections** (e.g. `deorbit_to_target`'s iterative refinement loop, or atmospheric controllers in `land` / `hover` / `translate` / `aerobreak`) snap-drop warp directly in `tick()` and return `RUNNING` with a message. Subsequent ticks see `state.time_warp_rate` at 1x and the critical code runs.
 
 ### Two critical sections in one action
 
@@ -55,12 +51,10 @@ starts `align_plane` while `state.time_warp_rate` still reads 1x. KSP ramps up o
 
 The action handles this with:
 
-- Drop warp to 1x while refining.
-- Restore warp to `self._initial_warp_rate` once converged (only once, guarded by a `_refinement_warp_resumed` flag so subsequent ticks do not re-issue the command).
-- Let `execute_node` drop warp again as the burn approaches.
+- Snap-drop warp to 1x while refining.
+- Resume warp to `state.user_target_warp_rate` once converged (only once, guarded by a `_refinement_warp_resumed` flag so subsequent ticks do not re-issue the command).
+- Let `execute_node` step warp down again as the burn approaches.
 - Restore in `stop()`.
-
-Other actions with multiple critical sections follow the same pattern: explicit drop at the start of each, explicit resume between them, and a single restore in `stop()` as the final safety net.
 
 ### What plans look like
 
@@ -73,27 +67,25 @@ deorbit_to_target target_latitude=-5.0 target_longitude=-110.0 drag_bias_km=60
 time_warp    target_multiplier=1
 ```
 
-The `time_warp 1x` line at the end is for the plan's *next* phase (reentry), not for resetting warp after the maneuvers. Each maneuver drops and restores 100x internally.
+The `time_warp 1x` line at the end is for the plan's *next* phase (reentry). Each maneuver drops and restores 100x internally by reading from the session value `time_warp` already updated.
+
+Hedging warp re-arms after each maneuver (`# Kerbal might have stopped the time warp`) is no longer needed. KSP refusing the warp does not affect the session value, so the next maneuver still sees `state.user_target_warp_rate = 100` and will keep trying to use that warp once altitude allows.
 
 ### What plans should not do
 
-**Do not manually drop warp before an auto-managed maneuver.** A pattern like
+**Do not manually drop warp before an auto-managed maneuver** unless the plan really wants 1x for the *next* non-maneuver step. A pattern like
 
 ```
-time_warp    target_multiplier=100
-wait_for     time_before_apoapsis=60
 time_warp    target_multiplier=1
 circularize  apse=periapsis
 ```
 
-forces `circularize` to capture 1x as its initial rate (max-tracking only rises) and restore 1x on completion. The high warp the user wanted for the *next* step is lost. Drop `time_warp 1x` from this pattern; let `circularize` handle its own warp drop near the burn.
-
-The exception is when the plan genuinely wants warp at 1x for a non-maneuver step that follows (a `wait_for time=10` that is supposed to be ten real seconds, for instance). In that case the explicit `time_warp 1x` is correct and the next maneuver action will capture 1x; this is intentional and the plan stays explicit about what warp it expects.
+will explicitly set the session's user target to 1x, so `circularize` will not restore high warp on completion. Use `time_warp 1x` only when you genuinely want 1x to persist.
 
 ## Consequences
 
-- `time_warp` is the single user-facing knob for warp; everything else flows from the captured rate.
-- Plans are roughly half as long around the orbital sections, and the bookkeeping around each maneuver disappears.
-- A maneuver action that is aborted mid-coast also restores warp, because `stop()` runs on abort.
-- The capture is fragile when the user explicitly drops warp immediately before a maneuver -- max-tracking will pick up the pre-drop value and restore that on completion. The pattern documents this so plan authors can avoid it.
+- `time_warp` and the warp controller widget are the only ways to change the user's target rate; everything else flows from `State.user_target_warp_rate`.
+- Plans are shorter and survive KSP refusing a warp set (altitude caps, vessel-not-settled rejection): the next action still reads the user's intent.
+- An aborted maneuver restores warp, because `stop()` runs on abort and reads the live state.
+- Actions no longer carry `self._initial_warp_rate`; their `start()` and `tick()` lose the warp bookkeeping entirely. Reduces per-action surface area.
 - Two tuning knobs in `helpers/maneuver_node.py` shape the step-down threshold: `_WARP_STEP_DOWN_TICK_MARGIN` (per-tick multiplier, default 2.0) and `_WARP_STEP_DOWN_GAME_SECONDS_SAFETY` (fixed slack, default 5.0). Raise the margin if observed burns start while warp is still stepping down; raise the safety if the burn ever fires on the same tick the last step lands. Both are conservative defaults; lower only with log evidence.
