@@ -455,12 +455,12 @@ class TestTranslateActionWarpHandling:
         # Controller did not fire: no RCS translation commands.
         assert commands.translate_forward is None
 
-    def test_stop_restores_captured_warp(self) -> None:
+    def test_stop_restores_user_target_warp_rate(self) -> None:
         action = TranslateAction()
         action.start(
-            State(time_warp_rate=50.0, body_radius=600_000.0),
+            State(body_radius=600_000.0),
             {"distance_north": 100.0, "distance_east": 0.0, "max_speed": 10.0},
         )
         commands = VesselCommands()
-        action.stop(State(), commands, log=ActionLogger())
+        action.stop(State(user_target_warp_rate=50.0), commands, log=ActionLogger())
         assert commands.time_warp_rate == 50.0

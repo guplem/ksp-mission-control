@@ -69,14 +69,8 @@ class LandAction(Action):
         self._first_tick: bool = True
         # Store initial vertical speed for acceleration estimation on first tick
         self._prev_vertical_speed: float = state.speed_vertical
-        # Warp capture for the restore in stop() (ADR 0012).
-        self._initial_warp_rate: float = state.time_warp_rate
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
-        # Track the highest warp seen so ``stop()`` can restore it.
-        if state.time_warp_rate > self._initial_warp_rate:
-            self._initial_warp_rate = state.time_warp_rate
-
         # The PD controller below differentiates vertical speed across ticks
         # and is meaningless at high warp (one tick spans tens of seconds of
         # game time). Drop warp first and let KSP settle before letting the
@@ -146,6 +140,6 @@ class LandAction(Action):
         commands.throttle = 0.0
         commands.sas = False
         commands.brakes = True
-        # Restore the warp rate the user had before the action ran (ADR 0012).
-        if self._initial_warp_rate > 1.0:
-            commands.time_warp_rate = self._initial_warp_rate
+        # Restore the user's intended warp rate (ADR 0012).
+        if state.user_target_warp_rate > 1.0:
+            commands.time_warp_rate = state.user_target_warp_rate

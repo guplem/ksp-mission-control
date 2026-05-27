@@ -182,12 +182,6 @@ class DeorbitToTargetAction(Action):
         self._refinement_warp_resumed: bool = False
         self._fail_message: str | None = None
 
-        # Capture the warp rate to restore on completion (see ADR 0012).
-        # The refinement phase forces 1x because the iterative node-replanning
-        # loop must read stable state; the cold coast between refinement and
-        # the burn is restored to this captured rate so it can be warped.
-        self._initial_warp_rate: float = state.time_warp_rate
-
         # Reject infeasible plans up front (deferred to first tick).
         current_inclination_deg = math.degrees(state.orbit_inclination)
         # Orbit needs an inclination >= |target_latitude| to ever cross that latitude.
@@ -198,10 +192,6 @@ class DeorbitToTargetAction(Action):
             )
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
-        # Track the highest warp seen so ``stop()`` can restore it (ADR 0012).
-        if state.time_warp_rate > self._initial_warp_rate:
-            self._initial_warp_rate = state.time_warp_rate
-
         if self._fail_message is not None:
             return ActionResult(status=ActionStatus.FAILED, message=self._fail_message)
 
@@ -239,16 +229,16 @@ class DeorbitToTargetAction(Action):
                 )
             return self._refine_node(state, commands, node, log)
 
-        # Refinement done. Resume the user's pre-action warp once so the
-        # cold coast to burn can fast-forward; execute_node will drop it
-        # again ~5 real seconds before the burn.
-        if self._converged and not self._refinement_warp_resumed and self._initial_warp_rate > 1.0:
-            if state.time_warp_rate < self._initial_warp_rate:
-                commands.time_warp_rate = self._initial_warp_rate
+        # Refinement done. Resume the user's intended warp once so the
+        # cold coast to burn can fast-forward; execute_node will step it
+        # back down again as the burn window approaches.
+        if self._converged and not self._refinement_warp_resumed and state.user_target_warp_rate > 1.0:
+            if state.time_warp_rate < state.user_target_warp_rate:
+                commands.time_warp_rate = state.user_target_warp_rate
             self._refinement_warp_resumed = True
 
         # Burn window is near or open. Execute.
-        if execute_node(state, commands, node, self._staging_mode, dt, log, restore_warp_rate=self._initial_warp_rate):
+        if execute_node(state, commands, node, self._staging_mode, dt, log):
             commands.remove_node_at_ut = node.ut
             commands.autopilot = False
             commands.throttle = 0.0
@@ -277,9 +267,11 @@ class DeorbitToTargetAction(Action):
         commands.autopilot = False
         if self._node_ut is not None:
             commands.remove_node_at_ut = self._node_ut
-        # Restore the warp rate the user had before the action ran (ADR 0012).
-        if self._initial_warp_rate > 1.0:
-            commands.time_warp_rate = self._initial_warp_rate
+        # Restore the user's intended warp rate (ADR 0012). The helper
+        # already wrote this on a successful burn-complete return; the
+        # write here is the safety net for FAILED and external-abort paths.
+        if state.user_target_warp_rate > 1.0:
+            commands.time_warp_rate = state.user_target_warp_rate
 
     # ---- Helpers ------------------------------------------------------
 

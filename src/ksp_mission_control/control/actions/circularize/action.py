@@ -91,20 +91,13 @@ class CircularizeAction(Action):
         # can find it again across ticks even if other nodes get inserted.
         self._node_ut: float | None = None
 
-        # Capture the warp rate to restore on completion (see ADR 0012).
-        self._initial_warp_rate: float = state.time_warp_rate
-
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
-        # Track the highest warp seen so ``stop()`` can restore it (ADR 0012).
-        if state.time_warp_rate > self._initial_warp_rate:
-            self._initial_warp_rate = state.time_warp_rate
-
         node = self._find_our_node(state)
 
         if node is None:
             return self._request_node(state, commands, log)
 
-        if execute_node(state, commands, node, self._staging_mode, dt, log, restore_warp_rate=self._initial_warp_rate):
+        if execute_node(state, commands, node, self._staging_mode, dt, log):
             commands.remove_node_at_ut = node.ut
             commands.autopilot = False
             commands.throttle = 0.0
@@ -134,9 +127,11 @@ class CircularizeAction(Action):
         commands.autopilot = False
         if self._node_ut is not None:
             commands.remove_node_at_ut = self._node_ut
-        # Restore the warp rate the user had before the action ran (ADR 0012).
-        if self._initial_warp_rate > 1.0:
-            commands.time_warp_rate = self._initial_warp_rate
+        # Restore the user's intended warp rate (ADR 0012). The helper
+        # already wrote this on a successful burn-complete return; the
+        # write here is the safety net for FAILED and external-abort paths.
+        if state.user_target_warp_rate > 1.0:
+            commands.time_warp_rate = state.user_target_warp_rate
 
     # ---- Helpers ------------------------------------------------------
 

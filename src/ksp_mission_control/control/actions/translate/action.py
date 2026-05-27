@@ -186,14 +186,7 @@ class TranslateAction(Action):
         self._prev_traveled_north: float = 0.0
         self._prev_traveled_east: float = 0.0
 
-        # Warp capture for the restore in stop() (ADR 0012).
-        self._initial_warp_rate: float = state.time_warp_rate
-
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
-        # Track the highest warp seen so ``stop()`` can restore it.
-        if state.time_warp_rate > self._initial_warp_rate:
-            self._initial_warp_rate = state.time_warp_rate
-
         # The velocity estimator below differentiates position between ticks
         # and breaks at high warp (one tick at 100x spans 50s game time, so
         # Δposition/Δt produces a spurious velocity). Drop warp first.
@@ -297,6 +290,6 @@ class TranslateAction(Action):
         commands.translate_forward = 0.0
         commands.translate_right = 0.0
         commands.translate_up = 0.0
-        # Restore the warp rate the user had before the action ran (ADR 0012).
-        if self._initial_warp_rate > 1.0:
-            commands.time_warp_rate = self._initial_warp_rate
+        # Restore the user's intended warp rate (ADR 0012).
+        if state.user_target_warp_rate > 1.0:
+            commands.time_warp_rate = state.user_target_warp_rate

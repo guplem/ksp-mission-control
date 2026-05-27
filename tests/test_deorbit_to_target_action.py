@@ -469,7 +469,8 @@ class TestDeorbitWarpHandling:
         action.start(seed, _params(target_latitude=-15.0, target_longitude=-70.0, tolerance_deg=0.5))
         action.tick(_orbit_state(), VesselCommands(), dt=0.5, log=ActionLogger())  # initial drop
 
-        # Converged on a sufficiently-precise prediction; warp should now resume.
+        # Converged on a sufficiently-precise prediction; warp should now
+        # resume to the user's target rate read from state.user_target_warp_rate.
         action._converged = True
         node = _node_for(action)
         coast_state = State(
@@ -484,6 +485,7 @@ class TestDeorbitWarpHandling:
                     source="next_node_orbit",
                 ),
                 "time_warp_rate": 1.0,  # currently 1x after refinement drop
+                "user_target_warp_rate": 100.0,  # but the user wants 100x back
             }
         )
         commands = VesselCommands()
@@ -501,5 +503,6 @@ class TestDeorbitWarpHandling:
         action = DeorbitToTargetAction()
         action.start(self._state_with_warp(100.0), _params())
         commands = VesselCommands()
-        action.stop(_orbit_state(), commands, log=ActionLogger())
+        stop_state = State(**{**_orbit_state().__dict__, "user_target_warp_rate": 100.0})
+        action.stop(stop_state, commands, log=ActionLogger())
         assert commands.time_warp_rate == 100.0

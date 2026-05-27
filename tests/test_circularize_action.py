@@ -327,41 +327,23 @@ class TestCircularizeStop:
 
 
 class TestCircularizeWarpRestore:
-    """The action restores the user's pre-action warp rate on completion (ADR 0012)."""
+    """The action restores ``state.user_target_warp_rate`` on stop (ADR 0012)."""
 
-    def test_stop_restores_warp_when_captured_above_one(self) -> None:
+    def test_stop_restores_user_target_warp_rate(self) -> None:
         action = CircularizeAction()
-        state = State(
-            time_warp_rate=100.0,
-            body_radius=_KERBIN_RADIUS,
-            body_gm=_KERBIN_GM,
-            orbit_semi_major_axis=680_000.0,
-        )
-        action.start(state, {"apse": "apoapsis", "staging_mode": None})
-        commands = VesselCommands()
-        action.stop(state, commands, log=ActionLogger())
-        assert commands.time_warp_rate == 100.0
-
-    def test_tick_max_tracks_warp_rate(self) -> None:
-        action = CircularizeAction()
-        action.start(_orbit_state(), {"apse": "apoapsis", "staging_mode": None})
-        assert action._initial_warp_rate == _orbit_state().time_warp_rate
-        action.tick(
+        action.start(
             State(
-                time_warp_rate=50.0,
-                orbit_apoapsis=100_000.0,
-                orbit_apoapsis_time_to=300.0,
-                orbit_semi_major_axis=680_000.0,
                 body_radius=_KERBIN_RADIUS,
                 body_gm=_KERBIN_GM,
+                orbit_semi_major_axis=680_000.0,
             ),
-            VesselCommands(),
-            dt=0.5,
-            log=ActionLogger(),
+            {"apse": "apoapsis", "staging_mode": None},
         )
-        assert action._initial_warp_rate == 50.0
+        commands = VesselCommands()
+        action.stop(State(user_target_warp_rate=100.0), commands, log=ActionLogger())
+        assert commands.time_warp_rate == 100.0
 
-    def test_stop_does_not_set_warp_when_captured_was_one(self) -> None:
+    def test_stop_does_not_set_warp_when_user_target_is_one(self) -> None:
         action = CircularizeAction()
         action.start(State(), {"apse": "apoapsis", "staging_mode": None})
         commands = VesselCommands()

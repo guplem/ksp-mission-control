@@ -171,19 +171,7 @@ class AlignPlaneAction(Action):
         self._staging_mode: StagingMode | None = parse_staging_mode(param_values["staging_mode"])
         self._node_ut: float | None = None
 
-        # Capture the warp rate to restore on completion (see ADR 0012).
-        # start() can run in the same tick as a preceding time_warp action,
-        # in which case state still reflects the pre-command rate; the
-        # max-tracking in tick() catches up as KSP ramps to the user target.
-        self._initial_warp_rate: float = state.time_warp_rate
-
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
-        # Track the highest warp seen during the action so ``stop()`` can
-        # restore the user's pre-action rate. Only rises, never falls, so the
-        # subsequent warp drop near the burn does not erase the captured value.
-        if state.time_warp_rate > self._initial_warp_rate:
-            self._initial_warp_rate = state.time_warp_rate
-
         target_inc_rad = math.radians(abs(self._target_latitude_deg))
         delta_inc_rad = target_inc_rad - state.orbit_inclination
 
@@ -207,7 +195,7 @@ class AlignPlaneAction(Action):
         if node is None:
             return self._plan_burn(state, commands, delta_inc_rad, log)
 
-        if execute_node(state, commands, node, self._staging_mode, dt, log, restore_warp_rate=self._initial_warp_rate):
+        if execute_node(state, commands, node, self._staging_mode, dt, log):
             commands.remove_node_at_ut = node.ut
             commands.autopilot = False
             commands.throttle = 0.0
@@ -232,9 +220,11 @@ class AlignPlaneAction(Action):
         commands.autopilot = False
         if self._node_ut is not None:
             commands.remove_node_at_ut = self._node_ut
-        # Restore the warp rate the user had before the action ran (ADR 0012).
-        if self._initial_warp_rate > 1.0:
-            commands.time_warp_rate = self._initial_warp_rate
+        # Restore the user's intended warp rate (ADR 0012). The helper
+        # already wrote this on a successful burn-complete return; the
+        # write here is the safety net for FAILED and external-abort paths.
+        if state.user_target_warp_rate > 1.0:
+            commands.time_warp_rate = state.user_target_warp_rate
 
     # ---- Helpers ------------------------------------------------------
 
