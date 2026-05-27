@@ -21,6 +21,9 @@ time_warp  target_multiplier=100
 # burn, and restores 100x on completion.
 change_apse target=apoapsis target_altitude=260_000
 
+# Kerbal might have stopped the time warp
+time_warp  target_multiplier=100
+
 # Coast to the new 260 km apoapsis.
 wait_for   apoapsis=True
 
@@ -32,19 +35,28 @@ time_warp  target_multiplier=100
 # Lower apoapsis to 260 km (burns at the next periapsis).
 circularize  apse=periapsis
 
-# Tilt the orbit so it can cross the desert's northern edge.
-# Target latitude -5 deg is roughly the equator-side boundary of the
-# Kerbin desert biome: any closer to the equator and the ground track
-# drifts into the coastal strip.
-align_plane  target_latitude=-5.0
+# Tilt the orbit so it covers the Desert Airfield latitude (6.6 deg S).
+# Pad to 7.0 deg so the deorbit's inclination-vs-target check passes
+# with margin even after align_plane's 0.5 deg convergence tolerance.
+align_plane  target_latitude=-7.0
 
-# Deorbit so the impact lands at the chosen lat/lon. The action plans a
-# retrograde burn at apoapsis, refines the burn UT so the predicted
-# vacuum impact matches (target_lat, target_lon + drag_bias), and
-# manages warp around both the refinement loop and the burn itself.
+# Drop back to real time for the deorbit. This action's refinement loop
+# depends on the bridge's predicted_impact being populated each tick,
+# and kRPC's node-orbit queries appear unreliable while warp is spinning
+# down. Holding 1x throughout keeps prediction stable so refinement can
+# converge. The previous test (log_20260526_213922.xml) landed in
+# Grasslands because refinement failed under partial warp and the burn
+# happened at the initial unrefined node.
+time_warp  target_multiplier=1
+
+# Deorbit to the Desert Airfield (6 deg 35'58" S, 144 deg 02'26" W,
+# 821 m terrain). The action plans a retrograde burn one full orbit
+# past the next apoapsis (so refinement has the whole orbit's game time
+# to converge), then nudges the burn UT each tick to match the
+# predicted vacuum impact to (target_lat, target_lon + drag_bias).
 # drag_bias_km=60 is a starting point for a stock capsule on Kerbin;
 # tune up if the real impact lands west of target, down if east.
-deorbit_to_target target_latitude=-5.0 target_longitude=-110.0 drag_bias_km=60
+deorbit_to_target target_latitude=-6.599 target_longitude=-144.041 drag_bias_km=60
 
 # Drop back to real time for atmospheric reentry.
 time_warp  target_multiplier=1

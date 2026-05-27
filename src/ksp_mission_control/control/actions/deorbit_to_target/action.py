@@ -292,14 +292,29 @@ class DeorbitToTargetAction(Action):
         return None
 
     def _plan_initial_node(self, state: State, commands: VesselCommands, log: ActionLogger) -> ActionResult:
-        """First tick: pick burn UT at next apoapsis and compute retrograde dv via vis-viva."""
+        """First tick: pick burn UT one full orbit past the next apoapsis and compute retrograde dv via vis-viva.
+
+        Scheduling the burn one full orbit out (rather than at the next
+        apoapsis directly) gives the refinement loop a full orbit of
+        game time to converge, which the action needs because each
+        iteration of the loop only adjusts burn UT by a bounded amount
+        (``_MAX_BURN_UT_ADJUSTMENT_FRACTION * orbit_period``) and the
+        ground-track range we may need to cover spans nearly a full
+        period of relative rotation. The lost efficiency from waiting an
+        extra orbit is negligible against the targeting accuracy gain.
+        """
         if state.body_gm <= 0.0 or state.orbit_semi_major_axis <= 0.0:
             return ActionResult(
                 status=ActionStatus.FAILED,
                 message="Cannot deorbit: invalid orbit (no gravitational parameter or semi-major axis).",
             )
+        if state.orbit_period <= 0.0:
+            return ActionResult(
+                status=ActionStatus.FAILED,
+                message="Cannot deorbit: orbit period is non-positive (escape trajectory?).",
+            )
 
-        burn_ut = state.universal_time + state.orbit_apoapsis_time_to
+        burn_ut = state.universal_time + state.orbit_apoapsis_time_to + state.orbit_period
         r_burn = state.orbit_apoapsis + state.body_radius
         r_target_peri = self._target_periapsis_altitude + state.body_radius
         if r_burn <= 0.0 or r_target_peri <= 0.0:

@@ -140,17 +140,18 @@ class TestDeorbitStartValidation:
 class TestDeorbitInitialPlan:
     """First tick (no node yet) computes burn UT at apoapsis and retrograde dv."""
 
-    def test_initial_node_at_apoapsis(self) -> None:
+    def test_initial_node_at_apoapsis_one_orbit_out(self) -> None:
         action = DeorbitToTargetAction()
-        state = _orbit_state(universal_time=1_000.0, apoapsis_time_to=400.0)
+        state = _orbit_state(universal_time=1_000.0, apoapsis_time_to=400.0, period=1_800.0)
         action.start(state, _params(target_latitude=-15.0, target_longitude=-70.0))
 
         commands = VesselCommands()
         result = action.tick(state, commands, dt=0.5, log=ActionLogger())
         assert result.status == ActionStatus.RUNNING
         assert commands.create_node is not None
-        # Burn UT = current_ut + apoapsis_time_to.
-        assert commands.create_node.ut == pytest.approx(1_400.0)
+        # Burn UT = current_ut + apoapsis_time_to + orbit_period, scheduling the
+        # burn one full orbit out so refinement has the full period to converge.
+        assert commands.create_node.ut == pytest.approx(1_000.0 + 400.0 + 1_800.0)
         # Retrograde: prograde dv is negative.
         assert commands.create_node.prograde < 0.0
 
