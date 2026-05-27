@@ -66,17 +66,37 @@ _STANDARD_GRAVITY: float = 9.80665
 # noise-dominated and a misaligned full-tick impulse easily overshoots).
 _TAPER_MARGIN: float = 3.0
 
-# Real-time seconds before burn start at which the helper drops any active
-# time warp back to 1x. The buffer is scaled by the current warp rate so
-# that KSP gets the same wall-clock margin to spin warp down regardless of
-# the rate the user chose. KSP's spin-down animation is roughly a few
-# seconds end-to-end; 5 seconds is comfortable headroom.
-#
-# The drop is a no-op when ``state.time_warp_rate`` is already 1.0, so
-# plans that don't use the time_warp action are unaffected.
-#
-# See ADR 0012 (Warp handling in actions) for the full pattern.
-_WARP_DROP_REAL_SECONDS_BEFORE_BURN: float = 5.0
+# Per-tick safety margin for the warp step-down threshold. The helper
+# triggers a one-level drop when one tick's worth of game time at the
+# current rate, multiplied by this factor, would put the next check past
+# the burn. 2.0 leaves one extra tick of headroom against tick-rate jitter.
+_WARP_STEP_DOWN_TICK_MARGIN: float = 2.0
+
+# Fixed game-time slack added on top of the per-tick margin so the final
+# drop to 1x does not land in the same tick the burn starts.
+_WARP_STEP_DOWN_GAME_SECONDS_SAFETY: float = 5.0
+
+# KSP rails-warp levels, ascending. The helper steps the warp rate down
+# through these levels one entry at a time, one drop per tick, so that
+# high warp (e.g. 1000x) does not require predicting hundreds of game
+# seconds ahead and waiting through them at 1x. Physics-warp levels
+# (1, 2, 3, 4) are not included because rails warp is the relevant mode
+# for any orbital maneuver burn -- the drop is a no-op while in physics
+# warp anyway.
+_RAILS_WARP_LEVELS: tuple[int, ...] = (1, 5, 10, 50, 100, 1000, 10000, 100000)
+
+
+def _next_lower_rails_warp_rate(current_rate: float) -> float:
+    """Return the next rails-warp level strictly below ``current_rate``.
+
+    Returns ``1.0`` when ``current_rate`` is already at or below the
+    lowest level. The match uses ``level < current_rate`` so that a
+    perfectly equal level steps to the one below (e.g. 50x -> 10x).
+    """
+    for level in reversed(_RAILS_WARP_LEVELS):
+        if level < current_rate:
+            return float(level)
+    return 1.0
 
 
 def execute_node(
@@ -162,16 +182,21 @@ def execute_node(
     burn_start_ut = node.ut - node.burn_time_estimate / 2.0
 
     # If a plan put the vessel under time warp to cross the coast quickly,
-    # drop back to 1x once the burn window is close. The buffer scales with
-    # the current warp rate so KSP gets the same wall-clock time to spin
-    # down regardless of how aggressive the warp was.
+    # step the rate down one rails-warp level when one tick's worth of
+    # game time at the current rate could put the next check past the
+    # burn. The progressive step-down avoids the "jump from 1000x to 1x
+    # while still 500s away, then idle for 500s real" failure mode that
+    # a single fixed buffer suffers from at high warp rates.
     if state.time_warp_rate > 1.0:
-        warp_drop_game_buffer = _WARP_DROP_REAL_SECONDS_BEFORE_BURN * state.time_warp_rate
-        if state.universal_time + warp_drop_game_buffer >= burn_start_ut:
-            commands.time_warp_rate = 1.0
+        tick_game_time = dt * state.time_warp_rate
+        drop_threshold = tick_game_time * _WARP_STEP_DOWN_TICK_MARGIN + _WARP_STEP_DOWN_GAME_SECONDS_SAFETY
+        if state.universal_time + drop_threshold >= burn_start_ut:
+            next_rate = _next_lower_rails_warp_rate(state.time_warp_rate)
+            commands.time_warp_rate = next_rate
             log.info(
-                f"Dropping time warp to 1x: burn starts in {burn_start_ut - state.universal_time:.1f}s game time "
-                f"(current rate {state.time_warp_rate:g}x, buffer {warp_drop_game_buffer:.0f}s game)."
+                f"Stepping warp down to {next_rate:g}x: burn starts in "
+                f"{burn_start_ut - state.universal_time:.1f}s game time "
+                f"(was {state.time_warp_rate:g}x, threshold {drop_threshold:.1f}s game)."
             )
 
     if state.universal_time < burn_start_ut:

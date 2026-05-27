@@ -273,37 +273,71 @@ class TestTsiolkovsky:
         assert 9.0 < burn_time < 11.0
 
 
-class TestExecuteNodeWarpDrop:
-    """When the burn window approaches, active time warp is dropped to 1x."""
+class TestExecuteNodeWarpStepDown:
+    """When the burn window approaches, the helper steps warp down one
+    rails-warp level per tick instead of jumping straight to 1x. This
+    avoids the "drop early, idle for minutes at 1x" failure mode at high
+    warp rates, where one tick at the original rate spans hundreds of
+    game seconds.
 
-    def test_drops_warp_near_burn_window(self) -> None:
-        # buffer = 5s real * 100x = 500s game; burn_start_ut = 495; now = 470 -> 25s away (< buffer).
+    Threshold: drop one level when ``dt * rate * 2.0 + 5.0`` game seconds
+    away from ``burn_start_ut`` (which is ``node.ut - burn_time / 2``).
+    """
+
+    def test_steps_down_one_level_from_low_rate(self) -> None:
+        # dt=0.5s, rate=10x => tick_game_time=5; threshold = 5*2 + 5 = 15s.
+        # burn_start_ut = 500 - 5 = 495; universal_time = 487 => 8s away,
+        # inside the 15s threshold so the helper steps 10x -> 5x.
         node = _make_node(ut=500.0, delta_v_remaining=100.0, burn_time_estimate=10.0)
-        state = _make_burning_state(universal_time=470.0, time_warp_rate=100.0)
+        state = _make_burning_state(universal_time=487.0, time_warp_rate=10.0)
+        commands = VesselCommands()
+        execute_node(state, commands, node, None, 0.5, ActionLogger())
+        assert commands.time_warp_rate == 5.0
+
+    def test_steps_down_one_level_from_high_rate(self) -> None:
+        # dt=0.5s, rate=1000x => tick_game_time=500; threshold = 500*2 + 5 = 1005s.
+        # burn_start_ut = 2000 - 5 = 1995; universal_time = 1000 => 995s away,
+        # inside the 1005s threshold so the helper steps 1000x -> 100x.
+        # At 1x or 5x the same situation would not trigger a drop, which
+        # is what makes the per-tick scaling correct: high warp needs more
+        # lead time precisely because each tick advances more game time.
+        node = _make_node(ut=2000.0, delta_v_remaining=100.0, burn_time_estimate=10.0)
+        state = _make_burning_state(universal_time=1000.0, time_warp_rate=1000.0)
+        commands = VesselCommands()
+        execute_node(state, commands, node, None, 0.5, ActionLogger())
+        assert commands.time_warp_rate == 100.0
+
+    def test_final_step_lands_on_one_x(self) -> None:
+        # dt=0.5s, rate=5x => tick_game_time=2.5; threshold = 2.5*2 + 5 = 10s.
+        # burn_start_ut = 500 - 5 = 495; universal_time = 490 => 5s away,
+        # inside the 10s threshold. Next level below 5x is 1x.
+        node = _make_node(ut=500.0, delta_v_remaining=100.0, burn_time_estimate=10.0)
+        state = _make_burning_state(universal_time=490.0, time_warp_rate=5.0)
         commands = VesselCommands()
         execute_node(state, commands, node, None, 0.5, ActionLogger())
         assert commands.time_warp_rate == 1.0
 
-    def test_does_not_drop_warp_when_burn_is_far_away(self) -> None:
-        # Buffer = 5s real * 10x warp = 50s game-time. burn_start_ut = 5_000 - 5 = 4_995.
-        # universal_time 100 => 4_895s away, well outside the 50s buffer.
+    def test_does_not_drop_when_burn_is_far_away(self) -> None:
+        # dt=0.5s, rate=10x => threshold = 15s. burn_start_ut = 5_000 - 5 = 4_995.
+        # universal_time 100 => 4_895s away, well outside the threshold.
         node = _make_node(ut=5_000.0, delta_v_remaining=100.0, burn_time_estimate=10.0)
         state = _make_burning_state(universal_time=100.0, time_warp_rate=10.0)
         commands = VesselCommands()
         execute_node(state, commands, node, None, 0.5, ActionLogger())
         assert commands.time_warp_rate is None
 
-    def test_buffer_scales_with_warp_rate(self) -> None:
-        # At 100x, the buffer is 500s game. burn 400s away should drop;
-        # the same setup at 10x (buffer 50s game) should not.
-        node = _make_node(ut=405.0, delta_v_remaining=100.0, burn_time_estimate=10.0)
-        # burn_start_ut = 405 - 5 = 400. universal_time 0 => 400s away.
-        high_warp = _make_burning_state(universal_time=0.0, time_warp_rate=100.0)
-        low_warp = _make_burning_state(universal_time=0.0, time_warp_rate=10.0)
+    def test_threshold_scales_with_warp_rate(self) -> None:
+        # At 200s away from burn_start_ut, 1000x should drop (threshold 1005s)
+        # but 100x should not (threshold 105s). The progressive step-down
+        # keeps each rate's threshold scaled to one tick at that rate.
+        node = _make_node(ut=210.0, delta_v_remaining=100.0, burn_time_estimate=10.0)
+        # burn_start_ut = 210 - 5 = 205. universal_time = 5 => 200s away.
+        high_warp = _make_burning_state(universal_time=5.0, time_warp_rate=1000.0)
+        low_warp = _make_burning_state(universal_time=5.0, time_warp_rate=100.0)
 
         high_commands = VesselCommands()
         execute_node(high_warp, high_commands, node, None, 0.5, ActionLogger())
-        assert high_commands.time_warp_rate == 1.0
+        assert high_commands.time_warp_rate == 100.0
 
         low_commands = VesselCommands()
         execute_node(low_warp, low_commands, node, None, 0.5, ActionLogger())
