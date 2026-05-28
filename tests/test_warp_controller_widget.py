@@ -86,6 +86,60 @@ class TestUpdateState:
             for level in (1, 5, 10, 50, 100, 1000, 10000, 100000):
                 assert widget.query_one(f"#warp-rate-{level}", Button).variant == "default"
 
+    @pytest.mark.asyncio
+    async def test_actual_label_marks_clamped_when_below_target(self) -> None:
+        # When KSP is running below the user's request, the actual-rate label
+        # gets the ``clamped`` class so the styling can call attention to the
+        # mismatch.
+        async with WarpApp().run_test(size=(120, 10)) as pilot:
+            widget = pilot.app.query_one("#warp-controller", WarpControllerWidget)
+            widget.update_state(target_rate=100.0, actual_rate=50.0)
+            await pilot.pause()
+            assert widget.query_one("#warp-actual", Static).has_class("clamped")
+
+    @pytest.mark.asyncio
+    async def test_actual_label_clears_clamped_class_when_rates_match(self) -> None:
+        # Once KSP catches up to the user's request, the ``clamped`` class
+        # must drop so the label returns to the muted styling.
+        async with WarpApp().run_test(size=(120, 10)) as pilot:
+            widget = pilot.app.query_one("#warp-controller", WarpControllerWidget)
+            widget.update_state(target_rate=100.0, actual_rate=50.0)
+            await pilot.pause()
+            widget.update_state(target_rate=100.0, actual_rate=100.0)
+            await pilot.pause()
+            assert not widget.query_one("#warp-actual", Static).has_class("clamped")
+
+
+class TestWrap:
+    """Row wraps to as many lines as needed when the widget gets narrower."""
+
+    @pytest.mark.asyncio
+    async def test_wide_screen_keeps_single_line_layout(self) -> None:
+        # At 120 cells all 10 items fit on one row; rows must be 1.
+        async with WarpApp().run_test(size=(120, 10)) as pilot:
+            widget = pilot.app.query_one("#warp-controller", WarpControllerWidget)
+            await pilot.pause()
+            row = widget.query_one("#warp-row")
+            assert row.styles.grid_size_rows == 1
+
+    @pytest.mark.asyncio
+    async def test_medium_width_wraps_to_two_rows(self) -> None:
+        # At 40 cells (40 // 8 = 5 cols), 10 items wrap into 2 rows.
+        async with WarpApp().run_test(size=(40, 10)) as pilot:
+            widget = pilot.app.query_one("#warp-controller", WarpControllerWidget)
+            await pilot.pause()
+            row = widget.query_one("#warp-row")
+            assert row.styles.grid_size_rows == 2
+
+    @pytest.mark.asyncio
+    async def test_narrow_width_wraps_to_more_rows(self) -> None:
+        # At 24 cells (24 // 8 = 3 cols), 10 items wrap into 4 rows.
+        async with WarpApp().run_test(size=(24, 10)) as pilot:
+            widget = pilot.app.query_one("#warp-controller", WarpControllerWidget)
+            await pilot.pause()
+            row = widget.query_one("#warp-row")
+            assert row.styles.grid_size_rows == 4
+
 
 class TestRateSelected:
     """Clicking a button posts a ``RateSelected`` message."""
@@ -103,3 +157,18 @@ class TestRateSelected:
             await pilot.click("#warp-rate-10000")
             await pilot.pause()
             assert pilot.app.last_rate == 10000.0
+
+    @pytest.mark.asyncio
+    async def test_reclicking_selected_button_posts_again(self) -> None:
+        # Re-applying the same rate must still fire the message so KSP gets
+        # the command resent. This lets the user recover when KSP clamped
+        # the rate (e.g. altitude cap) and the requested level later becomes
+        # available without an action restoring it.
+        async with WarpApp().run_test(size=(120, 10)) as pilot:
+            widget = pilot.app.query_one("#warp-controller", WarpControllerWidget)
+            widget.update_state(target_rate=100.0, actual_rate=100.0)
+            await pilot.pause()
+            pilot.app.last_rate = None
+            await pilot.click("#warp-rate-100")
+            await pilot.pause()
+            assert pilot.app.last_rate == 100.0
