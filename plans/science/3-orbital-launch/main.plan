@@ -13,5 +13,5 @@
 # - Science "Flying Low" in "Deserts": Temp
 # - Science "Landed" in "Deserts": Goo x2, Temp and AtmPres
 
-@parallel science/3-orbital-launch/science_control.plan
 @parallel science/3-orbital-launch/vessel_control.plan
+@parallel science/3-orbital-launch/science_control.plan
