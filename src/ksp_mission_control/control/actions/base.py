@@ -273,6 +273,32 @@ def _angle_between(v1: tuple[float, float, float], v2: tuple[float, float, float
     return math.degrees(math.acos(cos_theta))
 
 
+class Apse(Enum):
+    """One of the two apses of an orbit (apoapsis or periapsis)."""
+
+    APOAPSIS = "apoapsis"
+    PERIAPSIS = "periapsis"
+
+    @property
+    def display_name(self) -> str:
+        """Human-readable label (e.g. 'Apoapsis', 'Periapsis')."""
+        return self.value.title()
+
+
+def parse_apse(value: object) -> Apse:
+    """Parse an ``apse`` param value into an Apse enum.
+
+    Accepts an ``Apse`` value (case-insensitive). Raises ``ValueError`` with
+    the list of valid values otherwise.
+    """
+    text = str(value).strip().lower()
+    try:
+        return Apse(text)
+    except ValueError:
+        valid = ", ".join(a.value for a in Apse)
+        raise ValueError(f"Unknown apse '{value}'. Valid: {valid}.") from None
+
+
 class ActionStatus(Enum):
     """Lifecycle status of an action."""
 
@@ -313,6 +339,25 @@ class ActionParam:
     param_type: ParamType = ParamType.FLOAT
     default: float | int | bool | str | None = None
     unit: str = ""
+
+
+# Shared param descriptor for any action that takes a single apse choice.
+# Mirrors STAGING_MODE_PARAM: every action that opts into this declares the
+# same parameter, so .plan files and the UI present a uniform interface.
+# Default is ``apoapsis``, the most common case (raising apoapsis for
+# transfers, circularizing at apoapsis after ascent).
+APSE_PARAM: ActionParam = ActionParam(
+    param_id="apse",
+    label="Apse",
+    description=(
+        "Which apse the action acts on. Use 'apoapsis' or 'periapsis'. "
+        "Action-specific meaning: circularize burns at this apse to round the orbit; "
+        "change_apse sets this apse to the supplied target_altitude (burning at the opposite apse)."
+    ),
+    required=False,
+    param_type=ParamType.STR,
+    default=Apse.APOAPSIS.value,
+)
 
 
 @dataclass(frozen=True)

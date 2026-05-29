@@ -9,13 +9,14 @@ import pytest
 from ksp_mission_control.control.actions.base import (
     ActionLogger,
     ActionStatus,
+    Apse,
     ManeuverNode,
     PartInfo,
     Parts,
     State,
     VesselCommands,
 )
-from ksp_mission_control.control.actions.change_apse.action import ApseTarget, ChangeApseAction
+from ksp_mission_control.control.actions.change_apse.action import ChangeApseAction
 
 # A roughly 80 km Kerbin orbit used as a baseline starting point.
 _KERBIN_RADIUS = 600_000.0
@@ -75,7 +76,7 @@ class TestChangeApseMetadata:
         assert ChangeApseAction.action_id == "change_apse"
 
     def test_target_param_is_optional_with_default(self) -> None:
-        param = next(p for p in ChangeApseAction.params if p.param_id == "target")
+        param = next(p for p in ChangeApseAction.params if p.param_id == "apse")
         assert param.required is False
         assert param.default == "apoapsis"
 
@@ -88,29 +89,29 @@ class TestChangeApseMetadata:
 class TestChangeApseStartValidation:
     def test_accepts_valid_target_values(self) -> None:
         action = ChangeApseAction()
-        action.start(_orbit_state(), {"target": "apoapsis", "target_altitude": 200_000.0, "staging_mode": None})
-        assert action._target.value == ApseTarget.APOAPSIS.value
+        action.start(_orbit_state(), {"apse": "apoapsis", "target_altitude": 200_000.0, "staging_mode": None})
+        assert action._apse.value == Apse.APOAPSIS.value
 
         action_p = ChangeApseAction()
-        action_p.start(_orbit_state(), {"target": "periapsis", "target_altitude": 50_000.0, "staging_mode": None})
-        assert action_p._target.value == ApseTarget.PERIAPSIS.value
+        action_p.start(_orbit_state(), {"apse": "periapsis", "target_altitude": 50_000.0, "staging_mode": None})
+        assert action_p._apse.value == Apse.PERIAPSIS.value
 
     def test_normalizes_case(self) -> None:
         action = ChangeApseAction()
-        action.start(_orbit_state(), {"target": "APOAPSIS", "target_altitude": 200_000.0, "staging_mode": None})
-        assert action._target.value == ApseTarget.APOAPSIS.value
+        action.start(_orbit_state(), {"apse": "APOAPSIS", "target_altitude": 200_000.0, "staging_mode": None})
+        assert action._apse.value == Apse.APOAPSIS.value
 
-    def test_raises_on_invalid_target(self) -> None:
+    def test_raises_on_invalid_apse(self) -> None:
         action = ChangeApseAction()
-        with pytest.raises(ValueError, match="Unknown target"):
-            action.start(_orbit_state(), {"target": "ascending_node", "target_altitude": 200_000.0, "staging_mode": None})
+        with pytest.raises(ValueError, match="Unknown apse"):
+            action.start(_orbit_state(), {"apse": "ascending_node", "target_altitude": 200_000.0, "staging_mode": None})
 
     def test_unreachable_apoapsis_target_sets_fail_message(self) -> None:
         """Lowering apoapsis below the current periapsis would flip which apse is which."""
         action = ChangeApseAction()
         action.start(
             _orbit_state(apoapsis_alt=200_000.0, periapsis_alt=100_000.0),
-            {"target": "apoapsis", "target_altitude": 50_000.0, "staging_mode": None},
+            {"apse": "apoapsis", "target_altitude": 50_000.0, "staging_mode": None},
         )
         commands = VesselCommands()
         result = action.tick(_orbit_state(), commands, dt=0.5, log=ActionLogger())
@@ -121,7 +122,7 @@ class TestChangeApseStartValidation:
         action = ChangeApseAction()
         action.start(
             _orbit_state(apoapsis_alt=200_000.0, periapsis_alt=100_000.0),
-            {"target": "periapsis", "target_altitude": 300_000.0, "staging_mode": None},
+            {"apse": "periapsis", "target_altitude": 300_000.0, "staging_mode": None},
         )
         commands = VesselCommands()
         result = action.tick(_orbit_state(), commands, dt=0.5, log=ActionLogger())
@@ -139,7 +140,7 @@ class TestChangeApseRequestsNode:
             time_to_periapsis=500.0,
             time_to_apoapsis=60.0,
         )
-        action.start(state, {"target": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": None})
+        action.start(state, {"apse": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": None})
 
         commands = VesselCommands()
         result = action.tick(state, commands, dt=0.5, log=ActionLogger())
@@ -164,7 +165,7 @@ class TestChangeApseRequestsNode:
             periapsis_alt=80_000.0,
             time_to_apoapsis=300.0,
         )
-        action.start(state, {"target": "periapsis", "target_altitude": 35_000.0, "staging_mode": None})
+        action.start(state, {"apse": "periapsis", "target_altitude": 35_000.0, "staging_mode": None})
 
         commands = VesselCommands()
         action.tick(state, commands, dt=0.5, log=ActionLogger())
@@ -177,7 +178,7 @@ class TestChangeApseRequestsNode:
     def test_records_node_ut_for_later_matching(self) -> None:
         action = ChangeApseAction()
         state = _orbit_state(time_to_periapsis=120.0, universal_time=1_000.0)
-        action.start(state, {"target": "apoapsis", "target_altitude": 500_000.0, "staging_mode": None})
+        action.start(state, {"apse": "apoapsis", "target_altitude": 500_000.0, "staging_mode": None})
 
         commands = VesselCommands()
         action.tick(state, commands, dt=0.5, log=ActionLogger())
@@ -192,7 +193,7 @@ class TestChangeApseRequestsNode:
             body_radius=_KERBIN_RADIUS,
             body_gm=0.0,
         )
-        action.start(state, {"target": "apoapsis", "target_altitude": 200_000.0, "staging_mode": None})
+        action.start(state, {"apse": "apoapsis", "target_altitude": 200_000.0, "staging_mode": None})
 
         commands = VesselCommands()
         result = action.tick(state, commands, dt=0.5, log=ActionLogger())
@@ -206,7 +207,7 @@ class TestChangeApseExecutesNode:
     def test_running_burn_returns_running(self) -> None:
         action = ChangeApseAction()
         state = _orbit_state()
-        action.start(state, {"target": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": None})
+        action.start(state, {"apse": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": None})
         # First tick: requests node creation, records ut.
         action.tick(state, VesselCommands(), dt=0.5, log=ActionLogger())
 
@@ -231,7 +232,7 @@ class TestChangeApseExecutesNode:
     def test_completion_succeeds_and_removes_node(self) -> None:
         action = ChangeApseAction()
         seed_state = _orbit_state()
-        action.start(seed_state, {"target": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": None})
+        action.start(seed_state, {"apse": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": None})
         action.tick(seed_state, VesselCommands(), dt=0.5, log=ActionLogger())
 
         node = _node_for(action, delta_v_remaining=0.0)
@@ -283,7 +284,7 @@ class TestChangeApseStaging:
     def test_no_staging_when_mode_is_none(self) -> None:
         action = ChangeApseAction()
         seed = _orbit_state()
-        action.start(seed, {"target": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": None})
+        action.start(seed, {"apse": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": None})
         action.tick(seed, VesselCommands(), dt=0.5, log=ActionLogger())
 
         commands = VesselCommands()
@@ -293,7 +294,7 @@ class TestChangeApseStaging:
     def test_any_flameout_stages_mid_burn(self) -> None:
         action = ChangeApseAction()
         seed = _orbit_state()
-        action.start(seed, {"target": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": "any_flameout"})
+        action.start(seed, {"apse": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": "any_flameout"})
         action.tick(seed, VesselCommands(), dt=0.5, log=ActionLogger())
 
         commands = VesselCommands()
@@ -305,7 +306,7 @@ class TestChangeApseStaging:
         with pytest.raises(ValueError, match="Unknown staging_mode"):
             action.start(
                 _orbit_state(),
-                {"target": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": "bogus"},
+                {"apse": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": "bogus"},
             )
 
     def test_zero_thrust_with_pending_stage_returns_running(self) -> None:
@@ -314,7 +315,7 @@ class TestChangeApseStaging:
         so the action must defer the no-thrust failure to the next tick."""
         action = ChangeApseAction()
         seed = _orbit_state()
-        action.start(seed, {"target": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": "any_flameout"})
+        action.start(seed, {"apse": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": "any_flameout"})
         action.tick(seed, VesselCommands(), dt=0.5, log=ActionLogger())
 
         commands = VesselCommands()
@@ -333,7 +334,7 @@ class TestChangeApseStaging:
         so the action correctly fails on thrust exhaustion."""
         action = ChangeApseAction()
         seed = _orbit_state()
-        action.start(seed, {"target": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": "any_flameout"})
+        action.start(seed, {"apse": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": "any_flameout"})
         action.tick(seed, VesselCommands(), dt=0.5, log=ActionLogger())
 
         commands = VesselCommands()
@@ -352,7 +353,7 @@ class TestChangeApseStop:
     def test_stop_removes_node_and_idles(self) -> None:
         action = ChangeApseAction()
         state = _orbit_state()
-        action.start(state, {"target": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": None})
+        action.start(state, {"apse": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": None})
         action.tick(state, VesselCommands(), dt=0.5, log=ActionLogger())
 
         commands = VesselCommands()
@@ -364,7 +365,7 @@ class TestChangeApseStop:
     def test_stop_before_node_was_requested_is_safe(self) -> None:
         """If start() ran but tick() did not, stop() should not try to remove a node."""
         action = ChangeApseAction()
-        action.start(_orbit_state(), {"target": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": None})
+        action.start(_orbit_state(), {"apse": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": None})
         commands = VesselCommands()
         action.stop(_orbit_state(), commands, log=ActionLogger())
         assert commands.throttle == 0.0
@@ -383,14 +384,14 @@ class TestChangeApseWarpRestore:
 
     def test_stop_restores_user_target_warp_rate(self) -> None:
         action = ChangeApseAction()
-        action.start(_orbit_state(), {"target": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": None})
+        action.start(_orbit_state(), {"apse": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": None})
         commands = VesselCommands()
         action.stop(self._state_with_user_target(100.0), commands, log=ActionLogger())
         assert commands.time_warp_rate == 100.0
 
     def test_stop_does_not_set_warp_when_user_target_is_one(self) -> None:
         action = ChangeApseAction()
-        action.start(_orbit_state(), {"target": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": None})
+        action.start(_orbit_state(), {"apse": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": None})
         commands = VesselCommands()
         action.stop(_orbit_state(), commands, log=ActionLogger())
         assert commands.time_warp_rate is None

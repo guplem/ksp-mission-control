@@ -22,20 +22,21 @@ both cases; a negative prograde value is a retrograde burn.
 from __future__ import annotations
 
 import math
-from enum import Enum
 from typing import Any, ClassVar
 
 from ksp_mission_control.control.actions.base import (
+    APSE_PARAM,
     Action,
     ActionLogger,
     ActionParam,
     ActionResult,
     ActionStatus,
+    Apse,
     Maneuver,
     ManeuverNode,
-    ParamType,
     State,
     VesselCommands,
+    parse_apse,
 )
 from ksp_mission_control.control.actions.helpers.maneuver_node import execute_node
 from ksp_mission_control.control.actions.helpers.staging import (
@@ -51,17 +52,6 @@ from ksp_mission_control.control.actions.helpers.warp import restore_user_warp
 _NODE_UT_MATCH_TOLERANCE: float = 0.001
 
 
-class Apse(Enum):
-    """Which apse to circularize at."""
-
-    APOAPSIS = "apoapsis"
-    PERIAPSIS = "periapsis"
-
-    @property
-    def display_name(self) -> str:
-        return self.value.title()
-
-
 class CircularizeAction(Action):
     """Circularize the orbit at the chosen apse via a planned maneuver node."""
 
@@ -69,24 +59,12 @@ class CircularizeAction(Action):
     label: ClassVar[str] = "Circularize"
     description: ClassVar[str] = "Circularize the orbit at apoapsis or periapsis"
     params: ClassVar[list[ActionParam]] = [
-        ActionParam(
-            param_id="apse",
-            label="Apse",
-            description="Which apse to circularize at: 'apoapsis' raises the periapsis, 'periapsis' lowers the apoapsis.",
-            required=False,
-            param_type=ParamType.STR,
-            default="apoapsis",
-        ),
+        APSE_PARAM,
         STAGING_MODE_PARAM,
     ]
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
-        raw_apse = param_values["apse"]
-        try:
-            self._apse: Apse = Apse(str(raw_apse).lower())
-        except ValueError:
-            valid = ", ".join(a.value for a in Apse)
-            raise ValueError(f"Unknown apse '{raw_apse}'. Valid: {valid}") from None
+        self._apse: Apse = parse_apse(param_values["apse"])
         self._staging_mode: StagingMode | None = parse_staging_mode(param_values["staging_mode"])
         # ut of the node this action created, captured on first tick so we
         # can find it again across ticks even if other nodes get inserted.

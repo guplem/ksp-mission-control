@@ -9,13 +9,14 @@ import pytest
 from ksp_mission_control.control.actions.base import (
     ActionLogger,
     ActionStatus,
+    Apse,
     ManeuverNode,
     PartInfo,
     Parts,
     State,
     VesselCommands,
 )
-from ksp_mission_control.control.actions.circularize.action import Apse, CircularizeAction
+from ksp_mission_control.control.actions.circularize.action import CircularizeAction
 
 # A roughly circular 80 km Kerbin orbit used as a baseline starting point.
 _KERBIN_RADIUS = 600_000.0

@@ -14,7 +14,7 @@ autopilot_config restore_defaults=true
 # Raise apoapsis to 260 km with a burn at periapsis. The action runs at
 # 100x during its half-orbit coast to periapsis, drops to 1x for the
 # burn, and restores 100x on completion.
-change_apse target=apoapsis target_altitude=260_000
+change_apse apse=apoapsis target_altitude=260_000
 
 # Coast to the new 260 km apoapsis.
 wait_for   apoapsis=True

@@ -1,6 +1,6 @@
 """ChangeApseAction - raise or lower one apse to a target altitude.
 
-Burns at the *opposite* apse to set the chosen apse (``target``) to
+Burns at the *opposite* apse to set the chosen apse (``apse``) to
 ``target_altitude``. The burn point's radius is preserved (a prograde or
 retrograde burn at an apse only moves the opposite apse). Use this to
 raise an apoapsis for transfers, or lower a periapsis for reentry.
@@ -26,7 +26,7 @@ Phases
 
 Parameter defaults
 ------------------
-- ``target``: ``"apoapsis"`` (most common use is raising apoapsis for
+- ``apse``: ``"apoapsis"`` (most common use is raising apoapsis for
   transfers).
 - ``target_altitude``: no default; the caller must specify the target.
 """
@@ -34,20 +34,22 @@ Parameter defaults
 from __future__ import annotations
 
 import math
-from enum import Enum
 from typing import Any, ClassVar
 
 from ksp_mission_control.control.actions.base import (
+    APSE_PARAM,
     Action,
     ActionLogger,
     ActionParam,
     ActionResult,
     ActionStatus,
+    Apse,
     Maneuver,
     ManeuverNode,
     ParamType,
     State,
     VesselCommands,
+    parse_apse,
 )
 from ksp_mission_control.control.actions.helpers.maneuver_node import execute_node
 from ksp_mission_control.control.actions.helpers.staging import (
@@ -63,17 +65,6 @@ from ksp_mission_control.control.actions.helpers.warp import restore_user_warp
 _NODE_UT_MATCH_TOLERANCE: float = 0.001
 
 
-class ApseTarget(Enum):
-    """Which apse to change."""
-
-    APOAPSIS = "apoapsis"
-    PERIAPSIS = "periapsis"
-
-    @property
-    def display_name(self) -> str:
-        return self.value.title()
-
-
 class ChangeApseAction(Action):
     """Change the chosen apse to a target altitude via a planned maneuver node."""
 
@@ -81,16 +72,7 @@ class ChangeApseAction(Action):
     label: ClassVar[str] = "Change Apse"
     description: ClassVar[str] = "Raise or lower an apse to a target altitude"
     params: ClassVar[list[ActionParam]] = [
-        ActionParam(
-            param_id="target",
-            label="Target Apse",
-            description=(
-                "Which apse to change: 'apoapsis' burns at periapsis to set the new apoapsis; 'periapsis' burns at apoapsis to set the new periapsis."
-            ),
-            required=False,
-            param_type=ParamType.STR,
-            default="apoapsis",
-        ),
+        APSE_PARAM,
         ActionParam(
             param_id="target_altitude",
             label="Target Altitude",
@@ -104,13 +86,7 @@ class ChangeApseAction(Action):
     ]
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
-        raw_target = param_values["target"]
-        try:
-            self._target: ApseTarget = ApseTarget(str(raw_target).lower())
-        except ValueError:
-            valid = ", ".join(t.value for t in ApseTarget)
-            raise ValueError(f"Unknown target '{raw_target}'. Valid: {valid}") from None
-
+        self._apse: Apse = parse_apse(param_values["apse"])
         self._target_altitude: float = float(param_values["target_altitude"])
         self._staging_mode: StagingMode | None = parse_staging_mode(param_values["staging_mode"])
 
@@ -120,17 +96,17 @@ class ChangeApseAction(Action):
 
         # Start-time validations whose failure is surfaced on the first tick.
         self._fail_message: str | None = None
-        if self._target is ApseTarget.APOAPSIS and self._target_altitude < state.orbit_periapsis:
+        if self._apse is Apse.APOAPSIS and self._target_altitude < state.orbit_periapsis:
             self._fail_message = (
                 f"Cannot lower apoapsis to {self._target_altitude:,.0f}m: "
                 f"current periapsis is {state.orbit_periapsis:,.0f}m. "
-                f"Use target='periapsis' to lower periapsis instead."
+                f"Use apse='periapsis' to lower periapsis instead."
             )
-        elif self._target is ApseTarget.PERIAPSIS and self._target_altitude > state.orbit_apoapsis:
+        elif self._apse is Apse.PERIAPSIS and self._target_altitude > state.orbit_apoapsis:
             self._fail_message = (
                 f"Cannot raise periapsis to {self._target_altitude:,.0f}m: "
                 f"current apoapsis is {state.orbit_apoapsis:,.0f}m. "
-                f"Use target='apoapsis' to raise apoapsis instead."
+                f"Use apse='apoapsis' to raise apoapsis instead."
             )
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
@@ -148,7 +124,7 @@ class ChangeApseAction(Action):
             commands.throttle = 0.0
             return ActionResult(
                 status=ActionStatus.SUCCEEDED,
-                message=f"Set {self._target.display_name} to {self._target_altitude:,.0f}m",
+                message=f"Set {self._apse.display_name} to {self._target_altitude:,.0f}m",
             )
 
         # Still burning. execute_node already handled auto-staging this tick.
@@ -164,7 +140,7 @@ class ChangeApseAction(Action):
 
         return ActionResult(
             status=ActionStatus.RUNNING,
-            message=f"Burning to set {self._target.display_name}: dv_remaining={node.delta_v_remaining:.1f} m/s",
+            message=f"Burning to set {self._apse.display_name}: dv_remaining={node.delta_v_remaining:.1f} m/s",
         )
 
     def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
@@ -198,7 +174,7 @@ class ChangeApseAction(Action):
 
         # Burn at the OPPOSITE apse: a prograde/retrograde burn at an apse
         # leaves that apse's radius unchanged and moves only the other one.
-        if self._target is ApseTarget.APOAPSIS:
+        if self._apse is Apse.APOAPSIS:
             burn_altitude = state.orbit_periapsis
             time_to_burn = state.orbit_periapsis_time_to
         else:
@@ -210,7 +186,7 @@ class ChangeApseAction(Action):
         if r_burn <= 0.0 or r_target <= 0.0:
             return ActionResult(
                 status=ActionStatus.FAILED,
-                message=f"Cannot change {self._target.display_name}: non-positive radius (burn={r_burn:.0f}, target={r_target:.0f}).",
+                message=f"Cannot change {self._apse.display_name}: non-positive radius (burn={r_burn:.0f}, target={r_target:.0f}).",
             )
 
         mu = state.body_gm
@@ -224,10 +200,10 @@ class ChangeApseAction(Action):
         self._node_ut = node_ut
 
         log.info(
-            f"Planned {self._target.display_name} change to {self._target_altitude:,.0f}m: "
+            f"Planned {self._apse.display_name} change to {self._target_altitude:,.0f}m: "
             f"dv={delta_v:+.1f} m/s, in {time_to_burn:.0f}s, ut={node_ut:.1f}"
         )
         return ActionResult(
             status=ActionStatus.RUNNING,
-            message=f"Planning {self._target.display_name} change (dv={delta_v:+.1f} m/s)",
+            message=f"Planning {self._apse.display_name} change (dv={delta_v:+.1f} m/s)",
         )
