@@ -18,6 +18,7 @@ from ksp_mission_control.control.actions.base import (
     VesselCommands,
     VesselSituation,
 )
+from ksp_mission_control.control.actions.helpers.warp import restore_user_warp
 
 # PD controller: throttle = 0.5 (hover baseline) + KP * speed_error - KD * acceleration.
 # KP converts m/s speed error into throttle adjustment (0-1 range).
@@ -141,5 +142,4 @@ class LandAction(Action):
         commands.sas = False
         commands.brakes = True
         # Restore the user's intended warp rate (ADR 0012).
-        if state.user_target_warp_rate > 1.0:
-            commands.time_warp_rate = state.user_target_warp_rate
+        restore_user_warp(state, commands)

@@ -64,6 +64,7 @@ from ksp_mission_control.control.actions.helpers.staging import (
     StagingMode,
     parse_staging_mode,
 )
+from ksp_mission_control.control.actions.helpers.warp import restore_user_warp
 
 # Tolerance for matching the node we requested against State.nodes by ut.
 _NODE_UT_MATCH_TOLERANCE: float = 0.001
@@ -223,8 +224,7 @@ class AlignPlaneAction(Action):
         # Restore the user's intended warp rate (ADR 0012). The helper
         # already wrote this on a successful burn-complete return; the
         # write here is the safety net for FAILED and external-abort paths.
-        if state.user_target_warp_rate > 1.0:
-            commands.time_warp_rate = state.user_target_warp_rate
+        restore_user_warp(state, commands)
 
     # ---- Helpers ------------------------------------------------------
 

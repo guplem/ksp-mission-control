@@ -55,6 +55,7 @@ from ksp_mission_control.control.actions.base import (
     State,
     VesselCommands,
 )
+from ksp_mission_control.control.actions.helpers.warp import restore_user_warp
 
 # Altitude hold (cascaded velocity controller, same gains as HoverAction)
 _SPEED_GAIN = 0.5  # m/s desired vertical speed per meter of altitude error
@@ -291,5 +292,4 @@ class TranslateAction(Action):
         commands.translate_right = 0.0
         commands.translate_up = 0.0
         # Restore the user's intended warp rate (ADR 0012).
-        if state.user_target_warp_rate > 1.0:
-            commands.time_warp_rate = state.user_target_warp_rate
+        restore_user_warp(state, commands)

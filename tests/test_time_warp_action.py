@@ -17,9 +17,12 @@ class TestTimeWarpMetadata:
     def test_action_id(self) -> None:
         assert TimeWarpAction.action_id == "time_warp"
 
-    def test_target_multiplier_is_required(self) -> None:
+    def test_target_multiplier_is_optional(self) -> None:
+        # ``target_multiplier`` is optional: leaving it empty triggers the
+        # re-send mode (resend ``state.user_target_warp_rate`` without
+        # changing the user's intent).
         param = next(p for p in TimeWarpAction.params if p.param_id == "target_multiplier")
-        assert param.required is True
+        assert param.required is False
 
 
 class TestTimeWarpStartValidation:
@@ -37,6 +40,19 @@ class TestTimeWarpStartValidation:
         action = TimeWarpAction()
         action.start(State(), {"target_multiplier": 100_000.0})
         assert action._target_multiplier == 100_000.0
+
+    def test_no_arg_stores_none(self) -> None:
+        # Omitting the parameter altogether selects the re-send mode.
+        action = TimeWarpAction()
+        action.start(State(), {})
+        assert action._target_multiplier is None
+
+    def test_explicit_none_stores_none(self) -> None:
+        # The plan parser passes ``None`` for an unset optional value;
+        # this must also select the re-send mode (no float() crash).
+        action = TimeWarpAction()
+        action.start(State(), {"target_multiplier": None})
+        assert action._target_multiplier is None
 
 
 class TestTimeWarpTick:
@@ -83,6 +99,51 @@ class TestTimeWarpTick:
         action.tick(State(time_warp_rate=100.0), commands, 0.5, ActionLogger())
         assert commands.time_warp_rate == 1.0
         assert commands.user_target_warp_rate == 1.0
+
+
+class TestTimeWarpResendMode:
+    """Empty ``target_multiplier`` re-sends ``state.user_target_warp_rate``."""
+
+    def test_no_arg_resends_current_user_target(self) -> None:
+        # User clicked 100x earlier; KSP clamped it to 50x. A bare
+        # ``time_warp`` step should re-issue 100x so the bridge tries again.
+        action = TimeWarpAction()
+        action.start(State(), {})
+
+        state = State(time_warp_rate=50.0, time_warp_rate_max=100_000.0, user_target_warp_rate=100.0)
+        commands = VesselCommands()
+        result = action.tick(state, commands, 0.5, ActionLogger())
+
+        assert result.status == ActionStatus.SUCCEEDED
+        assert commands.time_warp_rate == 100.0
+
+    def test_no_arg_does_not_overwrite_user_target(self) -> None:
+        # Re-send must not touch the session intent. Writing
+        # ``user_target_warp_rate`` would let the action silently change
+        # what other actions later read as the user's intent.
+        action = TimeWarpAction()
+        action.start(State(), {})
+
+        state = State(time_warp_rate=50.0, user_target_warp_rate=100.0)
+        commands = VesselCommands()
+        action.tick(state, commands, 0.5, ActionLogger())
+
+        assert commands.user_target_warp_rate is None
+
+    def test_no_arg_with_one_x_user_target_still_sends_one_x(self) -> None:
+        # When the user's intent is already 1x, the re-send is effectively
+        # a no-op for KSP, but the action still emits the command so it is
+        # observable in logs and tick records.
+        action = TimeWarpAction()
+        action.start(State(), {})
+
+        state = State(time_warp_rate=1.0, user_target_warp_rate=1.0)
+        commands = VesselCommands()
+        result = action.tick(state, commands, 0.5, ActionLogger())
+
+        assert result.status == ActionStatus.SUCCEEDED
+        assert commands.time_warp_rate == 1.0
+        assert commands.user_target_warp_rate is None
 
 
 class TestTimeWarpStopIsNoOp:

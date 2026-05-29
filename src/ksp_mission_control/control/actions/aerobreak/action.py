@@ -35,6 +35,7 @@ from ksp_mission_control.control.actions.helpers.staging import (
     auto_stage,
     parse_staging_mode,
 )
+from ksp_mission_control.control.actions.helpers.warp import restore_user_warp
 
 # Surface retrograde: opposite to the velocity through the atmosphere. Surface frame
 # (not orbital) is required because the body's rotation makes orbital and surface
@@ -206,5 +207,4 @@ class AerobreakAction(Action):
     def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
         commands.throttle = 0.0
         # Restore the user's intended warp rate (ADR 0012).
-        if state.user_target_warp_rate > 1.0:
-            commands.time_warp_rate = state.user_target_warp_rate
+        restore_user_warp(state, commands)

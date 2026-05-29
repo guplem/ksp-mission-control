@@ -36,9 +36,11 @@ Every action that performs a maneuver burn, runs an iterative replanning loop, o
 
 1. **No capture in `start()`.** Do not store `state.time_warp_rate` anywhere. No `self._initial_warp_rate` attribute, no max-tracking in `tick()`.
 2. At the start of each critical section, write `commands.time_warp_rate = 1.0` (or call `execute_node`, which does it progressively for burns).
-3. In `stop()`, if `state.user_target_warp_rate > 1.0`, write `commands.time_warp_rate = state.user_target_warp_rate`. The runner calls `stop()` on every termination path (`SUCCEEDED`, `FAILED`, user abort).
+3. In `stop()`, call `restore_user_warp(state, commands)` from `helpers/warp.py`. The helper writes `commands.time_warp_rate = state.user_target_warp_rate` if (and only if) the live KSP rate differs from the user's target. The runner calls `stop()` on every termination path (`SUCCEEDED`, `FAILED`, user abort).
 
-`execute_node` reads `state.user_target_warp_rate` directly on every burn-complete return path: no `restore_warp_rate` parameter, no caller-supplied value. The two restores (helper on success, action's `stop()` on every path) write the same value, so success simply restores twice into the same `commands` buffer.
+`execute_node` calls the same helper on every burn-complete return path: no `restore_warp_rate` parameter, no caller-supplied value. The two restores (helper on success, action's `stop()` on every path) write the same value, so success simply calls the helper twice into the same `commands` buffer (the second call is a no-op once the first lands).
+
+Centralizing the condition in `restore_user_warp` covers both directions: a critical section dropped KSP below the user's target (write up), or the user dropped their intent to 1x while KSP was still high (write down). Equality skips the write so a stable tick produces no redundant command.
 
 ### Two flavours of drop
 
@@ -69,7 +71,7 @@ time_warp    target_multiplier=1
 
 The `time_warp 1x` line at the end is for the plan's *next* phase (reentry). Each maneuver drops and restores 100x internally by reading from the session value `time_warp` already updated.
 
-Hedging warp re-arms after each maneuver (`# Kerbal might have stopped the time warp`) is no longer needed. KSP refusing the warp does not affect the session value, so the next maneuver still sees `state.user_target_warp_rate = 100` and will keep trying to use that warp once altitude allows.
+Hedging warp re-arms after each maneuver (`# Kerbal might have stopped the time warp`) is no longer needed. KSP refusing the warp does not affect the session value, so the next maneuver still sees `state.user_target_warp_rate = 100` and will keep trying to use that warp once altitude allows. For passive coasts where no action ends to trigger a restore, a bare `time_warp` step (no `target_multiplier`) re-sends the user-target rate without changing it.
 
 ### What plans should not do
 

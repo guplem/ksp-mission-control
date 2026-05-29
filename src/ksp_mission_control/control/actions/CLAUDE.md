@@ -179,16 +179,20 @@ def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLog
 
 def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
     ...
-    # Restore to the user's intent, read live from state.
-    if state.user_target_warp_rate > 1.0:
-        commands.time_warp_rate = state.user_target_warp_rate
+    # Restore to the user's intent. The helper compares against the live
+    # KSP rate and skips the write when they already match.
+    restore_user_warp(state, commands)
 ```
 
 The runner calls `stop()` on every termination path, so one restore in
 `stop()` covers `SUCCEEDED`, `FAILED`, and external abort. `execute_node`
-also writes the restore on its burn-complete returns; the `stop()` write
-is the safety net for the FAILED and abort paths that bypass that helper
-return.
+also calls the helper on its burn-complete returns; the `stop()` call is
+the safety net for the FAILED and abort paths that bypass that helper
+return. Centralizing the restore condition in
+`helpers/warp.restore_user_warp` keeps the policy in one place: it
+catches both directions (KSP below the user's target after a critical
+section, or above it for any reason) and skips the write when they
+already match.
 
 Examples in tree: `align_plane`, `circularize`, `change_apse`,
 `deorbit_to_target`. The latter has two critical sections (a refinement

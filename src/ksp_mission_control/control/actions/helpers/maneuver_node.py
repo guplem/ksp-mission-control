@@ -48,6 +48,7 @@ from ksp_mission_control.control.actions.base import (
     VesselCommands,
 )
 from ksp_mission_control.control.actions.helpers.staging import StagingMode, auto_stage
+from ksp_mission_control.control.actions.helpers.warp import restore_user_warp
 
 # Burn is considered complete when remaining delta-v drops below this
 # threshold. 0.1 m/s matches the kRPC tutorial's deadband and keeps small
@@ -121,11 +122,10 @@ def execute_node(
     ``True`` when ``node.delta_v_remaining`` falls below the completion
     threshold.
 
-    On a burn-complete return, the helper writes
-    ``commands.time_warp_rate = state.user_target_warp_rate`` so the user's
-    intended rate is restored automatically (ADR 0012). The caller's
-    ``stop()`` should still write the same restore as a safety net for
-    abort and failure paths that bypass this helper return.
+    On a burn-complete return, the helper calls ``restore_user_warp`` so
+    the user's intended rate is restored automatically (ADR 0012). The
+    caller's ``stop()`` should still call the same helper as a safety net
+    for abort and failure paths that bypass this helper return.
 
     The caller is also responsible for the rest of the cleanup after
     completion: setting ``commands.remove_node_at_ut`` and disengaging the
@@ -143,8 +143,7 @@ def execute_node(
     if node.delta_v_remaining <= _BURN_COMPLETE_DV:
         commands.throttle = 0.0
         log.info(f"Maneuver complete (dv_remaining={node.delta_v_remaining:.2f} m/s)")
-        if state.user_target_warp_rate > 1.0:
-            commands.time_warp_rate = state.user_target_warp_rate
+        restore_user_warp(state, commands)
         return True
 
     # Overshoot detection: once the remaining burn vector points retrograde
@@ -162,8 +161,7 @@ def execute_node(
     if burn_dot <= 0.0:
         commands.throttle = 0.0
         log.info(f"Maneuver complete (overshoot detected, dv_remaining={node.delta_v_remaining:.2f} m/s)")
-        if state.user_target_warp_rate > 1.0:
-            commands.time_warp_rate = state.user_target_warp_rate
+        restore_user_warp(state, commands)
         return True
 
     # Auto-stage before throttle decisions so a spent stage is dropped

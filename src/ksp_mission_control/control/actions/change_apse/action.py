@@ -55,6 +55,7 @@ from ksp_mission_control.control.actions.helpers.staging import (
     StagingMode,
     parse_staging_mode,
 )
+from ksp_mission_control.control.actions.helpers.warp import restore_user_warp
 
 # Tolerance used to match the node we requested against state.nodes by ut.
 # The bridge writes the same value we set in Maneuver.ut and reads it back
@@ -174,8 +175,7 @@ class ChangeApseAction(Action):
         # Restore the user's intended warp rate (ADR 0012). The helper
         # already wrote this on a successful burn-complete return; the
         # write here is the safety net for FAILED and external-abort paths.
-        if state.user_target_warp_rate > 1.0:
-            commands.time_warp_rate = state.user_target_warp_rate
+        restore_user_warp(state, commands)
 
     # ---- Helpers ------------------------------------------------------
 

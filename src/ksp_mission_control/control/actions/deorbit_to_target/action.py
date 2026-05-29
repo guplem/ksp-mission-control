@@ -62,6 +62,7 @@ from ksp_mission_control.control.actions.helpers.staging import (
     StagingMode,
     parse_staging_mode,
 )
+from ksp_mission_control.control.actions.helpers.warp import restore_user_warp
 
 # Tolerance for matching our node against State.nodes by ut.
 _NODE_UT_MATCH_TOLERANCE: float = 0.001
@@ -232,9 +233,8 @@ class DeorbitToTargetAction(Action):
         # Refinement done. Resume the user's intended warp once so the
         # cold coast to burn can fast-forward; execute_node will step it
         # back down again as the burn window approaches.
-        if self._converged and not self._refinement_warp_resumed and state.user_target_warp_rate > 1.0:
-            if state.time_warp_rate < state.user_target_warp_rate:
-                commands.time_warp_rate = state.user_target_warp_rate
+        if self._converged and not self._refinement_warp_resumed:
+            restore_user_warp(state, commands)
             self._refinement_warp_resumed = True
 
         # Burn window is near or open. Execute.
@@ -270,8 +270,7 @@ class DeorbitToTargetAction(Action):
         # Restore the user's intended warp rate (ADR 0012). The helper
         # already wrote this on a successful burn-complete return; the
         # write here is the safety net for FAILED and external-abort paths.
-        if state.user_target_warp_rate > 1.0:
-            commands.time_warp_rate = state.user_target_warp_rate
+        restore_user_warp(state, commands)
 
     # ---- Helpers ------------------------------------------------------
 
