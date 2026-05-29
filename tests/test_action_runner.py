@@ -211,6 +211,47 @@ class TestActionRunnerAutoStop:
         assert snap.status is None
 
 
+class TestActionRunnerWarpRestore:
+    """The runner restores ``state.user_target_warp_rate`` after every
+    ``action.stop()`` (ADR 0012). Per-action stop bodies no longer do it."""
+
+    def test_external_stop_restores_user_target_warp_rate(self) -> None:
+        runner = ActionRunner()
+        action = StubAction()
+        # last_state captured during step() is what runner.stop() reads for
+        # the restore, so seed user_target_warp_rate there.
+        runner.start_action(action, State(time_warp_rate=1.0, user_target_warp_rate=100.0))
+        runner.step(State(time_warp_rate=1.0, user_target_warp_rate=100.0), dt=0.5)
+        result = runner.stop()
+        assert result.commands.time_warp_rate == 100.0
+
+    def test_succeeded_auto_stop_restores_warp(self) -> None:
+        runner = ActionRunner()
+        action = StubAction()
+        action.set_return_status(ActionStatus.SUCCEEDED)
+        runner.start_action(action, State(time_warp_rate=1.0, user_target_warp_rate=50.0))
+        result = runner.step(State(time_warp_rate=1.0, user_target_warp_rate=50.0), dt=0.5)
+        assert action.stopped
+        assert result.commands.time_warp_rate == 50.0
+
+    def test_failed_auto_stop_restores_warp(self) -> None:
+        runner = ActionRunner()
+        action = StubAction()
+        action.set_return_status(ActionStatus.FAILED)
+        runner.start_action(action, State(time_warp_rate=1.0, user_target_warp_rate=10.0))
+        result = runner.step(State(time_warp_rate=1.0, user_target_warp_rate=10.0), dt=0.5)
+        assert result.commands.time_warp_rate == 10.0
+
+    def test_no_warp_write_when_rates_already_match(self) -> None:
+        # Both KSP and user target at the same rate: the helper inside the
+        # runner skips the write, so no redundant command goes out.
+        runner = ActionRunner()
+        action = StubAction()
+        runner.start_action(action, State(time_warp_rate=1.0, user_target_warp_rate=1.0))
+        result = runner.stop()
+        assert result.commands.time_warp_rate is None
+
+
 class TestActionRunnerParamValidation:
     """Tests for parameter validation on start."""
 

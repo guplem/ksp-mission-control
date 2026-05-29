@@ -15,7 +15,12 @@ and two ``execute_node`` return paths.
 
 from __future__ import annotations
 
-from ksp_mission_control.control.actions.base import State, VesselCommands
+from ksp_mission_control.control.actions.base import (
+    ActionResult,
+    ActionStatus,
+    State,
+    VesselCommands,
+)
 
 
 def restore_user_warp(state: State, commands: VesselCommands) -> None:
@@ -28,3 +33,30 @@ def restore_user_warp(state: State, commands: VesselCommands) -> None:
     """
     if state.time_warp_rate != state.user_target_warp_rate:
         commands.time_warp_rate = state.user_target_warp_rate
+
+
+def drop_warp_for_critical_section(
+    state: State,
+    commands: VesselCommands,
+    dropping_for: str,
+) -> ActionResult | None:
+    """Drop KSP to 1x warp before a critical section; return RUNNING or None.
+
+    Returns an ``ActionResult(RUNNING)`` when ``state.time_warp_rate``
+    is above 1x, so the caller's ``tick()`` can return it immediately and
+    re-enter on the next poll with warp at 1x. Returns ``None`` when
+    warp is already at or below 1x and the caller can proceed.
+
+    Used at the top of ``tick()`` by any action whose feedback loop
+    requires 1x: PD altitude/velocity controllers, iterative replanning
+    loops, position-derivative velocity estimators. ``dropping_for`` is
+    woven into the user-facing message (e.g. ``"hovering"``,
+    ``"refining deorbit"``).
+    """
+    if state.time_warp_rate > 1.0:
+        commands.time_warp_rate = 1.0
+        return ActionResult(
+            status=ActionStatus.RUNNING,
+            message=f"Dropping warp ({state.time_warp_rate:g}x -> 1x) before {dropping_for}.",
+        )
+    return None

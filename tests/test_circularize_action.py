@@ -327,26 +327,5 @@ class TestCircularizeStop:
         assert commands.remove_node_at_ut is None
 
 
-class TestCircularizeWarpRestore:
-    """The action restores ``state.user_target_warp_rate`` on stop (ADR 0012)."""
-
-    def test_stop_restores_user_target_warp_rate(self) -> None:
-        action = CircularizeAction()
-        action.start(
-            State(
-                body_radius=_KERBIN_RADIUS,
-                body_gm=_KERBIN_GM,
-                orbit_semi_major_axis=680_000.0,
-            ),
-            {"apse": "apoapsis", "staging_mode": None},
-        )
-        commands = VesselCommands()
-        action.stop(State(user_target_warp_rate=100.0), commands, log=ActionLogger())
-        assert commands.time_warp_rate == 100.0
-
-    def test_stop_does_not_set_warp_when_user_target_is_one(self) -> None:
-        action = CircularizeAction()
-        action.start(State(), {"apse": "apoapsis", "staging_mode": None})
-        commands = VesselCommands()
-        action.stop(State(), commands, log=ActionLogger())
-        assert commands.time_warp_rate is None
+# Warp restore on stop is now handled by the ActionRunner (ADR 0012);
+# see tests/test_action_runner.py for the centralized coverage.

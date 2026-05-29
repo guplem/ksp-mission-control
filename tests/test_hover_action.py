@@ -235,9 +235,5 @@ class TestHoverActionWarpHandling:
         assert commands.time_warp_rate == 1.0
         assert commands.throttle is None
 
-    def test_stop_restores_user_target_warp_rate(self) -> None:
-        action = HoverAction()
-        action.start(State(), {"target_altitude": 100.0, "hover_duration": 0.0})
-        commands = VesselCommands()
-        action.stop(State(user_target_warp_rate=50.0), commands, log=ActionLogger())
-        assert commands.time_warp_rate == 50.0
+    # Warp restore on stop is handled by the ActionRunner (ADR 0012);
+    # see tests/test_action_runner.py for the centralized coverage.

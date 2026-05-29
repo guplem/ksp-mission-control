@@ -1,15 +1,27 @@
-"""Tests for the restore_user_warp helper.
+"""Tests for the warp helpers.
 
-The helper centralizes the "what should stop() write to restore warp?"
-policy used by every action with a critical section (ADR 0012). The
-contract is: write the user's intended rate to commands.time_warp_rate
-if (and only if) KSP's live rate differs from it.
+The helpers centralize warp policy across actions (ADR 0012):
+
+- ``restore_user_warp``: called by the ActionRunner after every
+  ``action.stop()`` to bring KSP back to ``state.user_target_warp_rate``.
+  Writes only when the rates differ.
+- ``drop_warp_for_critical_section``: called at the top of ``tick()`` by
+  actions whose feedback loop requires 1x. Returns an ActionResult the
+  caller surfaces immediately, or ``None`` if warp is already at or below
+  1x and the caller can proceed.
 """
 
 from __future__ import annotations
 
-from ksp_mission_control.control.actions.base import State, VesselCommands
-from ksp_mission_control.control.actions.helpers.warp import restore_user_warp
+from ksp_mission_control.control.actions.base import (
+    ActionStatus,
+    State,
+    VesselCommands,
+)
+from ksp_mission_control.control.actions.helpers.warp import (
+    drop_warp_for_critical_section,
+    restore_user_warp,
+)
 
 
 class TestRestoresUpward:
@@ -89,3 +101,45 @@ class TestDoesNotTouchOtherFields:
         assert commands.throttle == 0.0
         assert commands.autopilot is False
         assert commands.time_warp_rate == 100.0
+
+
+class TestDropWarpForCriticalSection:
+    """Top-of-tick guard that drops warp before a 1x-only critical section."""
+
+    def test_drops_warp_and_returns_running_when_above_one(self) -> None:
+        state = State(time_warp_rate=100.0)
+        commands = VesselCommands()
+        result = drop_warp_for_critical_section(state, commands, "hovering")
+        assert result is not None
+        assert result.status == ActionStatus.RUNNING
+        # Helper wrote the 1x command for the caller.
+        assert commands.time_warp_rate == 1.0
+        # Message contains the original rate and the dropping_for label so
+        # the user understands what is about to run at 1x.
+        assert "100" in result.message
+        assert "hovering" in result.message
+
+    def test_returns_none_when_already_at_one(self) -> None:
+        # Stable: no command issued, caller can proceed.
+        state = State(time_warp_rate=1.0)
+        commands = VesselCommands()
+        assert drop_warp_for_critical_section(state, commands, "hovering") is None
+        assert commands.time_warp_rate is None
+
+    def test_returns_none_when_in_physics_warp(self) -> None:
+        # Physics warp (1, 2, 3, 4) does not pause physics, so the
+        # critical section is fine to run. Helper short-circuits anything
+        # at or below 1x.
+        state = State(time_warp_rate=1.0)
+        commands = VesselCommands()
+        assert drop_warp_for_critical_section(state, commands, "translating") is None
+
+    def test_does_not_modify_other_command_fields(self) -> None:
+        # Helper writes time_warp_rate only; everything else is the
+        # action's responsibility.
+        state = State(time_warp_rate=50.0)
+        commands = VesselCommands()
+        drop_warp_for_critical_section(state, commands, "descent")
+        assert commands.throttle is None
+        assert commands.autopilot is None
+        assert commands.sas is None

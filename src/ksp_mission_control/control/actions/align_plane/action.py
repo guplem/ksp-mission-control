@@ -53,21 +53,21 @@ from ksp_mission_control.control.actions.base import (
     ActionResult,
     ActionStatus,
     Maneuver,
-    ManeuverNode,
     ParamType,
     State,
     VesselCommands,
 )
-from ksp_mission_control.control.actions.helpers.maneuver_node import execute_node
+from ksp_mission_control.control.actions.helpers.controls import release_controls
+from ksp_mission_control.control.actions.helpers.maneuver_node import (
+    execute_node,
+    fail_if_node_has_no_thrust,
+    find_maneuver_node_by_ut,
+)
 from ksp_mission_control.control.actions.helpers.staging import (
     STAGING_MODE_PARAM,
     StagingMode,
     parse_staging_mode,
 )
-from ksp_mission_control.control.actions.helpers.warp import restore_user_warp
-
-# Tolerance for matching the node we requested against State.nodes by ut.
-_NODE_UT_MATCH_TOLERANCE: float = 0.001
 
 # Below this inclination (radians) the orbit is treated as equatorial:
 # AN and DN are undefined and we burn at apoapsis instead. 0.001 rad is
@@ -192,7 +192,7 @@ class AlignPlaneAction(Action):
                 ),
             )
 
-        node = self._find_our_node(state)
+        node = find_maneuver_node_by_ut(state, self._node_ut)
         if node is None:
             return self._plan_burn(state, commands, delta_inc_rad, log)
 
@@ -205,11 +205,9 @@ class AlignPlaneAction(Action):
                 message=f"Plane aligned: inclination {math.degrees(state.orbit_inclination):.2f}°.",
             )
 
-        if state.thrust_available <= 0.0 and commands.stage is not True:
-            return ActionResult(
-                status=ActionStatus.FAILED,
-                message=f"Failed: no thrust available. dv_remaining={node.delta_v_remaining:.1f} m/s",
-            )
+        no_thrust = fail_if_node_has_no_thrust(state, commands, node)
+        if no_thrust is not None:
+            return no_thrust
 
         return ActionResult(
             status=ActionStatus.RUNNING,
@@ -217,25 +215,11 @@ class AlignPlaneAction(Action):
         )
 
     def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
-        commands.throttle = 0.0
-        commands.autopilot = False
+        release_controls(commands)
         if self._node_ut is not None:
             commands.remove_node_at_ut = self._node_ut
-        # Restore the user's intended warp rate (ADR 0012). The helper
-        # already wrote this on a successful burn-complete return; the
-        # write here is the safety net for FAILED and external-abort paths.
-        restore_user_warp(state, commands)
 
     # ---- Helpers ------------------------------------------------------
-
-    def _find_our_node(self, state: State) -> ManeuverNode | None:
-        """Return the node this action created, or None if it does not exist yet."""
-        if self._node_ut is None:
-            return None
-        for candidate in state.nodes:
-            if abs(candidate.ut - self._node_ut) <= _NODE_UT_MATCH_TOLERANCE:
-                return candidate
-        return None
 
     def _plan_burn(self, state: State, commands: VesselCommands, delta_inc_rad: float, log: ActionLogger) -> ActionResult:
         """Pick the burn point and request a normal-only maneuver node."""

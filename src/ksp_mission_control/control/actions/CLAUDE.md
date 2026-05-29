@@ -172,39 +172,49 @@ def start(self, state: State, param_values: dict[str, Any]) -> None:
     # No warp capture. Do not store state.time_warp_rate.
 
 def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
+    # Drop warp at the start of any non-burn critical section
+    # (e.g. an iterative refinement loop or PD controller).
+    warp_result = drop_warp_for_critical_section(state, commands, "<dropping_for>")
+    if warp_result is not None:
+        return warp_result
     ...
-    # Drop warp explicitly at the start of any non-burn critical section
-    # (e.g. an iterative refinement loop). For burns, execute_node
-    # handles the progressive step-down automatically.
+    # For maneuver burns, execute_node handles the progressive
+    # step-down automatically.
 
 def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
-    ...
-    # Restore to the user's intent. The helper compares against the live
-    # KSP rate and skips the write when they already match.
-    restore_user_warp(state, commands)
+    # Do NOT call restore_user_warp here. The runner does it after stop()
+    # on every termination path (SUCCEEDED, FAILED, external abort).
+    release_controls(commands)   # only if the action drove throttle/autopilot/SAS
+    ...                          # any action-specific cleanup (remove_node_at_ut, brakes, etc.)
 ```
 
-The runner calls `stop()` on every termination path, so one restore in
-`stop()` covers `SUCCEEDED`, `FAILED`, and external abort. `execute_node`
-also calls the helper on its burn-complete returns; the `stop()` call is
-the safety net for the FAILED and abort paths that bypass that helper
-return. Centralizing the restore condition in
-`helpers/warp.restore_user_warp` keeps the policy in one place: it
-catches both directions (KSP below the user's target after a critical
-section, or above it for any reason) and skips the write when they
-already match.
+The `ActionRunner` calls `restore_user_warp(last_state, commands)` after
+every `action.stop(...)` (`runner.stop()`, `runner.step()` on
+`SUCCEEDED`, `runner.step()` on `FAILED`). The helper compares the live
+KSP rate against `state.user_target_warp_rate` and skips the write when
+they match, so it is cheap to call unconditionally. Per-action `stop()`
+bodies must not duplicate it: doing so re-introduces drift if the
+contract ever changes.
 
 Examples in tree: `align_plane`, `circularize`, `change_apse`,
 `deorbit_to_target`. The latter has two critical sections (a refinement
 loop plus the burn) and shows how to drop, resume from
-`state.user_target_warp_rate`, drop again, and restore.
+`state.user_target_warp_rate` mid-tick (this is the one place an action
+calls `restore_user_warp` itself, because it happens during `tick()`,
+not on termination), drop again as the burn approaches, and let the
+runner handle the final restore on `stop()`.
 
 ## Shared helpers (`helpers/`)
 
 | Helper | Function / constant | Purpose |
 |---|---|---|
 | `helpers.maneuver_node` | `execute_node(state, commands, node, staging_mode, dt, log)` | Drive the vessel through a kRPC maneuver node. Calls `auto_stage` internally when `staging_mode` is not `None`. Tapers throttle in the final ticks of the burn (using `dt` and the node's `burn_time_estimate`) so a high-TWR upper stage does not overshoot in the last tick. Returns `True` when the burn completes. |
+| `helpers.maneuver_node` | `find_maneuver_node_by_ut(state, node_ut, tolerance=0.001)` | Return the node in `state.nodes` whose ut matches `node_ut`. Use when an action created a node via `commands.create_node` and needs to locate it again on later ticks. Returns `None` if `node_ut` is `None` or no match. |
+| `helpers.maneuver_node` | `fail_if_node_has_no_thrust(state, commands, node)` | Return `ActionResult(FAILED, ...)` when the vessel cannot complete the burn. Exempts the tick that just queued a stage (`commands.stage is True`). Returns `None` to continue burning. Use immediately after `execute_node` returns `False`. |
 | `helpers.maneuver_node` | `tsiolkovsky_burn_time(...)` | Estimate burn duration from current mass/Isp/thrust. Used by the bridge to populate `ManeuverNode.burn_time_estimate`. |
+| `helpers.warp` | `restore_user_warp(state, commands)` | Write `commands.time_warp_rate = state.user_target_warp_rate` when the rates differ. Called by the `ActionRunner` after every `action.stop()`; actions rarely call it directly (the deorbit mid-tick refinement-resume is the one exception). |
+| `helpers.warp` | `drop_warp_for_critical_section(state, commands, dropping_for)` | Drop KSP to 1x at the top of `tick()` for non-burn critical sections (PD controllers, refinement loops, position-derivative velocity estimators). Returns `ActionResult(RUNNING, "Dropping warp ...")` when above 1x, `None` when already at 1x. Caller returns the result and re-enters next tick. |
+| `helpers.controls` | `release_controls(commands)` | Set `throttle=0`, `autopilot=False`, `sas=False`. Use in `stop()` of any action that drove the vessel's active controls during `tick()`. Other cleanup (RCS, brakes, node removal) stays per-action. |
 | `helpers.staging` | `STAGING_MODE_PARAM` | Canonical `staging_mode` `ActionParam`. Add to `params` unchanged. Default is `any_flameout`; users disable it per-step with `staging_mode=off`. |
 | `helpers.staging` | `parse_staging_mode(value)` | `str | None -> StagingMode | None`. Accepts a `StagingMode` value (case-insensitive), `"off"`, or empty/`None` for disabled. Use in `start()`. |
 | `helpers.staging` | `auto_stage(state, commands, mode, log)` | Stage when fuel depletes or any engine flames out. Accepts `mode=None` (short-circuits). Returns `True` when it set `commands.stage = True`. Node-driven actions do **not** call this directly: `execute_node` does. |
@@ -255,19 +265,20 @@ if state.thrust_available <= 0.0:
 Put this block as the first effective check in `tick()` after any
 deferred-fail guard.
 
-**Node-driven actions** (`circularize`, `change_apse`) collapse to a
-single post-`execute_node` thrust check, because `execute_node` already
-invoked `auto_stage` this tick. The check must also exempt the tick on
-which auto-staging just fired: state was read before this tick's commands
-are applied, so a flameout shows `thrust_available == 0` even though a
-stage command was just queued. Failing in that case would kill the burn
-one tick before the new stage gets a chance to ignite.
+**Node-driven actions** (`circularize`, `change_apse`, `align_plane`,
+`deorbit_to_target`) call `fail_if_node_has_no_thrust` right after
+`execute_node` returns `False`. The helper exempts the tick on which
+auto-staging just queued a stage (state was read before this tick's
+commands apply, so a flameout shows `thrust_available == 0` even though
+the next tick will ignite the new stage). Failing in that case would
+kill the burn one tick before the new engine gets a chance.
 
 ```python
-if execute_node(state, commands, node, self._staging_mode, log):
+if execute_node(state, commands, node, self._staging_mode, dt, log):
     # ... burn complete, return SUCCEEDED
-if state.thrust_available <= 0.0 and commands.stage is not True:
-    return ActionResult(status=ActionStatus.FAILED, message="No thrust available")
+no_thrust = fail_if_node_has_no_thrust(state, commands, node)
+if no_thrust is not None:
+    return no_thrust
 # ... return RUNNING
 ```
 

@@ -27,7 +27,7 @@ from ksp_mission_control.control.actions.base import (
     VesselCommands,
     VesselSituation,
 )
-from ksp_mission_control.control.actions.helpers.warp import restore_user_warp
+from ksp_mission_control.control.actions.helpers.warp import drop_warp_for_critical_section
 
 # Cascaded velocity controller gains
 # Outer loop: altitude error -> desired vertical speed
@@ -76,12 +76,9 @@ class HoverAction(Action):
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
         # The cascaded velocity controller below uses tick-to-tick state and
         # breaks under high warp. Drop warp and wait for KSP to settle.
-        if state.time_warp_rate > 1.0:
-            commands.time_warp_rate = 1.0
-            return ActionResult(
-                status=ActionStatus.RUNNING,
-                message=f"Dropping warp ({state.time_warp_rate:g}x -> 1x) before hover.",
-            )
+        warp_result = drop_warp_for_critical_section(state, commands, "hover")
+        if warp_result is not None:
+            return warp_result
 
         # --- Throttle control (cascaded velocity controller) ---
         # Outer loop: how fast should we be climbing/descending right now?
@@ -157,5 +154,3 @@ class HoverAction(Action):
         commands.throttle = 0.0
         commands.sas = False
         commands.rcs = False
-        # Restore the user's intended warp rate (ADR 0012).
-        restore_user_warp(state, commands)

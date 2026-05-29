@@ -383,28 +383,5 @@ class TestAlignPlaneStop:
         assert commands.remove_node_at_ut is None
 
 
-class TestAlignPlaneWarpRestore:
-    """The action restores ``state.user_target_warp_rate`` on stop (ADR 0012)."""
-
-    def test_stop_restores_user_target_warp_rate(self) -> None:
-        action = AlignPlaneAction()
-        action.start(
-            State(body_radius=_KERBIN_RADIUS, body_gm=_KERBIN_GM, orbit_semi_major_axis=600_100_000.0),
-            _params(target_latitude=10.0),
-        )
-        commands = VesselCommands()
-        # stop() reads the live state's user_target_warp_rate, not anything
-        # captured at start(). This is the change that makes the restore
-        # robust against KSP refusing the initial warp set.
-        action.stop(State(user_target_warp_rate=100.0), commands, log=ActionLogger())
-        assert commands.time_warp_rate == 100.0
-
-    def test_stop_does_not_set_warp_when_user_target_is_one(self) -> None:
-        action = AlignPlaneAction()
-        action.start(
-            State(body_radius=_KERBIN_RADIUS, body_gm=_KERBIN_GM, orbit_semi_major_axis=600_100_000.0),
-            _params(target_latitude=10.0),
-        )
-        commands = VesselCommands()
-        action.stop(State(user_target_warp_rate=1.0), commands, log=ActionLogger())
-        assert commands.time_warp_rate is None
+# Warp restore on stop is now handled by the ActionRunner (ADR 0012);
+# see tests/test_action_runner.py for the centralized coverage.

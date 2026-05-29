@@ -373,25 +373,5 @@ class TestChangeApseStop:
         assert commands.remove_node_at_ut is None
 
 
-class TestChangeApseWarpRestore:
-    """The action restores ``state.user_target_warp_rate`` on stop (ADR 0012)."""
-
-    def _state_with_user_target(self, user_target_warp_rate: float) -> State:
-        base = _orbit_state()
-        return State(
-            **{**base.__dict__, "user_target_warp_rate": user_target_warp_rate},
-        )
-
-    def test_stop_restores_user_target_warp_rate(self) -> None:
-        action = ChangeApseAction()
-        action.start(_orbit_state(), {"apse": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": None})
-        commands = VesselCommands()
-        action.stop(self._state_with_user_target(100.0), commands, log=ActionLogger())
-        assert commands.time_warp_rate == 100.0
-
-    def test_stop_does_not_set_warp_when_user_target_is_one(self) -> None:
-        action = ChangeApseAction()
-        action.start(_orbit_state(), {"apse": "apoapsis", "target_altitude": 260_000_000.0, "staging_mode": None})
-        commands = VesselCommands()
-        action.stop(_orbit_state(), commands, log=ActionLogger())
-        assert commands.time_warp_rate is None
+# Warp restore on stop is now handled by the ActionRunner (ADR 0012);
+# see tests/test_action_runner.py for the centralized coverage.

@@ -41,6 +41,8 @@ import math
 
 from ksp_mission_control.control.actions.base import (
     ActionLogger,
+    ActionResult,
+    ActionStatus,
     AutopilotDirection,
     ManeuverNode,
     ReferenceFrame,
@@ -48,7 +50,11 @@ from ksp_mission_control.control.actions.base import (
     VesselCommands,
 )
 from ksp_mission_control.control.actions.helpers.staging import StagingMode, auto_stage
-from ksp_mission_control.control.actions.helpers.warp import restore_user_warp
+
+# Default tolerance for matching a maneuver node by its planned ut. The bridge
+# writes back the same ut we set in Maneuver.ut, so this tolerance only protects
+# against round-trip float jitter, not real timing drift.
+_NODE_UT_MATCH_TOLERANCE: float = 0.001
 
 # Burn is considered complete when remaining delta-v drops below this
 # threshold. 0.1 m/s matches the kRPC tutorial's deadband and keeps small
@@ -122,12 +128,11 @@ def execute_node(
     ``True`` when ``node.delta_v_remaining`` falls below the completion
     threshold.
 
-    On a burn-complete return, the helper calls ``restore_user_warp`` so
-    the user's intended rate is restored automatically (ADR 0012). The
-    caller's ``stop()`` should still call the same helper as a safety net
-    for abort and failure paths that bypass this helper return.
+    Warp restore is handled by the ``ActionRunner`` after ``stop()`` runs
+    (ADR 0012), so this helper does not write ``time_warp_rate`` on the
+    burn-complete return path.
 
-    The caller is also responsible for the rest of the cleanup after
+    The caller is responsible for the rest of the cleanup after
     completion: setting ``commands.remove_node_at_ut`` and disengaging the
     autopilot.
     """
@@ -143,7 +148,6 @@ def execute_node(
     if node.delta_v_remaining <= _BURN_COMPLETE_DV:
         commands.throttle = 0.0
         log.info(f"Maneuver complete (dv_remaining={node.delta_v_remaining:.2f} m/s)")
-        restore_user_warp(state, commands)
         return True
 
     # Overshoot detection: once the remaining burn vector points retrograde
@@ -161,7 +165,6 @@ def execute_node(
     if burn_dot <= 0.0:
         commands.throttle = 0.0
         log.info(f"Maneuver complete (overshoot detected, dv_remaining={node.delta_v_remaining:.2f} m/s)")
-        restore_user_warp(state, commands)
         return True
 
     # Auto-stage before throttle decisions so a spent stage is dropped
@@ -238,3 +241,46 @@ def tsiolkovsky_burn_time(delta_v: float, mass: float, isp: float, thrust: float
     final_mass = mass / math.exp(delta_v / exhaust_velocity)
     flow_rate = thrust / exhaust_velocity
     return (mass - final_mass) / flow_rate
+
+
+def find_maneuver_node_by_ut(
+    state: State,
+    node_ut: float | None,
+    tolerance: float = _NODE_UT_MATCH_TOLERANCE,
+) -> ManeuverNode | None:
+    """Return the node in ``state.nodes`` whose ut matches ``node_ut``.
+
+    Returns ``None`` when ``node_ut`` is ``None`` (the caller has not
+    requested a node yet) or when no node in state matches within
+    ``tolerance``. Used by actions that create a node via
+    ``commands.create_node`` and later need to locate it across ticks,
+    even when other nodes get inserted in between.
+    """
+    if node_ut is None:
+        return None
+    for candidate in state.nodes:
+        if abs(candidate.ut - node_ut) <= tolerance:
+            return candidate
+    return None
+
+
+def fail_if_node_has_no_thrust(
+    state: State,
+    commands: VesselCommands,
+    node: ManeuverNode,
+) -> ActionResult | None:
+    """Return a FAILED ActionResult when the vessel cannot complete the burn.
+
+    Used by node-driven actions after ``execute_node`` returns. The check
+    exempts the tick on which ``auto_stage`` just queued a stage (state
+    was read before this tick's command applies, so a flameout shows
+    zero thrust even though the next stage will ignite next tick).
+    Returns ``None`` when there is still thrust or a stage is pending,
+    so the caller can continue burning.
+    """
+    if state.thrust_available <= 0.0 and commands.stage is not True:
+        return ActionResult(
+            status=ActionStatus.FAILED,
+            message=f"Failed: no thrust available. dv_remaining={node.delta_v_remaining:.1f} m/s",
+        )
+    return None

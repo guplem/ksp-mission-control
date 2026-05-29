@@ -499,10 +499,7 @@ class TestDeorbitWarpHandling:
         action.tick(coast_state, commands2, dt=0.5, log=ActionLogger())
         assert commands2.time_warp_rate is None
 
-    def test_stop_restores_warp(self) -> None:
-        action = DeorbitToTargetAction()
-        action.start(self._state_with_warp(100.0), _params())
-        commands = VesselCommands()
-        stop_state = State(**{**_orbit_state().__dict__, "user_target_warp_rate": 100.0})
-        action.stop(stop_state, commands, log=ActionLogger())
-        assert commands.time_warp_rate == 100.0
+    # Warp restore on stop is handled by the ActionRunner (ADR 0012);
+    # see tests/test_action_runner.py for the centralized coverage. The
+    # mid-tick "resume warp once refinement converged" call still belongs
+    # to the action (see test_resumes_warp_once_converged above).

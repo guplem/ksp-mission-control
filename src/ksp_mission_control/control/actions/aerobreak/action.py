@@ -35,7 +35,7 @@ from ksp_mission_control.control.actions.helpers.staging import (
     auto_stage,
     parse_staging_mode,
 )
-from ksp_mission_control.control.actions.helpers.warp import restore_user_warp
+from ksp_mission_control.control.actions.helpers.warp import drop_warp_for_critical_section
 
 # Surface retrograde: opposite to the velocity through the atmosphere. Surface frame
 # (not orbital) is required because the body's rotation makes orbital and surface
@@ -105,12 +105,9 @@ class AerobreakAction(Action):
         # The aerobrake feedback loop reads dynamic pressure and throttle
         # responses each tick; both are meaningless at high warp. Drop warp
         # before any other physics-coupled command goes out.
-        if state.time_warp_rate > 1.0:
-            commands.time_warp_rate = 1.0
-            return ActionResult(
-                status=ActionStatus.RUNNING,
-                message=f"Dropping warp ({state.time_warp_rate:g}x -> 1x) before aerobreak.",
-            )
+        warp_result = drop_warp_for_critical_section(state, commands, "aerobreak")
+        if warp_result is not None:
+            return warp_result
 
         # Point retrograde
         commands.autopilot = True
@@ -206,5 +203,3 @@ class AerobreakAction(Action):
 
     def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
         commands.throttle = 0.0
-        # Restore the user's intended warp rate (ADR 0012).
-        restore_user_warp(state, commands)

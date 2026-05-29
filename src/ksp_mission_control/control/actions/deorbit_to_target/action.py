@@ -56,16 +56,21 @@ from ksp_mission_control.control.actions.base import (
     State,
     VesselCommands,
 )
-from ksp_mission_control.control.actions.helpers.maneuver_node import execute_node
+from ksp_mission_control.control.actions.helpers.controls import release_controls
+from ksp_mission_control.control.actions.helpers.maneuver_node import (
+    execute_node,
+    fail_if_node_has_no_thrust,
+    find_maneuver_node_by_ut,
+)
 from ksp_mission_control.control.actions.helpers.staging import (
     STAGING_MODE_PARAM,
     StagingMode,
     parse_staging_mode,
 )
-from ksp_mission_control.control.actions.helpers.warp import restore_user_warp
-
-# Tolerance for matching our node against State.nodes by ut.
-_NODE_UT_MATCH_TOLERANCE: float = 0.001
+from ksp_mission_control.control.actions.helpers.warp import (
+    drop_warp_for_critical_section,
+    restore_user_warp,
+)
 
 # Stop refining the node this many seconds before the burn would start.
 # kRPC needs a moment to commit a node, and we want the burn to start on
@@ -196,18 +201,15 @@ class DeorbitToTargetAction(Action):
         if self._fail_message is not None:
             return ActionResult(status=ActionStatus.FAILED, message=self._fail_message)
 
-        node = self._find_our_node(state)
+        node = find_maneuver_node_by_ut(state, self._node_ut)
 
         if node is None:
             # Pre-planning: force 1x so the initial node ends up at the
             # apoapsis the bridge reports right now, not one that the next
             # warp tick has already slid past.
-            if state.time_warp_rate > 1.0:
-                commands.time_warp_rate = 1.0
-                return ActionResult(
-                    status=ActionStatus.RUNNING,
-                    message="Dropping warp to 1x before planning the deorbit node.",
-                )
+            warp_result = drop_warp_for_critical_section(state, commands, "planning the deorbit node")
+            if warp_result is not None:
+                return warp_result
             return self._plan_initial_node(state, commands, log)
 
         # Decide whether there is still time to refine or we should commit
@@ -222,12 +224,9 @@ class DeorbitToTargetAction(Action):
             # Refinement phase: must be at 1x. At higher warp each tick
             # covers tens to hundreds of seconds of game time, and the
             # iterative replanner cannot keep pace.
-            if state.time_warp_rate > 1.0:
-                commands.time_warp_rate = 1.0
-                return ActionResult(
-                    status=ActionStatus.RUNNING,
-                    message=(f"Dropping warp to 1x for refinement (current rate {state.time_warp_rate:g}x)."),
-                )
+            warp_result = drop_warp_for_critical_section(state, commands, "deorbit refinement")
+            if warp_result is not None:
+                return warp_result
             return self._refine_node(state, commands, node, log)
 
         # Refinement done. Resume the user's intended warp once so the
@@ -251,11 +250,9 @@ class DeorbitToTargetAction(Action):
                 )
             return ActionResult(status=ActionStatus.SUCCEEDED, message="Deorbit burn complete.")
 
-        if state.thrust_available <= 0.0 and commands.stage is not True:
-            return ActionResult(
-                status=ActionStatus.FAILED,
-                message=f"Failed: no thrust available. dv_remaining={node.delta_v_remaining:.1f} m/s",
-            )
+        no_thrust = fail_if_node_has_no_thrust(state, commands, node)
+        if no_thrust is not None:
+            return no_thrust
 
         return ActionResult(
             status=ActionStatus.RUNNING,
@@ -263,24 +260,11 @@ class DeorbitToTargetAction(Action):
         )
 
     def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
-        commands.throttle = 0.0
-        commands.autopilot = False
+        release_controls(commands)
         if self._node_ut is not None:
             commands.remove_node_at_ut = self._node_ut
-        # Restore the user's intended warp rate (ADR 0012). The helper
-        # already wrote this on a successful burn-complete return; the
-        # write here is the safety net for FAILED and external-abort paths.
-        restore_user_warp(state, commands)
 
     # ---- Helpers ------------------------------------------------------
-
-    def _find_our_node(self, state: State) -> ManeuverNode | None:
-        if self._node_ut is None:
-            return None
-        for candidate in state.nodes:
-            if abs(candidate.ut - self._node_ut) <= _NODE_UT_MATCH_TOLERANCE:
-                return candidate
-        return None
 
     def _plan_initial_node(self, state: State, commands: VesselCommands, log: ActionLogger) -> ActionResult:
         """First tick: pick burn UT one full orbit past the next apoapsis and compute retrograde dv via vis-viva.

@@ -18,6 +18,7 @@ from ksp_mission_control.control.actions.base import (
     State,
     VesselCommands,
 )
+from ksp_mission_control.control.actions.helpers.warp import restore_user_warp
 
 
 @dataclass(frozen=True)
@@ -82,6 +83,9 @@ class ActionRunner:
         if self._action is not None:
             log.entries.append(LogEntry(level=LogLevel.ACTION_FAILED, message=f"Stopped: {self._action.label}"))
             self._action.stop(self._last_state, commands, log)
+            # Restore the user's intended warp rate after the action stops
+            # (ADR 0012). The helper is a no-op when the rates already match.
+            restore_user_warp(self._last_state, commands)
             log.entries.append(LogEntry(level=LogLevel.ACTION_END, message=f"{self._action.label}"))
             self._action = None
             self._status = None
@@ -116,6 +120,7 @@ class ActionRunner:
             finished_status = result.status
             log.entries.append(LogEntry(level=LogLevel.ACTION_SUCCEEDED, message=result.message or self._action.label))
             self._action.stop(vessel_state, commands, log)
+            restore_user_warp(vessel_state, commands)
             log.entries.append(LogEntry(level=LogLevel.ACTION_END, message=self._action.label))
             self._action = None
             self._status = None
@@ -124,6 +129,7 @@ class ActionRunner:
             finished_status = result.status
             log.entries.append(LogEntry(level=LogLevel.ACTION_FAILED, message=result.message or self._action.label))
             self._action.stop(vessel_state, commands, log)
+            restore_user_warp(vessel_state, commands)
             log.entries.append(LogEntry(level=LogLevel.ACTION_END, message=self._action.label))
             self._action = None
             self._status = None

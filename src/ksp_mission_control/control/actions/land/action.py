@@ -18,7 +18,7 @@ from ksp_mission_control.control.actions.base import (
     VesselCommands,
     VesselSituation,
 )
-from ksp_mission_control.control.actions.helpers.warp import restore_user_warp
+from ksp_mission_control.control.actions.helpers.warp import drop_warp_for_critical_section
 
 # PD controller: throttle = 0.5 (hover baseline) + KP * speed_error - KD * acceleration.
 # KP converts m/s speed error into throttle adjustment (0-1 range).
@@ -76,15 +76,12 @@ class LandAction(Action):
         # and is meaningless at high warp (one tick spans tens of seconds of
         # game time). Drop warp first and let KSP settle before letting the
         # controller act.
-        if state.time_warp_rate > 1.0:
-            commands.time_warp_rate = 1.0
+        warp_result = drop_warp_for_critical_section(state, commands, "descent")
+        if warp_result is not None:
             # Keep prev_vertical_speed fresh while waiting so the first real
             # tick after warp settles does not see a huge spurious derivative.
             self._prev_vertical_speed = state.speed_vertical
-            return ActionResult(
-                status=ActionStatus.RUNNING,
-                message=f"Dropping warp ({state.time_warp_rate:g}x -> 1x) before descent.",
-            )
+            return warp_result
 
         # --- Descent speed target ---
         # sqrt(altitude) gives a smooth curve: e.g. 400m -> 20 m/s, 100m -> 10 m/s,
@@ -141,5 +138,3 @@ class LandAction(Action):
         commands.throttle = 0.0
         commands.sas = False
         commands.brakes = True
-        # Restore the user's intended warp rate (ADR 0012).
-        restore_user_warp(state, commands)

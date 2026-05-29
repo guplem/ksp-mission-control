@@ -355,22 +355,20 @@ class TestExecuteNodeWarpStepDown:
         assert commands.time_warp_rate is None
 
 
-class TestExecuteNodeWarpRestore:
-    """When the burn completes, the helper restores ``state.user_target_warp_rate``."""
+class TestExecuteNodeDoesNotRestoreWarp:
+    """``execute_node`` never writes ``time_warp_rate``: the ActionRunner handles
+    warp restore after ``action.stop()`` (ADR 0012). The helper used to call
+    ``restore_user_warp`` on its burn-complete paths; that responsibility moved."""
 
-    def test_restores_warp_on_burn_complete(self) -> None:
-        # delta_v_remaining below threshold -> burn-complete return path.
+    def test_does_not_write_warp_on_burn_complete(self) -> None:
         node = _make_node(ut=500.0, delta_v_remaining=0.0, burn_time_estimate=10.0)
         state = _make_burning_state(universal_time=500.0, time_warp_rate=1.0, user_target_warp_rate=100.0)
         commands = VesselCommands()
         complete = execute_node(state, commands, node, None, 0.5, ActionLogger())
         assert complete is True
-        assert commands.time_warp_rate == 100.0
+        assert commands.time_warp_rate is None
 
-    def test_restores_warp_on_overshoot_return(self) -> None:
-        # burn_vector_remaining anti-parallel to burn_vector (helper default
-        # burn_vector is (0, delta_v, 0), so a negative-y remaining vector
-        # produces a non-positive dot product and trips the overshoot path).
+    def test_does_not_write_warp_on_overshoot_return(self) -> None:
         node = _make_node(
             ut=500.0,
             delta_v_remaining=2.0,
@@ -380,23 +378,12 @@ class TestExecuteNodeWarpRestore:
         commands = VesselCommands()
         complete = execute_node(state, commands, node, None, 0.5, ActionLogger())
         assert complete is True
-        assert commands.time_warp_rate == 50.0
-
-    def test_does_not_restore_when_user_target_is_one(self) -> None:
-        # State.user_target_warp_rate defaults to 1.0 (user is at real time).
-        # The helper should not emit a redundant warp=1 command.
-        node = _make_node(ut=500.0, delta_v_remaining=0.0, burn_time_estimate=10.0)
-        state = _make_burning_state(universal_time=500.0, time_warp_rate=1.0)
-        commands = VesselCommands()
-        execute_node(state, commands, node, None, 0.5, ActionLogger())
         assert commands.time_warp_rate is None
 
-    def test_does_not_restore_while_still_burning(self) -> None:
-        # delta_v_remaining > threshold and warp already at 1x: no restore command yet.
+    def test_does_not_write_warp_while_still_burning(self) -> None:
         node = _make_node(ut=500.0, delta_v_remaining=50.0, burn_time_estimate=5.0)
         state = _make_burning_state(universal_time=500.0, time_warp_rate=1.0, user_target_warp_rate=100.0)
         commands = VesselCommands()
         complete = execute_node(state, commands, node, None, 0.5, ActionLogger())
         assert complete is False
-        # Mid-burn, restore must not fire; only the burn-complete return paths restore.
         assert commands.time_warp_rate is None

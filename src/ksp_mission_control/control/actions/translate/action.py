@@ -55,7 +55,7 @@ from ksp_mission_control.control.actions.base import (
     State,
     VesselCommands,
 )
-from ksp_mission_control.control.actions.helpers.warp import restore_user_warp
+from ksp_mission_control.control.actions.helpers.warp import drop_warp_for_critical_section
 
 # Altitude hold (cascaded velocity controller, same gains as HoverAction)
 _SPEED_GAIN = 0.5  # m/s desired vertical speed per meter of altitude error
@@ -191,12 +191,9 @@ class TranslateAction(Action):
         # The velocity estimator below differentiates position between ticks
         # and breaks at high warp (one tick at 100x spans 50s game time, so
         # Δposition/Δt produces a spurious velocity). Drop warp first.
-        if state.time_warp_rate > 1.0:
-            commands.time_warp_rate = 1.0
-            return ActionResult(
-                status=ActionStatus.RUNNING,
-                message=f"Dropping warp ({state.time_warp_rate:g}x -> 1x) before translating.",
-            )
+        warp_result = drop_warp_for_critical_section(state, commands, "translating")
+        if warp_result is not None:
+            return warp_result
 
         # 1. Where are we?
         traveled_north, traveled_east = _lat_lon_to_meters(
@@ -291,5 +288,3 @@ class TranslateAction(Action):
         commands.translate_forward = 0.0
         commands.translate_right = 0.0
         commands.translate_up = 0.0
-        # Restore the user's intended warp rate (ADR 0012).
-        restore_user_warp(state, commands)

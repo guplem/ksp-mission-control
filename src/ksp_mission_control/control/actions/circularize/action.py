@@ -33,23 +33,21 @@ from ksp_mission_control.control.actions.base import (
     ActionStatus,
     Apse,
     Maneuver,
-    ManeuverNode,
     State,
     VesselCommands,
     parse_apse,
 )
-from ksp_mission_control.control.actions.helpers.maneuver_node import execute_node
+from ksp_mission_control.control.actions.helpers.controls import release_controls
+from ksp_mission_control.control.actions.helpers.maneuver_node import (
+    execute_node,
+    fail_if_node_has_no_thrust,
+    find_maneuver_node_by_ut,
+)
 from ksp_mission_control.control.actions.helpers.staging import (
     STAGING_MODE_PARAM,
     StagingMode,
     parse_staging_mode,
 )
-from ksp_mission_control.control.actions.helpers.warp import restore_user_warp
-
-# Tolerance used to match the node we requested against state.nodes by ut.
-# The bridge writes the same value we set in Maneuver.ut and reads it back
-# unchanged; this tolerance only protects against round-trip float jitter.
-_NODE_UT_MATCH_TOLERANCE: float = 0.001
 
 
 class CircularizeAction(Action):
@@ -71,7 +69,7 @@ class CircularizeAction(Action):
         self._node_ut: float | None = None
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
-        node = self._find_our_node(state)
+        node = find_maneuver_node_by_ut(state, self._node_ut)
 
         if node is None:
             return self._request_node(state, commands, log)
@@ -85,16 +83,9 @@ class CircularizeAction(Action):
                 message=f"Circularized at {self._apse.display_name} (e={state.orbit_eccentricity:.4f})",
             )
 
-        # Still burning. execute_node already handled auto-staging this tick.
-        # If we have genuinely run out of thrust with nothing to stage into,
-        # the burn cannot complete: fail rather than spin forever. But if
-        # commands.stage was set this tick (auto_stage queued a stage), the
-        # next tick will see the new engine's thrust, so defer the failure.
-        if state.thrust_available <= 0.0 and commands.stage is not True:
-            return ActionResult(
-                status=ActionStatus.FAILED,
-                message=f"Failed: no thrust available. dv_remaining={node.delta_v_remaining:.1f} m/s",
-            )
+        no_thrust = fail_if_node_has_no_thrust(state, commands, node)
+        if no_thrust is not None:
+            return no_thrust
 
         return ActionResult(
             status=ActionStatus.RUNNING,
@@ -102,25 +93,11 @@ class CircularizeAction(Action):
         )
 
     def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> None:
-        commands.throttle = 0.0
-        commands.autopilot = False
+        release_controls(commands)
         if self._node_ut is not None:
             commands.remove_node_at_ut = self._node_ut
-        # Restore the user's intended warp rate (ADR 0012). The helper
-        # already wrote this on a successful burn-complete return; the
-        # write here is the safety net for FAILED and external-abort paths.
-        restore_user_warp(state, commands)
 
     # ---- Helpers ------------------------------------------------------
-
-    def _find_our_node(self, state: State) -> ManeuverNode | None:
-        """Return the node this action created, or None if it does not exist yet."""
-        if self._node_ut is None:
-            return None
-        for candidate in state.nodes:
-            if abs(candidate.ut - self._node_ut) <= _NODE_UT_MATCH_TOLERANCE:
-                return candidate
-        return None
 
     def _request_node(self, state: State, commands: VesselCommands, log: ActionLogger) -> ActionResult:
         """Compute vis-viva for the chosen apse and request node creation."""

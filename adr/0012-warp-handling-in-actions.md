@@ -35,17 +35,17 @@ Every poll tick the session uses `dataclasses.replace` to inject its value into 
 Every action that performs a maneuver burn, runs an iterative replanning loop, or runs a tick-to-tick feedback controller (PD throttle, position-derivative velocity estimator, etc.):
 
 1. **No capture in `start()`.** Do not store `state.time_warp_rate` anywhere. No `self._initial_warp_rate` attribute, no max-tracking in `tick()`.
-2. At the start of each critical section, write `commands.time_warp_rate = 1.0` (or call `execute_node`, which does it progressively for burns).
-3. In `stop()`, call `restore_user_warp(state, commands)` from `helpers/warp.py`. The helper writes `commands.time_warp_rate = state.user_target_warp_rate` if (and only if) the live KSP rate differs from the user's target. The runner calls `stop()` on every termination path (`SUCCEEDED`, `FAILED`, user abort).
+2. At the start of each critical section, call `drop_warp_for_critical_section(state, commands, "<dropping_for>")` from `helpers/warp.py` and return its result if non-`None`. The helper writes `commands.time_warp_rate = 1.0` and returns `ActionResult(RUNNING, ...)`; the action's caller-facing message names the section it is about to run. For maneuver burns, `execute_node` steps warp down progressively across multiple ticks instead.
+3. **Do not call `restore_user_warp` in `stop()`.** The `ActionRunner` calls `restore_user_warp(last_state, commands)` automatically after every `action.stop()` (external stop, `SUCCEEDED`, and `FAILED` paths). Per-action stop bodies only need to release controls and any other action-specific cleanup (e.g. `commands.remove_node_at_ut = self._node_ut` for node-driven actions, `release_controls(commands)` from `helpers/controls.py` for the common throttle/autopilot/SAS reset).
 
-`execute_node` calls the same helper on every burn-complete return path: no `restore_warp_rate` parameter, no caller-supplied value. The two restores (helper on success, action's `stop()` on every path) write the same value, so success simply calls the helper twice into the same `commands` buffer (the second call is a no-op once the first lands).
+The helper writes `commands.time_warp_rate = state.user_target_warp_rate` if (and only if) the live KSP rate differs from the user's target. Centralizing the condition in `restore_user_warp` covers both directions: a critical section dropped KSP below the user's target (write up), or the user dropped their intent to 1x while KSP was still high (write down). Equality skips the write so a stable tick produces no redundant command.
 
-Centralizing the condition in `restore_user_warp` covers both directions: a critical section dropped KSP below the user's target (write up), or the user dropped their intent to 1x while KSP was still high (write down). Equality skips the write so a stable tick produces no redundant command.
+`execute_node` does not call `restore_user_warp` on its burn-complete return paths either. The runner's call after the action returns `SUCCEEDED` (and `stop()` runs) covers it in the same poll tick.
 
 ### Two flavours of drop
 
 - **Burn-driven actions** delegate to `execute_node`. The helper steps the warp rate down one rails-warp level per tick (e.g. `1000x -> 100x -> 50x -> 10x -> 5x -> 1x`) once the burn is close enough that one tick at the current rate could put the next check past the burn. The threshold is `dt * current_rate * 2.0 + 5.0` game seconds: scaled to the current rate so high warp gets enough lead time, but progressive so we never drop to 1x while the burn is still hundreds of game seconds away.
-- **Other critical sections** (e.g. `deorbit_to_target`'s iterative refinement loop, or atmospheric controllers in `land` / `hover` / `translate` / `aerobreak`) snap-drop warp directly in `tick()` and return `RUNNING` with a message. Subsequent ticks see `state.time_warp_rate` at 1x and the critical code runs.
+- **Other critical sections** (e.g. `deorbit_to_target`'s iterative refinement loop, or atmospheric controllers in `land` / `hover` / `translate` / `aerobreak`) call `drop_warp_for_critical_section` directly in `tick()` and return its `RUNNING` result. Subsequent ticks see `state.time_warp_rate` at 1x and the critical code runs.
 
 ### Two critical sections in one action
 
@@ -53,10 +53,10 @@ Centralizing the condition in `restore_user_warp` covers both directions: a crit
 
 The action handles this with:
 
-- Snap-drop warp to 1x while refining.
-- Resume warp to `state.user_target_warp_rate` once converged (only once, guarded by a `_refinement_warp_resumed` flag so subsequent ticks do not re-issue the command).
+- `drop_warp_for_critical_section` while refining.
+- Resume warp to `state.user_target_warp_rate` once converged (only once, guarded by a `_refinement_warp_resumed` flag so subsequent ticks do not re-issue the command). This is a *mid-tick* `restore_user_warp` call from inside `tick()`, not a `stop()` call.
 - Let `execute_node` step warp down again as the burn approaches.
-- Restore in `stop()`.
+- The runner restores warp after `stop()` on every termination path.
 
 ### What plans look like
 
@@ -88,6 +88,6 @@ will explicitly set the session's user target to 1x, so `circularize` will not r
 
 - `time_warp` and the warp controller widget are the only ways to change the user's target rate; everything else flows from `State.user_target_warp_rate`.
 - Plans are shorter and survive KSP refusing a warp set (altitude caps, vessel-not-settled rejection): the next action still reads the user's intent.
-- An aborted maneuver restores warp, because `stop()` runs on abort and reads the live state.
-- Actions no longer carry `self._initial_warp_rate`; their `start()` and `tick()` lose the warp bookkeeping entirely. Reduces per-action surface area.
+- An aborted maneuver restores warp, because the runner calls `restore_user_warp` after `stop()` on every termination path.
+- Actions no longer carry `self._initial_warp_rate`; their `start()` and `tick()` lose the warp bookkeeping entirely. Per-action `stop()` bodies no longer call `restore_user_warp` either. Reduces per-action surface area.
 - Two tuning knobs in `helpers/maneuver_node.py` shape the step-down threshold: `_WARP_STEP_DOWN_TICK_MARGIN` (per-tick multiplier, default 2.0) and `_WARP_STEP_DOWN_GAME_SECONDS_SAFETY` (fixed slack, default 5.0). Raise the margin if observed burns start while warp is still stepping down; raise the safety if the burn ever fires on the same tick the last step lands. Both are conservative defaults; lower only with log evidence.
