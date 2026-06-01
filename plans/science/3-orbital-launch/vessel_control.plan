@@ -2,7 +2,7 @@
 
 # This craft wobbles and creates resonance with the autopilot.
 # Soften the response so corrections are gentler and slower.
-autopilot_config time_to_peak=6.0 stopping_time=1.5 deceleration_time=8.0 attenuation_angle=5.0
+autopilot_config time_to_peak=8.0 stopping_time=2.5 deceleration_time=8.0 attenuation_angle=7.5
 
 launch target_altitude=75_000
 
@@ -11,9 +11,7 @@ circularize  apse=apoapsis
 # Booster should have dropped; restore default autopilot tuning for the lighter upper stage.
 autopilot_config restore_defaults=true
 
-# Raise apoapsis to 260 km with a burn at periapsis. The action runs at
-# 100x during its half-orbit coast to periapsis, drops to 1x for the
-# burn, and restores 100x on completion.
+# Raise apoapsis to 260 km with a burn at periapsis.
 change_apse apse=apoapsis target_altitude=260_000
 
 # Coast to the new 260 km apoapsis.
@@ -26,17 +24,16 @@ circularize  apse=periapsis
 align_plane  target_latitude=-6.6
 
 # Deorbit to the Desert Airfield (6 deg 35'58" S, 144 deg 02'26" W, 821 m terrain).
-deorbit_to_target target_latitude=-6.599 target_longitude=-144.041 drag_bias_km=60
+deorbit_to_target target_latitude=-6.599 target_longitude=-144.041 drag_bias_km=100
 
 # Get rid of all the remaining stages to be left with the heatshield exposed.
 sas        mode=prograde
 wait_for   orientation=prograde
 stage      until=1
-
 # Ensure the debris is far before turning on retrograde, to avoid collision.
 wait_for   time=5
 sas        mode=retrograde
 
-# Ensure parachutes are deployed below 3500m, to avoid a very long descent with open parachutes.
+# Ensure parachutes are deployed close to the target to avoid a very long descent with open parachutes.
 wait_for   below_altitude=3_500
 parachutes
