@@ -141,6 +141,27 @@ class TestWrap:
             assert row.styles.grid_size_rows == 4
 
 
+class TestNarrowCellRender:
+    """Buttons must not crash Rich when their grid cell is very narrow."""
+
+    @pytest.mark.asyncio
+    async def test_compact_button_renders_at_four_cells_without_error(self) -> None:
+        # Regression: when a compact button was laid out at 4 cells wide
+        # (below its min-width, as happened in the real sidebar), padding
+        # (1+1) left a 2-cell content area and line-pad (1+1) drove the
+        # wrappable width to 0. Rich's ``chop_cells`` then called
+        # ``range(..., ..., 0)`` -> ValueError. Force that exact width and
+        # confirm the button renders without raising.
+        async with WarpApp().run_test(size=(40, 10)) as pilot:
+            widget = pilot.app.query_one("#warp-controller", WarpControllerWidget)
+            button = widget.query_one("#warp-rate-100", Button)
+            button.styles.width = 4
+            button.styles.min_width = 4
+            button.refresh(layout=True)
+            await pilot.pause()
+            button.render_line(0)
+
+
 class TestRateSelected:
     """Clicking a button posts a ``RateSelected`` message."""
 

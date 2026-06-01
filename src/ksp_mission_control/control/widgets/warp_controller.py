@@ -139,6 +139,14 @@ class WarpControllerWidget(Static):
             yield Static("Warp", id="warp-controller-title")
             for level in _RAILS_WARP_LEVELS:
                 button = Button(_format_rate_label(float(level)), id=self._LEVEL_BUTTON_IDS[level], compact=True)
+                # Button's base CSS sets ``line-pad: 1``; Rich subtracts it
+                # twice from the content width. A button laid out narrower
+                # than its min-width (e.g. a tight grid cell) then reaches a
+                # 0-cell wrappable width, and Rich's chop_cells crashes with
+                # ``range(..., ..., 0)``. Zero it so the label truncates
+                # instead. Set in Python because the CSS parser rejects
+                # ``line-pad: 0``.
+                button.styles.line_pad = 0
                 yield button
             yield Static(self._format_actual_label(), id="warp-actual")
 
