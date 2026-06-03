@@ -49,9 +49,9 @@ def drop_warp_for_critical_section(
 
     Used at the top of ``tick()`` by any action whose feedback loop
     requires 1x: PD altitude/velocity controllers, iterative replanning
-    loops, position-derivative velocity estimators. ``dropping_for`` is
-    woven into the user-facing message (e.g. ``"hovering"``,
-    ``"refining deorbit"``).
+    loops, position-derivative velocity estimators, and orientation waits
+    (rails warp freezes vessel attitude). ``dropping_for`` is woven into
+    the user-facing message (e.g. ``"hovering"``, ``"refining deorbit"``).
     """
     if state.time_warp_rate > 1.0:
         commands.time_warp_rate = 1.0

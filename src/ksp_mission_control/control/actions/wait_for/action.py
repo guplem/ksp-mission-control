@@ -21,6 +21,7 @@ from ksp_mission_control.control.actions.base import (
     VesselCommands,
     VesselSituation,
 )
+from ksp_mission_control.control.actions.helpers.warp import drop_warp_for_critical_section
 
 # Default angular margin for the ``orientation`` check. Loose on purpose:
 # wait_for is a gate, not a precision tuner, and the vessel may oscillate
@@ -399,6 +400,15 @@ class WaitForAction(Action):
                     message="Failed: orientation=maneuver requires a maneuver node, but none exists.",
                 )
             if angle > self._orientation_margin:
+                # Reaching an orientation needs the vessel to physically rotate,
+                # which rails warp (>1x) freezes. Drop to 1x so the autopilot/SAS
+                # can slew onto the target; without this, the runner reasserting
+                # the user's warp at action start would leave us spinning forever
+                # under warp. Positional waits above advance fine under warp; only
+                # orientation needs 1x.
+                warp_result = drop_warp_for_critical_section(state, commands, f"orienting to {self._orientation.value}")
+                if warp_result is not None:
+                    return warp_result
                 return ActionResult(
                     status=ActionStatus.RUNNING,
                     message=(f"Waiting for orientation {self._orientation.value!r} (off by {angle:.1f}°, margin {self._orientation_margin:.1f}°)"),

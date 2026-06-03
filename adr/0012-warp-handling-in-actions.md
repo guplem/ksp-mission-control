@@ -42,10 +42,16 @@ The helper writes `commands.time_warp_rate = state.user_target_warp_rate` if (an
 
 `execute_node` does not call `restore_user_warp` on its burn-complete return paths either. The runner's call after the action returns `SUCCEEDED` (and `stop()` runs) covers it in the same poll tick.
 
+### Reasserting at action start
+
+The runner also reasserts the user's target on the **first tick of every action**, calling `restore_user_warp(state, commands)` before `action.tick()` runs. This closes a timing gap in the after-`stop()` restore: that restore fires on the exact tick an action ends, and for a burn action that is the burn-completion tick -- the moment KSP's post-burn warp lockout is most likely still active (`State.time_warp_rate_max == 1`). KSP silently clamps the restored rate to 1x, and with no retry the warp stayed at 1x for the entire following coast. (This is the same "KSP refused the rate" failure as the deprecated capture approach above, just triggered by *when* the single restore fires rather than *what value* it carries.) Reasserting on the next action's first tick lands one poll later, after the lockout lifts, so the warp recovers.
+
+The action's own `tick()` runs immediately after and may overwrite `commands.time_warp_rate`: a burn action's `execute_node` steps it down as the burn nears, and a 1x-critical section's `drop_warp_for_critical_section` drops it. Last-write-wins within the tick, so reasserting at start never fights an action that needs a lower rate -- it only re-applies the user's intent for actions (coasts, waits) that do not touch warp.
+
 ### Two flavours of drop
 
 - **Burn-driven actions** delegate to `execute_node`. The helper steps the warp rate down one rails-warp level per tick (e.g. `1000x -> 100x -> 50x -> 10x -> 5x -> 1x`) once the burn is close enough that one tick at the current rate could put the next check past the burn. The threshold is `dt * current_rate * 2.0 + 5.0` game seconds: scaled to the current rate so high warp gets enough lead time, but progressive so we never drop to 1x while the burn is still hundreds of game seconds away.
-- **Other critical sections** (e.g. `deorbit_to_target`'s iterative refinement loop, or atmospheric controllers in `land` / `hover` / `translate` / `aerobreak`) call `drop_warp_for_critical_section` directly in `tick()` and return its `RUNNING` result. Subsequent ticks see `state.time_warp_rate` at 1x and the critical code runs.
+- **Other critical sections** (e.g. `deorbit_to_target`'s iterative refinement loop, or atmospheric controllers in `land` / `hover` / `translate` / `aerobreak`) call `drop_warp_for_critical_section` directly in `tick()` and return its `RUNNING` result. Subsequent ticks see `state.time_warp_rate` at 1x and the critical code runs. `wait_for` does the same while waiting for an `orientation`: rails warp freezes vessel attitude, so an orientation wait under warp would never complete (and the start-of-action reassert above would otherwise leave it spinning under warp). Only `orientation` drops warp -- positional and time conditions advance under warp, so those waits keep warping.
 
 ### Two critical sections in one action
 
@@ -71,7 +77,7 @@ time_warp    target_multiplier=1
 
 The `time_warp 1x` line at the end is for the plan's *next* phase (reentry). Each maneuver drops and restores 100x internally by reading from the session value `time_warp` already updated.
 
-Hedging warp re-arms after each maneuver (`# Kerbal might have stopped the time warp`) is no longer needed. KSP refusing the warp does not affect the session value, so the next maneuver still sees `state.user_target_warp_rate = 100` and will keep trying to use that warp once altitude allows. For passive coasts where no action ends to trigger a restore, a bare `time_warp` step (no `target_multiplier`) re-sends the user-target rate without changing it.
+Hedging warp re-arms after each maneuver (`# Kerbal might have stopped the time warp`) is no longer needed. KSP refusing the warp does not affect the session value, so the next maneuver still sees `state.user_target_warp_rate = 100` and will keep trying to use that warp once altitude allows. Because the runner reasserts the target on each action's first tick, a coast or wait that follows a maneuver picks the warp back up automatically. A bare `time_warp` step (no `target_multiplier`) remains available to re-send the rate mid-action if KSP dropped it during a single long-running action.
 
 ### What plans should not do
 
@@ -89,5 +95,6 @@ will explicitly set the session's user target to 1x, so `circularize` will not r
 - `time_warp` and the warp controller widget are the only ways to change the user's target rate; everything else flows from `State.user_target_warp_rate`.
 - Plans are shorter and survive KSP refusing a warp set (altitude caps, vessel-not-settled rejection): the next action still reads the user's intent.
 - An aborted maneuver restores warp, because the runner calls `restore_user_warp` after `stop()` on every termination path.
+- The runner reasserts the user's target on each action's *first tick* as well as after `stop()`. This closes the gap where the after-`stop()` restore landed on a burn-completion tick inside KSP's warp lockout (`time_warp_rate_max == 1`) and was silently clamped, stranding the following coast at 1x. `wait_for` correspondingly drops warp while waiting for an `orientation`, since the reassert would otherwise leave it spinning under rails warp.
 - Actions no longer carry `self._initial_warp_rate`; their `start()` and `tick()` lose the warp bookkeeping entirely. Per-action `stop()` bodies no longer call `restore_user_warp` either. Reduces per-action surface area.
 - Two tuning knobs in `helpers/maneuver_node.py` shape the step-down threshold: `_WARP_STEP_DOWN_TICK_MARGIN` (per-tick multiplier, default 2.0) and `_WARP_STEP_DOWN_GAME_SECONDS_SAFETY` (fixed slack, default 5.0). Raise the margin if observed burns start while warp is still stepping down; raise the safety if the burn ever fires on the same tick the last step lands. Both are conservative defaults; lower only with log evidence.

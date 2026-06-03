@@ -109,6 +109,14 @@ class ActionRunner:
 
         if self._emit_started:
             log.entries.append(LogEntry(level=LogLevel.ACTION_START, message=self._action.label))
+            # Reassert the user's intended warp at the start of every action
+            # (ADR 0012). The one-shot restore on the previous action's stop()
+            # frequently lands on a burn-completion tick where KSP still has
+            # warp locked (max=1x) and silently clamps the request to 1x;
+            # re-applying on the next action's first tick lands after that
+            # lockout lifts. tick() below may override this same field (a burn
+            # steps warp down, a PD loop or orientation wait drops it to 1x).
+            restore_user_warp(vessel_state, commands)
             self._emit_started = False
 
         result = self._action.tick(vessel_state, commands, dt, log)

@@ -737,3 +737,58 @@ class TestTimeBeforePeriapsis:
         action.start(state, _params(time_before_periapsis=60.0))
         result = action.tick(state, VesselCommands(), 0.5, ActionLogger())
         assert result.status == ActionStatus.SUCCEEDED
+
+
+class TestOrientationWarpDrop:
+    """Reaching an orientation needs the vessel to rotate, which rails warp
+    freezes; wait_for drops to 1x while waiting, and only for orientation."""
+
+    def test_drops_warp_while_waiting_for_orientation(self) -> None:
+        import math
+
+        action = WaitForAction()
+        # 45 deg off prograde under 100x warp: must drop to 1x to slew.
+        state = State(
+            orientation_direction_orbital=(0.0, math.cos(math.radians(45.0)), math.sin(math.radians(45.0))),
+            time_warp_rate=100.0,
+        )
+        action.start(state, _params(orientation="prograde"))
+        commands = VesselCommands()
+        result = action.tick(state, commands, 0.5, ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+        assert commands.time_warp_rate == 1.0
+
+    def test_no_warp_command_at_1x_while_waiting(self) -> None:
+        import math
+
+        action = WaitForAction()
+        state = State(
+            orientation_direction_orbital=(0.0, math.cos(math.radians(45.0)), math.sin(math.radians(45.0))),
+            time_warp_rate=1.0,
+        )
+        action.start(state, _params(orientation="prograde"))
+        commands = VesselCommands()
+        result = action.tick(state, commands, 0.5, ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+        assert commands.time_warp_rate is None
+        assert "orientation" in result.message
+
+    def test_no_warp_drop_when_already_aligned(self) -> None:
+        action = WaitForAction()
+        state = State(orientation_direction_orbital=(0.0, 1.0, 0.0), time_warp_rate=100.0)
+        action.start(state, _params(orientation="prograde"))
+        commands = VesselCommands()
+        result = action.tick(state, commands, 0.5, ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+        assert commands.time_warp_rate is None
+
+    def test_positional_wait_does_not_drop_warp(self) -> None:
+        # A non-orientation wait (apoapsis) must keep warping: positional state
+        # advances under warp, so we do not drop it.
+        action = WaitForAction()
+        state = State(orbit_apoapsis_passed=False, time_warp_rate=100.0)
+        action.start(state, _params(apoapsis=True))
+        commands = VesselCommands()
+        result = action.tick(state, commands, 0.5, ActionLogger())
+        assert result.status == ActionStatus.RUNNING
+        assert commands.time_warp_rate is None

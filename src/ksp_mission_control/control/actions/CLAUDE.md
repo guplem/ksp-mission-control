@@ -190,11 +190,15 @@ def stop(self, state: State, commands: VesselCommands, log: ActionLogger) -> Non
 
 The `ActionRunner` calls `restore_user_warp(last_state, commands)` after
 every `action.stop(...)` (`runner.stop()`, `runner.step()` on
-`SUCCEEDED`, `runner.step()` on `FAILED`). The helper compares the live
-KSP rate against `state.user_target_warp_rate` and skips the write when
-they match, so it is cheap to call unconditionally. Per-action `stop()`
-bodies must not duplicate it: doing so re-introduces drift if the
-contract ever changes.
+`SUCCEEDED`, `runner.step()` on `FAILED`). It also reasserts it on each
+action's **first tick**, before `tick()` runs, so warp recovers when the
+after-`stop()` restore lands inside KSP's post-burn warp lockout (max 1x)
+and is clamped. Your `tick()` may still override that same field for a
+critical section (drop/step-down); last-write-wins. The helper compares
+the live KSP rate against `state.user_target_warp_rate` and skips the
+write when they match, so it is cheap to call unconditionally. Per-action
+`stop()` bodies must not duplicate it: doing so re-introduces drift if
+the contract ever changes.
 
 Examples in tree: `align_plane`, `circularize`, `change_apse`,
 `deorbit_to_target`. The latter has two critical sections (a refinement
@@ -213,7 +217,7 @@ runner handle the final restore on `stop()`.
 | `helpers.maneuver_node` | `fail_if_node_has_no_thrust(state, commands, node)` | Return `ActionResult(FAILED, ...)` when the vessel cannot complete the burn. Exempts the tick that just queued a stage (`commands.stage is True`). Returns `None` to continue burning. Use immediately after `execute_node` returns `False`. |
 | `helpers.maneuver_node` | `tsiolkovsky_burn_time(...)` | Estimate burn duration from current mass/Isp/thrust. Used by the bridge to populate `ManeuverNode.burn_time_estimate`. |
 | `helpers.warp` | `restore_user_warp(state, commands)` | Write `commands.time_warp_rate = state.user_target_warp_rate` when the rates differ. Called by the `ActionRunner` after every `action.stop()`; actions rarely call it directly (the deorbit mid-tick refinement-resume is the one exception). |
-| `helpers.warp` | `drop_warp_for_critical_section(state, commands, dropping_for)` | Drop KSP to 1x at the top of `tick()` for non-burn critical sections (PD controllers, refinement loops, position-derivative velocity estimators). Returns `ActionResult(RUNNING, "Dropping warp ...")` when above 1x, `None` when already at 1x. Caller returns the result and re-enters next tick. |
+| `helpers.warp` | `drop_warp_for_critical_section(state, commands, dropping_for)` | Drop KSP to 1x at the top of `tick()` for non-burn critical sections (PD controllers, refinement loops, position-derivative velocity estimators, orientation waits -- rails warp freezes attitude). Returns `ActionResult(RUNNING, "Dropping warp ...")` when above 1x, `None` when already at 1x. Caller returns the result and re-enters next tick. |
 | `helpers.controls` | `release_controls(commands)` | Set `throttle=0`, `autopilot=False`, `sas=False`. Use in `stop()` of any action that drove the vessel's active controls during `tick()`. Other cleanup (RCS, brakes, node removal) stays per-action. |
 | `helpers.staging` | `STAGING_MODE_PARAM` | Canonical `staging_mode` `ActionParam`. Add to `params` unchanged. Default is `any_flameout`; users disable it per-step with `staging_mode=off`. |
 | `helpers.staging` | `parse_staging_mode(value)` | `str | None -> StagingMode | None`. Accepts a `StagingMode` value (case-insensitive), `"off"`, or empty/`None` for disabled. Use in `start()`. |

@@ -72,6 +72,16 @@ class RequiredParamAction(Action):
         pass
 
 
+class WarpHoldingStubAction(StubAction):
+    """Stub whose tick() forces 1x warp, to verify the action overrides the
+    runner's start-of-action warp reassert (a burn or orientation wait must win)."""
+
+    def tick(self, state: State, controls: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
+        result = super().tick(state, controls, dt, log)
+        controls.time_warp_rate = 1.0
+        return result
+
+
 class TestActionRunnerNoAction:
     """Tests for the runner with no active action."""
 
@@ -268,3 +278,41 @@ class TestActionRunnerParamValidation:
         # Should not raise
         snap = runner.snapshot()
         assert snap.action_id == "required-param"
+
+
+class TestActionRunnerWarpReassertOnStart:
+    """The runner reasserts ``user_target_warp_rate`` on each action's first
+    tick (ADR 0012), so warp left clamped by KSP's post-burn lockout on the
+    previous action's stop() recovers as soon as the next action begins."""
+
+    def test_first_tick_reasserts_user_target_warp(self) -> None:
+        runner = ActionRunner()
+        action = StubAction()  # tick() does not touch warp
+        runner.start_action(action, State(time_warp_rate=1.0, user_target_warp_rate=100.0))
+        result = runner.step(State(time_warp_rate=1.0, user_target_warp_rate=100.0), dt=0.5)
+        assert result.commands.time_warp_rate == 100.0
+
+    def test_reassert_skipped_when_rates_already_match(self) -> None:
+        runner = ActionRunner()
+        action = StubAction()
+        runner.start_action(action, State(time_warp_rate=1.0, user_target_warp_rate=1.0))
+        result = runner.step(State(time_warp_rate=1.0, user_target_warp_rate=1.0), dt=0.5)
+        assert result.commands.time_warp_rate is None
+
+    def test_reassert_only_on_first_tick(self) -> None:
+        runner = ActionRunner()
+        action = StubAction()
+        runner.start_action(action, State(time_warp_rate=1.0, user_target_warp_rate=100.0))
+        runner.step(State(time_warp_rate=1.0, user_target_warp_rate=100.0), dt=0.5)
+        # Second tick is not the first, so the runner does not reassert; StubAction
+        # never touches warp, so nothing is commanded.
+        result = runner.step(State(time_warp_rate=1.0, user_target_warp_rate=100.0), dt=0.5)
+        assert result.commands.time_warp_rate is None
+
+    def test_action_tick_overrides_reassert(self) -> None:
+        runner = ActionRunner()
+        action = WarpHoldingStubAction()
+        runner.start_action(action, State(time_warp_rate=50.0, user_target_warp_rate=100.0))
+        result = runner.step(State(time_warp_rate=50.0, user_target_warp_rate=100.0), dt=0.5)
+        # Runner reasserts 100x first, then tick() forces 1x; the action wins.
+        assert result.commands.time_warp_rate == 1.0
