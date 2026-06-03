@@ -4,7 +4,14 @@
 # Soften the response so corrections are gentler and slower.
 autopilot_config time_to_peak=8.0 stopping_time=2.5 deceleration_time=8.0 attenuation_angle=7.5
 
-launch target_altitude=75_000
+# This craft's high thrust makes the apoapsis outrun its horizontal speed
+# with the default turn curve, leaving a near-vertical, deeply suborbital
+# trajectory that needs a huge circularization burn. turn_exponent < 1.0
+# turns to horizontal earlier so the vessel builds horizontal velocity and
+# reaches apoapsis nearly orbital. Tune in-game: lower it (e.g. 0.4) if the
+# periapsis at engine cutoff is still deeply negative; raise it toward 1.0
+# if the turn is so aggressive the apoapsis stalls below target.
+launch target_altitude=75_000 turn_exponent=0.5
 
 circularize  apse=apoapsis
 
