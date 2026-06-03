@@ -57,8 +57,16 @@ def _make_burning_state(
     engine_states: tuple[str, ...] = (),
     time_warp_rate: float = 1.0,
     user_target_warp_rate: float = 1.0,
+    orientation_facing: tuple[float, float, float] = (0.0, 0.0, 0.0),
 ) -> State:
-    """Build a State with vessel parameters that yield a finite burn time."""
+    """Build a State with vessel parameters that yield a finite burn time.
+
+    ``orientation_facing`` is the vessel forward vector in the body's
+    non-rotating frame, compared against the node burn vector by the
+    alignment gate. It defaults to ``(0, 0, 0)`` (zero-length), which the
+    gate treats as "aligned" so tests that do not care about alignment
+    keep their pre-gate throttle behavior.
+    """
     return State(
         universal_time=universal_time,
         thrust_available=thrust_available,
@@ -68,6 +76,7 @@ def _make_burning_state(
         parts=Parts(engines=tuple(PartInfo(stage=0, state=s) for s in engine_states)),
         time_warp_rate=time_warp_rate,
         user_target_warp_rate=user_target_warp_rate,
+        orientation_direction_body_non_rotating=orientation_facing,
     )
 
 
@@ -187,6 +196,73 @@ class TestExecuteNodeThrottle:
         node = _make_node(ut=500.0, delta_v_remaining=100.0, burn_time_estimate=30.0)
         commands = VesselCommands()
         execute_node(_make_burning_state(universal_time=500.0), commands, node, None, 0.5, ActionLogger())
+        assert commands.throttle == 1.0
+
+
+class TestExecuteNodeAlignmentGate:
+    """Once the burn window is open the throttle must stay closed until the
+    vessel is actually pointed at the burn vector. Firing while still
+    slewing deposits delta-v off-axis and corrupts the orbit.
+
+    Regression for the science/3-orbital-launch change_apse: it burns at
+    periapsis right after circularizing, so burn_start_ut can fall in the
+    past and the window opens before the autopilot has turned the vessel.
+    """
+
+    def test_holds_throttle_when_misaligned(self) -> None:
+        """Burn window open but vessel faces 90 deg off the burn vector -> no throttle."""
+        node = _make_node(ut=500.0, delta_v_remaining=100.0, burn_vector_remaining=(0.0, 100.0, 0.0))
+        state = _make_burning_state(universal_time=500.0, orientation_facing=(1.0, 0.0, 0.0))
+        commands = VesselCommands()
+        complete = execute_node(state, commands, node, None, 0.5, ActionLogger())
+        assert complete is False
+        assert commands.throttle == 0.0
+
+    def test_keeps_orienting_while_holding(self) -> None:
+        """While the gate holds the throttle, the autopilot must still be commanded
+        toward the burn vector so the vessel keeps slewing into alignment."""
+        node = _make_node(ut=500.0, delta_v_remaining=100.0, burn_vector_remaining=(0.0, 100.0, 0.0))
+        state = _make_burning_state(universal_time=500.0, orientation_facing=(1.0, 0.0, 0.0))
+        commands = VesselCommands()
+        execute_node(state, commands, node, None, 0.5, ActionLogger())
+        assert commands.autopilot is True
+        assert commands.autopilot_direction is not None
+        assert commands.autopilot_direction.vector == (0.0, 100.0, 0.0)
+
+    def test_opens_throttle_when_aligned(self) -> None:
+        """Burn window open and vessel pointed along the burn vector -> throttle opens."""
+        node = _make_node(ut=500.0, delta_v_remaining=100.0, burn_vector_remaining=(0.0, 100.0, 0.0), burn_time_estimate=10.0)
+        state = _make_burning_state(universal_time=500.0, orientation_facing=(0.0, 1.0, 0.0))
+        commands = VesselCommands()
+        execute_node(state, commands, node, None, 0.5, ActionLogger())
+        assert commands.throttle == 1.0
+
+    def test_opens_throttle_within_tolerance(self) -> None:
+        """5 deg off (inside the 10 deg tolerance) still counts as aligned."""
+        # facing ~ (sin 5deg, cos 5deg, 0)
+        node = _make_node(ut=500.0, delta_v_remaining=100.0, burn_vector_remaining=(0.0, 100.0, 0.0), burn_time_estimate=10.0)
+        state = _make_burning_state(universal_time=500.0, orientation_facing=(0.08716, 0.99619, 0.0))
+        commands = VesselCommands()
+        execute_node(state, commands, node, None, 0.5, ActionLogger())
+        assert commands.throttle == 1.0
+
+    def test_holds_throttle_just_outside_tolerance(self) -> None:
+        """15 deg off (outside the 10 deg tolerance) holds the burn."""
+        # facing ~ (sin 15deg, cos 15deg, 0)
+        node = _make_node(ut=500.0, delta_v_remaining=100.0, burn_vector_remaining=(0.0, 100.0, 0.0))
+        state = _make_burning_state(universal_time=500.0, orientation_facing=(0.25882, 0.96593, 0.0))
+        commands = VesselCommands()
+        execute_node(state, commands, node, None, 0.5, ActionLogger())
+        assert commands.throttle == 0.0
+
+    def test_missing_orientation_data_does_not_block_burn(self) -> None:
+        """A zero-length facing vector (partial test state) is treated as aligned,
+        so the gate never stalls a burn on absent telemetry. Production always
+        supplies a real unit vector."""
+        node = _make_node(ut=500.0, delta_v_remaining=100.0, burn_time_estimate=10.0)
+        state = _make_burning_state(universal_time=500.0)  # facing defaults to (0, 0, 0)
+        commands = VesselCommands()
+        execute_node(state, commands, node, None, 0.5, ActionLogger())
         assert commands.throttle == 1.0
 
 

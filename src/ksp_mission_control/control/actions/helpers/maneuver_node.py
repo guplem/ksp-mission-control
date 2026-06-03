@@ -11,8 +11,12 @@ Phases:
     Cold:    state.universal_time < burn_start_ut.
              Autopilot points at burn_vector_remaining, throttle = 0.
     Burn:    state.universal_time >= burn_start_ut.
-             Autopilot points at burn_vector_remaining; throttle is full
-             while burn_time_estimate >> dt and tapers to
+             Autopilot points at burn_vector_remaining. Throttle stays 0
+             until the vessel's facing is within _BURN_ALIGNMENT_TOLERANCE_DEG
+             of the burn vector (the alignment gate), so the engine never
+             fires while the autopilot is still slewing onto the new
+             direction. Once aligned, throttle is full while
+             burn_time_estimate >> dt and tapers to
              ``burn_time_estimate / (dt * _TAPER_MARGIN)`` as the burn
              approaches completion, so the engine ramps down across the
              last ~_TAPER_MARGIN ticks instead of overshooting on the
@@ -48,6 +52,7 @@ from ksp_mission_control.control.actions.base import (
     ReferenceFrame,
     State,
     VesselCommands,
+    angle_between,
 )
 from ksp_mission_control.control.actions.helpers.staging import StagingMode, auto_stage
 
@@ -72,6 +77,15 @@ _STANDARD_GRAVITY: float = 9.80665
 # autopilot tracking at small remaining dv (where the burn vector is
 # noise-dominated and a misaligned full-tick impulse easily overshoots).
 _TAPER_MARGIN: float = 3.0
+
+# Maximum angular error (degrees) between the vessel's facing and the
+# remaining burn vector before the helper opens the throttle. The autopilot
+# is pointed at the burn vector every tick, but slewing the vessel takes
+# time; firing before it arrives deposits delta-v off-axis and corrupts the
+# orbit. 10 deg matches wait_for's orientation margin: loose enough that a
+# wobbly craft settles into the window without stalling the burn, tight
+# enough that under 2% of thrust goes off-axis (cos 10 deg = 0.985).
+_BURN_ALIGNMENT_TOLERANCE_DEG: float = 10.0
 
 # Per-tick safety margin for the warp step-down threshold. The helper
 # triggers a one-level drop when one tick's worth of game time at the
@@ -122,8 +136,10 @@ def execute_node(
 
     Sets ``commands.autopilot`` and ``commands.autopilot_direction`` to
     point along the node's remaining burn vector every tick. Throttles to
-    0 while still coasting; throttles to 1 once the burn window is
-    entered. When ``staging_mode`` is not ``None``, also delegates to
+    0 while still coasting, and also once the burn window is entered until
+    the vessel is aligned within ``_BURN_ALIGNMENT_TOLERANCE_DEG`` of the
+    burn vector; only then does it throttle up. When ``staging_mode`` is
+    not ``None``, also delegates to
     ``auto_stage`` so spent stages drop without caller wiring. Returns
     ``True`` when ``node.delta_v_remaining`` falls below the completion
     threshold.
@@ -206,6 +222,25 @@ def execute_node(
         log.debug(
             f"Coasting to burn: ut_to_start={burn_start_ut - state.universal_time:.1f}s, "
             f"burn_time={node.burn_time_estimate:.1f}s, dv_remaining={node.delta_v_remaining:.1f} m/s"
+        )
+        return False
+
+    # Alignment gate: the burn window is open, but do not fire until the
+    # vessel has actually slewed onto the burn vector. The autopilot is
+    # already commanded toward burn_vector_remaining above; rotating there
+    # takes time, and a full-throttle tick while still misaligned deposits
+    # delta-v off-axis and corrupts the orbit. This bites hardest when the
+    # node sits close in time relative to the burn duration (e.g. raising
+    # apoapsis from a near-circular orbit), where burn_start_ut falls in the
+    # past and the window is already open on the first tick. Throttle stays
+    # 0 while we keep orienting; thrust is still available, so the caller's
+    # no-thrust check does not false-fail during the hold.
+    alignment_error = angle_between(state.orientation_direction_body_non_rotating, node.burn_vector_remaining)
+    if alignment_error > _BURN_ALIGNMENT_TOLERANCE_DEG:
+        commands.throttle = 0.0
+        log.debug(
+            f"Holding burn: {alignment_error:.1f} deg off burn vector "
+            f"(tolerance {_BURN_ALIGNMENT_TOLERANCE_DEG:.1f} deg), dv_remaining={node.delta_v_remaining:.1f} m/s"
         )
         return False
 
