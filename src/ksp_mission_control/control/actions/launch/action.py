@@ -11,13 +11,24 @@ not by current altitude. This guarantees the turn always finishes exactly
 when the target is met, regardless of the rocket's thrust profile:
 
   progress = orbit_apoapsis / target_altitude   (clamped to [0, 1])
-  pitch    = cos(progress * 90 deg) * (90 - final_pitch) + final_pitch
+  shaped   = progress ** turn_exponent
+  pitch    = cos(shaped * 90 deg) * (90 - final_pitch) + final_pitch
 
 At apoapsis = 0 the pitch is 90 deg (straight up). At apoapsis =
 target_altitude the pitch reaches ``final_pitch`` deg, at which point the
 action also completes. With ``final_pitch = 0`` (the default) the turn
 ends horizontal; with ``final_pitch = 45`` the turn ends at a 45 deg
 climb, still gaining altitude as apoapsis is reached.
+
+``turn_exponent`` reshapes how fast the turn happens between those
+endpoints. At ``1.0`` progress is used as-is: the original cosine curve.
+Below ``1.0`` the pitch drops to horizontal earlier in the climb, so the
+vessel builds horizontal velocity sooner and reaches the target apoapsis
+nearly orbital (small circularization burn). Above ``1.0`` it stays
+vertical longer. The default is ``0.7`` (a moderately aggressive turn that
+suits most launches); a high-thrust vessel whose apoapsis still outruns its
+horizontal velocity wants a lower value, tuned in-game against the
+periapsis at engine cutoff.
 
 Phases
 ------
@@ -37,6 +48,7 @@ body's properties at start():
 - target_inclination: abs(latitude) (lowest-energy eastward launch)
 - turn_start_altitude: initial altitude + 50m (just enough to clear the pad)
 - final_pitch: 0 (horizontal at end of turn)
+- turn_exponent: 0.7 (moderately aggressive; 1.0 is the original cosine curve)
 """
 
 from __future__ import annotations
@@ -66,6 +78,7 @@ _APOAPSIS_TOLERANCE_MULTIPLIER = 0.002  # fraction of target altitude to conside
 _GRAVITY_TURN_CLEARANCE = 50  # meters: default vertical climb above the launch altitude before the turn begins
 _DEFAULT_ALTITUDE_ATMOSPHERE_MULTIPLIER = 1.1  # multiplier: default target = atmosphere_depth * this
 _DEFAULT_ALTITUDE_AIRLESS_BODY = 50_000.0  # meters: default target when body has no atmosphere
+_DEFAULT_TURN_EXPONENT = 0.7  # gravity-turn pitch-curve shape; <1 turns earlier (more aggressive), 1.0 = original cosine curve
 
 
 def _inclination_to_heading(inclination_deg: float, latitude_deg: float = 0.0) -> float:
@@ -148,6 +161,18 @@ class LaunchAction(Action):
             default=2.5,
             unit="deg",
         ),
+        ActionParam(
+            param_id="turn_exponent",
+            label="Turn Exponent",
+            description=(
+                "Shapes the gravity-turn pitch curve. 1.0 = original cosine curve; below 1.0 turns to "
+                "horizontal earlier (more aggressive, builds horizontal velocity sooner); above 1.0 stays "
+                "vertical longer. Must be positive."
+            ),
+            required=False,
+            param_type=ParamType.FLOAT,
+            default=_DEFAULT_TURN_EXPONENT,
+        ),
         STAGING_MODE_PARAM,
     ]
 
@@ -181,6 +206,13 @@ class LaunchAction(Action):
         # Resolve final_pitch: angle above the horizon when the turn ends.
         raw_final_pitch = param_values["final_pitch"]
         self._final_pitch: float = float(raw_final_pitch) if raw_final_pitch is not None else 0.0
+
+        # Resolve turn_exponent: reshapes the pitch curve. Must be positive;
+        # a non-positive exponent makes ``progress ** exponent`` degenerate.
+        raw_turn_exponent = param_values["turn_exponent"]
+        self._turn_exponent: float = float(raw_turn_exponent) if raw_turn_exponent is not None else _DEFAULT_TURN_EXPONENT
+        if self._turn_exponent <= 0.0:
+            raise ValueError(f"turn_exponent must be positive (got {self._turn_exponent})")
 
         self._staging_mode: StagingMode | None = parse_staging_mode(param_values["staging_mode"])
 
@@ -240,11 +272,13 @@ class LaunchAction(Action):
         # Pitch: vertical until the vessel reaches turn_start_altitude, then
         # track apoapsis progress toward target_altitude. The curve interpolates
         # from 90 deg (straight up) down to final_pitch as progress goes 0 -> 1.
+        # turn_exponent reshapes that curve: below 1.0 the turn happens earlier.
         progress = max(0.0, min(1.0, state.orbit_apoapsis / self._target_altitude))
         if state.altitude_sea < self._turn_start_altitude:
             commands.autopilot_pitch = 90.0
         else:
-            commands.autopilot_pitch = cos(radians(progress * 90.0)) * (90.0 - self._final_pitch) + self._final_pitch
+            shaped_progress = progress**self._turn_exponent
+            commands.autopilot_pitch = cos(radians(shaped_progress * 90.0)) * (90.0 - self._final_pitch) + self._final_pitch
 
         log.debug(f"Dynamic pressure: {(state.pressure_dynamic / 1000):.1f}kPa")
 
