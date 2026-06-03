@@ -262,7 +262,7 @@ _SURFACE_VELOCITY_TARGETS: dict[Orientation, tuple[float, float, float]] = {
 }
 
 
-def _angle_between(v1: tuple[float, float, float], v2: tuple[float, float, float]) -> float:
+def angle_between(v1: tuple[float, float, float], v2: tuple[float, float, float]) -> float:
     """Angle in degrees between two 3D vectors. Returns 0.0 if either is zero-length."""
     mag1 = math.sqrt(v1[0] * v1[0] + v1[1] * v1[1] + v1[2] * v1[2])
     mag2 = math.sqrt(v2[0] * v2[0] + v2[1] * v2[1] + v2[2] * v2[2])
@@ -1245,10 +1245,10 @@ class State:
         if orientation is Orientation.MANEUVER:
             if not self.nodes:
                 return None
-            return _angle_between(self.orientation_direction_body_non_rotating, self.nodes[0].burn_vector_remaining)
+            return angle_between(self.orientation_direction_body_non_rotating, self.nodes[0].burn_vector_remaining)
         if orientation in _SURFACE_VELOCITY_TARGETS:
-            return _angle_between(self.orientation_direction_surface_velocity, _SURFACE_VELOCITY_TARGETS[orientation])
-        return _angle_between(self.orientation_direction_orbital, _ORBITAL_TARGETS[orientation])
+            return angle_between(self.orientation_direction_surface_velocity, _SURFACE_VELOCITY_TARGETS[orientation])
+        return angle_between(self.orientation_direction_orbital, _ORBITAL_TARGETS[orientation])
 
 
 @dataclass
