@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from dataclasses import fields as dataclass_fields
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from ksp_mission_control.control.actions.base import (
     Action,
@@ -89,6 +89,9 @@ def _merge_commands(
     Tracks which track last set each field in field_owners.
     Logs a warning when two tracks set the same field in the same tick.
     science_commands is additive (concatenated, no conflict).
+    time_warp_rate takes the minimum across tracks (slowest wins, no warning):
+    it is a shared global, not a per-track control, so a track in a critical
+    section is never sped back up by another.
     """
     for field in dataclass_fields(source):
         value = getattr(source, field.name)
@@ -104,16 +107,26 @@ def _merge_commands(
         if field.name in field_owners:
             prev_track, prev_value = field_owners[field.name]
             if prev_track != source_track:
-                warnings.append(
-                    LogEntry(
-                        level=LogLevel.PYTHON_WARNING,
-                        message=(
-                            f"Command conflict on '{field.name}': "
-                            f"set by '{prev_track}' ({prev_value}) "
-                            f"and '{source_track}' ({value}). Using last value."
-                        ),
+                if field.name == "time_warp_rate":
+                    # Time warp is a shared global resource, not a per-track
+                    # control. The lowest requested rate wins so a track that
+                    # dropped to 1x for a critical section (a maneuver burn, a
+                    # PD loop) is never overridden by another track reasserting
+                    # the user's cruise warp on its first tick (ADR 0012). min()
+                    # is order-independent and accumulates to the global minimum
+                    # across 3+ tracks, so it needs no conflict warning.
+                    value = min(cast(float, prev_value), cast(float, value))
+                else:
+                    warnings.append(
+                        LogEntry(
+                            level=LogLevel.PYTHON_WARNING,
+                            message=(
+                                f"Command conflict on '{field.name}': "
+                                f"set by '{prev_track}' ({prev_value}) "
+                                f"and '{source_track}' ({value}). Using last value."
+                            ),
+                        )
                     )
-                )
 
         setattr(target, field.name, value)
         field_owners[field.name] = (source_track, value)

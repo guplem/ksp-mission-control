@@ -197,6 +197,35 @@ class TestMergeCommands:
         _merge_commands(target, source, "merged", "track-a", field_owners, warnings)
         assert len(warnings) == 0
 
+    def test_time_warp_rate_keeps_minimum_when_higher_set_last(self) -> None:
+        # The log_20260603 bug: a burn track drops warp to 1x while a science
+        # track reasserts the user's 100x last. Min must win so the burn keeps
+        # its low warp instead of being sped back up.
+        target = VesselCommands()
+        source_burn = VesselCommands(time_warp_rate=1.0)
+        source_science = VesselCommands(time_warp_rate=100.0)
+        field_owners: dict[str, tuple[str, object]] = {}
+        warnings: list = []
+
+        _merge_commands(target, source_burn, "merged", "vessel_control", field_owners, warnings)
+        _merge_commands(target, source_science, "merged", "science_control", field_owners, warnings)
+
+        assert target.time_warp_rate == 1.0
+        assert len(warnings) == 0
+
+    def test_time_warp_rate_keeps_minimum_when_lower_set_last(self) -> None:
+        target = VesselCommands()
+        source_science = VesselCommands(time_warp_rate=100.0)
+        source_burn = VesselCommands(time_warp_rate=1.0)
+        field_owners: dict[str, tuple[str, object]] = {}
+        warnings: list = []
+
+        _merge_commands(target, source_science, "merged", "science_control", field_owners, warnings)
+        _merge_commands(target, source_burn, "merged", "vessel_control", field_owners, warnings)
+
+        assert target.time_warp_rate == 1.0
+        assert len(warnings) == 0
+
 
 class TestMultiTrackExecutorSingleAction:
     """Tests that single-action mode works as a drop-in for PlanExecutor."""
