@@ -13,10 +13,10 @@ autopilot_config time_to_peak=8.0 stopping_time=2.5 deceleration_time=8.0 attenu
 # if the turn is so aggressive the apoapsis stalls below target.
 launch target_altitude=75_000 turn_exponent=0.5
 
-circularize  apse=apoapsis
-
 # Booster should have dropped; restore default autopilot tuning for the lighter upper stage.
 autopilot_config restore_defaults=true
+
+circularize  apse=apoapsis
 
 # Raise apoapsis to 260 km with a burn at periapsis.
 change_apse apse=apoapsis target_altitude=260_000
