@@ -1024,6 +1024,14 @@ def apply_controls(conn: object, controls: VesselCommands) -> None:
             ap.engage()
         else:
             ap.disengage()
+    if controls.autopilot_pitch is not None or controls.autopilot_heading is not None or controls.autopilot_roll is not None:
+        # kRPC interprets target_pitch/heading/roll in ap.reference_frame,
+        # which persists on the autopilot and is changed by
+        # autopilot_direction commands (maneuver burns use the body's
+        # non-rotating frame). Pin the surface frame first so pitch and
+        # heading always mean navball pitch/heading; a stale frame made
+        # launches nose over toward the horizon (log_20260612_145328).
+        ap.reference_frame = vessel.surface_reference_frame
     if controls.autopilot_pitch is not None:
         ap.target_pitch = controls.autopilot_pitch
     if controls.autopilot_heading is not None:

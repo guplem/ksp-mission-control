@@ -770,6 +770,28 @@ class TestApplyControlsAutopilotTargeting:
         assert ap.target_heading == 20.0
         assert ap.target_roll == 30.0
 
+    def test_pitch_heading_targets_reset_reference_frame_to_surface(self) -> None:
+        # kRPC interprets target_pitch/heading in ap.reference_frame, which
+        # persists on the autopilot across commands: a maneuver burn sets the
+        # body's non-rotating frame via autopilot_direction. A later launch
+        # commanding pitch 90 in that stale frame chases a direction near the
+        # horizon and noses the rocket over (log_20260612_145328). Pitch and
+        # heading targets must always pin the surface frame first.
+        conn = _make_mock_conn()
+        vessel = conn.space_center.active_vessel
+        apply_controls(
+            conn,
+            VesselCommands(
+                autopilot_direction=AutopilotDirection(
+                    vector=(0.0, 1.0, 0.0),
+                    reference_frame=ReferenceFrame.BODY_NON_ROTATING,
+                )
+            ),
+        )
+        assert vessel.auto_pilot.reference_frame is not vessel.surface_reference_frame
+        apply_controls(conn, VesselCommands(autopilot_pitch=89.7, autopilot_heading=90.0))
+        assert vessel.auto_pilot.reference_frame is vessel.surface_reference_frame
+
 
 class TestApplyControlsAutopilotDirection:
     """Tests for autopilot direction vector targeting in apply_controls()."""
