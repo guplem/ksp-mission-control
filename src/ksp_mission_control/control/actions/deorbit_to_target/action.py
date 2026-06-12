@@ -1,29 +1,34 @@
 """DeorbitToTargetAction - retrograde burn timed for a target lat/lon impact.
 
-The action runs a closed loop between two signals:
+The action runs a closed loop driven by ``State.predicted_impact``, which the
+bridge fills with the ballistic lat/lon where the post-node trajectory crashes.
 
-- The kRPC predictor in the bridge fills ``State.predicted_impact`` with the
-  ballistic lat/lon where the post-node trajectory would crash.
-- Each tick before the burn window opens, the action compares the
-  prediction against the desired target and nudges the burn UT to drive
-  the longitude error toward zero. The delta-v (and therefore the post-
-  burn periapsis) stays fixed at the value computed in ``start()``.
+The burn point sets the impact, and it is chosen so the impact lands on the
+target in **both** axes:
 
-Why iterate on burn UT only:
+- **Latitude** comes from *where in the orbit* the burn happens. A retrograde
+  burn makes the burn point the post-burn apoapsis; the trajectory then
+  reaches sea level a fixed travel angle downtrack (180 deg minus the true
+  anomaly of the sea-level crossing, ``_travel_angle_burn_to_impact_deg``).
+  So the action burns at the point that places that crossing on the target
+  latitude (``_burn_ut_for_target_latitude``). This requires inclination >=
+  |target latitude|, which ``align_plane`` ensures.
+- **Longitude** comes from *which lap* the burn happens on. Each whole orbit the
+  body rotates under the track, so the impact's longitude shifts west by a fixed
+  step per lap **without moving the burn's orbital position** (latitude stays
+  put). The refinement picks the lap that lines longitude up, then a small
+  sub-lap slide (``-lon_error / (omega_orbit - omega_body)``) cancels the
+  leftover; near the latitude extreme that slide barely moves the latitude.
 
-Two free parameters (UT and delta-v) would theoretically let us hit any
-``(lat, lon)`` exactly. In practice the relationship between delta-v and
-impact latitude is steep and noisy (the trajectory's argument-of-impact
-moves a lot when periapsis altitude changes), while the relationship
-between burn UT and longitude is linear and well-modelled by
+Earlier versions slid the burn UT continuously to fix longitude only, which
+dragged the impact along the ground track to the wrong latitude (it landed near
+the equator). Splitting longitude into whole laps + a small slide keeps the
+latitude locked.
 
-    impact_longitude_shift_per_delay = (omega_orbit - omega_body) * Δt
-
-where the two angular velocities are the orbital and body rotation
-rates. The action exploits that clean 1D control law to fix longitude;
-latitude is governed by the orbit's inclination (set up by ``align_plane``
-beforehand) and by the descent profile (set up by
-``target_periapsis_altitude``).
+The target periapsis stays fixed, but the delta-v does **not**: a fixed dv at a
+different burn radius yields a different periapsis (it can even rise above the
+surface, leaving no impact). The action re-sizes dv via vis-viva for the burn's
+actual radius (the post-burn apoapsis) so periapsis stays on target.
 
 Atmospheric drag is not modelled; the predictor is ballistic. Drag pulls
 the real impact short of the vacuum prediction. ``drag_bias_km`` shifts
@@ -77,16 +82,103 @@ from ksp_mission_control.control.actions.helpers.warp import (
 # the converged plan, not on a half-applied refinement.
 _REFINEMENT_DEADLINE_SECONDS: float = 5.0
 
-# Hard cap on a single burn-UT correction. A control law that proposed
-# more than half an orbit of shift is almost certainly diverging; clamping
-# keeps the iteration stable and lets the user notice via the log.
-_MAX_BURN_UT_ADJUSTMENT_FRACTION: float = 0.5
+# Minimum inclination (rad) for latitude targeting. Below this the orbit is
+# effectively equatorial: AN/DN are undefined and the impact latitude cannot be
+# steered by burn position, so the action falls back to a plain apoapsis burn.
+_MIN_INCLINATION_FOR_TARGETING_RAD: float = 0.001
+
+# Laps to schedule the initial burn ahead of the first latitude-correct pass.
+# The longitude search shifts the burn by whole laps (at most ~half a rotation
+# cycle, ~6 laps), so starting this many laps out keeps every correction in the
+# future without a separate "burn in the past" failure.
+_INITIAL_LAP_BUFFER: int = 7
 
 # Defaults
 _DEFAULT_TARGET_PERIAPSIS_ALTITUDE: float = -5_000.0  # below sea level guarantees a ballistic impact
 _DEFAULT_DRAG_BIAS_KM: float = 0.0
 _DEFAULT_TOLERANCE_DEG: float = 0.5
 _DEFAULT_MAX_PLANNING_TICKS: int = 60
+
+# Re-trim the burn dv when the planned post-burn periapsis sits more than this
+# above the target. Catches the case where a longitude shift slid the burn off
+# apoapsis and the apoapsis-sized dv left periapsis above the surface (no impact
+# to target, so the predictor returns nothing and refinement would stall).
+_PERIAPSIS_RETRIM_TOLERANCE_M: float = 500.0
+
+
+def _deorbit_burn_dv(mu: float, r_burn: float, sma_preburn: float, r_target_periapsis: float) -> float:
+    """Prograde dv (negative = retrograde) that drops periapsis to ``r_target_periapsis``.
+
+    Vis-viva at the burn radius ``r_burn``: a retrograde burn makes the burn
+    point the post-burn apoapsis and lowers the opposite apse to the target.
+    The same sizing must be redone whenever the burn radius changes, because a
+    fixed dv applied at a different radius yields a different periapsis.
+    """
+    new_sma = (r_burn + r_target_periapsis) / 2.0
+    v_current = math.sqrt(mu * (2.0 / r_burn - 1.0 / sma_preburn))
+    v_new = math.sqrt(mu * (2.0 / r_burn - 1.0 / new_sma))
+    return v_new - v_current
+
+
+def _travel_angle_burn_to_impact_deg(r_burn: float, r_periapsis: float, body_radius: float) -> float:
+    """Degrees of true anomaly traveled from the burn point to the sea-level crossing.
+
+    A retrograde burn makes the burn point the apoapsis of the post-burn
+    ellipse (apoapsis radius ``r_burn``, periapsis radius ``r_periapsis``).
+    The trajectory crosses sea level (radius ``body_radius``) at true anomaly
+    ``nu0`` where ``cos(nu0) = (p / body_radius - 1) / e`` (orbit equation,
+    ``p`` the semi-latus rectum), so the descent from apoapsis covers
+    ``180 - nu0`` degrees. With periapsis exactly at sea level the crossing
+    IS periapsis (the full 180); the deeper the periapsis, the earlier the
+    crossing. Falls back to 180 for degenerate geometry (circular post-burn
+    orbit or periapsis above sea level).
+    """
+    if r_burn <= r_periapsis or body_radius <= 0.0:
+        return 180.0
+    semi_major = (r_burn + r_periapsis) / 2.0
+    eccentricity = (r_burn - r_periapsis) / (r_burn + r_periapsis)
+    semi_latus_rectum = semi_major * (1.0 - eccentricity**2)
+    cos_nu = (semi_latus_rectum / body_radius - 1.0) / eccentricity
+    cos_nu = max(-1.0, min(1.0, cos_nu))
+    return 180.0 - math.degrees(math.acos(cos_nu))
+
+
+def _burn_ut_for_target_latitude(state: State, target_latitude_deg: float, target_periapsis_altitude: float) -> float | None:
+    """UT of the next burn whose ballistic impact lands at ``target_latitude_deg``.
+
+    A retrograde burn makes the burn point the post-burn apoapsis; the impact
+    follows a fixed travel angle downtrack (``_travel_angle_burn_to_impact_deg``,
+    roughly 150 deg for a low orbit deorbiting to -5 km). To land at the target
+    latitude we must burn that angle ahead of a point at that latitude.
+
+    Using the orbit's argument of latitude ``u`` (0 at the ascending node, +90°
+    at the north extreme): ``latitude(u) = asin(sin(i) * sin(u))``. The impact is
+    at ``u_impact`` where ``sin(u_impact) = sin(target) / sin(i)``; the burn is
+    one travel angle before it. The vessel reaches ``u_burn`` at
+    ``ascending_node_ut + (u_burn / 360) * period``.
+
+    Returns ``None`` when the orbit is too equatorial to steer latitude, or when
+    the ascending-node time or period are unavailable. The target latitude must
+    be reachable (``|target| <= inclination``); the ratio is clamped so a small
+    overshoot from align_plane still resolves to the nearest extreme.
+    """
+    inclination = state.orbit_inclination
+    if inclination < _MIN_INCLINATION_FOR_TARGETING_RAD:
+        return None
+    an_ut = state.orbit_ascending_node_ut
+    period = state.orbit_period
+    if not math.isfinite(an_ut) or period <= 0.0:
+        return None
+    sin_u_impact = math.sin(math.radians(target_latitude_deg)) / math.sin(inclination)
+    sin_u_impact = max(-1.0, min(1.0, sin_u_impact))
+    u_impact_deg = math.degrees(math.asin(sin_u_impact))
+    travel_deg = _travel_angle_burn_to_impact_deg(
+        state.orbit_apoapsis + state.body_radius,
+        target_periapsis_altitude + state.body_radius,
+        state.body_radius,
+    )
+    u_burn_deg = (u_impact_deg - travel_deg) % 360.0
+    return an_ut + (u_burn_deg / 360.0) * period
 
 
 class DeorbitToTargetAction(Action):
@@ -267,16 +359,13 @@ class DeorbitToTargetAction(Action):
     # ---- Helpers ------------------------------------------------------
 
     def _plan_initial_node(self, state: State, commands: VesselCommands, log: ActionLogger) -> ActionResult:
-        """First tick: pick burn UT one full orbit past the next apoapsis and compute retrograde dv via vis-viva.
+        """First tick: place the burn for the target latitude and size dv via vis-viva.
 
-        Scheduling the burn one full orbit out (rather than at the next
-        apoapsis directly) gives the refinement loop a full orbit of
-        game time to converge, which the action needs because each
-        iteration of the loop only adjusts burn UT by a bounded amount
-        (``_MAX_BURN_UT_ADJUSTMENT_FRACTION * orbit_period``) and the
-        ground-track range we may need to cover spans nearly a full
-        period of relative rotation. The lost efficiency from waiting an
-        extra orbit is negligible against the targeting accuracy gain.
+        The burn point is chosen so the sea-level crossing lands on the
+        target latitude, scheduled ``_INITIAL_LAP_BUFFER`` laps out so the
+        longitude refinement can shift it by whole laps in either direction
+        without ever landing in the past. The retrograde dv drops the
+        periapsis to ``target_periapsis_altitude``.
         """
         if state.body_gm <= 0.0 or state.orbit_semi_major_axis <= 0.0:
             return ActionResult(
@@ -289,7 +378,16 @@ class DeorbitToTargetAction(Action):
                 message="Cannot deorbit: orbit period is non-positive (escape trajectory?).",
             )
 
-        burn_ut = state.universal_time + state.orbit_apoapsis_time_to + state.orbit_period
+        # Burn at the point whose antipode sits at the target latitude, so the
+        # impact lands there. Schedule it several laps out: the longitude search
+        # then shifts the burn by whole laps (which preserve the latitude) to
+        # line the impact up east-west. Falls back to a plain apoapsis burn on an
+        # equatorial orbit, where latitude cannot be steered.
+        lat_burn_ut = _burn_ut_for_target_latitude(state, self._target_latitude, self._target_periapsis_altitude)
+        if lat_burn_ut is not None:
+            burn_ut = lat_burn_ut + _INITIAL_LAP_BUFFER * state.orbit_period
+        else:
+            burn_ut = state.universal_time + state.orbit_apoapsis_time_to + state.orbit_period
         r_burn = state.orbit_apoapsis + state.body_radius
         r_target_peri = self._target_periapsis_altitude + state.body_radius
         if r_burn <= 0.0 or r_target_peri <= 0.0:
@@ -306,17 +404,13 @@ class DeorbitToTargetAction(Action):
                 ),
             )
 
-        mu = state.body_gm
-        new_sma = (r_burn + r_target_peri) / 2.0
-        v_current = math.sqrt(mu * (2.0 / r_burn - 1.0 / state.orbit_semi_major_axis))
-        v_new = math.sqrt(mu * (2.0 / r_burn - 1.0 / new_sma))
-        delta_v = v_new - v_current  # negative: retrograde
+        delta_v = _deorbit_burn_dv(state.body_gm, r_burn, state.orbit_semi_major_axis, r_target_peri)
 
         commands.create_node = Maneuver(ut=burn_ut, prograde=delta_v)
         self._node_ut = burn_ut
 
         log.info(
-            f"Planned deorbit at apoapsis: target ({self._target_latitude:+.2f}, {self._target_longitude:+.2f}), "
+            f"Planned deorbit for target ({self._target_latitude:+.2f}, {self._target_longitude:+.2f}): "
             f"dv={delta_v:+.1f} m/s, peri -> {self._target_periapsis_altitude:,.0f}m, ut={burn_ut:.1f}"
         )
         return ActionResult(
@@ -343,6 +437,32 @@ class DeorbitToTargetAction(Action):
         # Prediction must come from the post-node orbit; otherwise we are
         # reading stale data from before the bridge picked up our node.
         if impact is None or impact.source != "next_node_orbit":
+            # A common cause of "no prediction" is that a prior longitude shift
+            # slid the burn off apoapsis, where the apoapsis-sized dv no longer
+            # lowers periapsis below the surface, so there is no ground impact.
+            # Re-size dv for the burn's actual radius (the burn point is the
+            # post-burn apoapsis) at the same UT, restoring the target periapsis
+            # so a prediction reappears next tick. Otherwise just wait.
+            r_target_peri = self._target_periapsis_altitude + state.body_radius
+            r_burn = node.post_burn_orbit_apoapsis + state.body_radius
+            if (
+                state.body_gm > 0.0
+                and state.orbit_semi_major_axis > 0.0
+                and r_burn > r_target_peri
+                and node.post_burn_orbit_periapsis > self._target_periapsis_altitude + _PERIAPSIS_RETRIM_TOLERANCE_M
+            ):
+                dv = _deorbit_burn_dv(state.body_gm, r_burn, state.orbit_semi_major_axis, r_target_peri)
+                commands.remove_node_at_ut = node.ut
+                commands.create_node = Maneuver(ut=node.ut, prograde=dv)
+                self._node_ut = node.ut
+                log.debug(
+                    f"Re-trimming deorbit dv: periapsis {node.post_burn_orbit_periapsis:,.0f}m -> "
+                    f"{self._target_periapsis_altitude:,.0f}m at burn radius {r_burn:,.0f}m, dv={dv:+.1f} m/s."
+                )
+                return ActionResult(
+                    status=ActionStatus.RUNNING,
+                    message=(f"Re-trimming deorbit burn to restore periapsis (was {node.post_burn_orbit_periapsis:,.0f}m)."),
+                )
             return ActionResult(
                 status=ActionStatus.RUNNING,
                 message=f"Waiting for post-burn impact prediction ({self._planning_ticks_used} ticks).",
@@ -381,11 +501,17 @@ class DeorbitToTargetAction(Action):
             )
             return ActionResult(status=ActionStatus.FAILED, message=self._fail_message)
 
-        # Delaying the burn by Δt shifts the impact east by relative_rate * Δt.
-        # To cancel a +lon_error (impact too east), burn earlier (Δt < 0).
-        delta_burn_ut = -lon_error / relative_rate
-        max_adjustment = state.orbit_period * _MAX_BURN_UT_ADJUSTMENT_FRACTION
-        delta_burn_ut = max(-max_adjustment, min(max_adjustment, delta_burn_ut))
+        # Correct longitude in two parts so the latitude-correct burn position is
+        # preserved. Whole laps shift the impact west by one body-rotation step
+        # each WITHOUT moving the burn's orbital position (latitude unchanged); a
+        # small sub-lap slide cancels the leftover (<= half a lap step), which
+        # nudges the burn only a few degrees -> negligible latitude change near
+        # the orbit's latitude extreme. Sliding the whole correction (the old
+        # behaviour) instead dragged the burn far off the latitude-correct point.
+        lap_lon_step = omega_body_deg * state.orbit_period  # deg the impact shifts west per +1 lap
+        n_laps = round(lon_error / lap_lon_step)
+        residual_lon = lon_error - n_laps * lap_lon_step
+        delta_burn_ut = n_laps * state.orbit_period - residual_lon / relative_rate
 
         new_burn_ut = node.ut + delta_burn_ut
         # Don't ever schedule the burn in the past.
@@ -402,8 +528,8 @@ class DeorbitToTargetAction(Action):
 
         log.debug(
             f"Refining deorbit (tick {self._planning_ticks_used}): impact ({impact.latitude:+.3f}, "
-            f"{impact.longitude:+.3f}), errors ({lat_error:+.3f}, {lon_error:+.3f}), burn_ut shift "
-            f"{delta_burn_ut:+.2f}s."
+            f"{impact.longitude:+.3f}), errors ({lat_error:+.3f}, {lon_error:+.3f}), "
+            f"shift {n_laps:+d} laps + {-residual_lon / relative_rate:+.1f}s slide."
         )
         return ActionResult(
             status=ActionStatus.RUNNING,

@@ -14,7 +14,12 @@ from ksp_mission_control.control.actions.base import (
     State,
     VesselCommands,
 )
-from ksp_mission_control.control.actions.deorbit_to_target.action import DeorbitToTargetAction
+from ksp_mission_control.control.actions.deorbit_to_target.action import (
+    _INITIAL_LAP_BUFFER,
+    DeorbitToTargetAction,
+    _burn_ut_for_target_latitude,
+    _travel_angle_burn_to_impact_deg,
+)
 
 _KERBIN_RADIUS = 600_000.0
 _KERBIN_GM = 3.5316e12
@@ -244,6 +249,32 @@ class TestDeorbitRefinement:
         assert commands.create_node is not None
         assert commands.create_node.ut > original_node.ut
 
+    def test_large_longitude_error_corrected_by_whole_laps(self) -> None:
+        # A big longitude error must be corrected mostly by WHOLE laps (which keep
+        # the burn at the latitude-correct orbital position), not a large
+        # within-orbit slide that would drag the impact to the wrong latitude.
+        action = DeorbitToTargetAction()
+        seed = _orbit_state(universal_time=1_000.0, apoapsis_time_to=600.0, period=1_800.0)
+        action.start(seed, _params(target_latitude=-15.0, target_longitude=-70.0, tolerance_deg=0.5))
+
+        impact = ImpactPrediction(
+            latitude=-15.0,  # latitude already on target
+            longitude=60.0,  # ~130 deg east of target -> large longitude error
+            altitude_terrain=200.0,
+            time_to_ballistic_impact=1_500.0,
+            source="next_node_orbit",
+        )
+        commands, original_node = self._node_then_refine(action, seed, impact)
+        assert commands.create_node is not None
+
+        shift = commands.create_node.ut - original_node.ut
+        period = seed.orbit_period
+        laps = round(shift / period)
+        assert laps >= 1  # the bulk of the correction is whole laps
+        # The leftover within-orbit slide (which moves latitude) must be small.
+        slide = shift - laps * period
+        assert abs(slide) < period * 0.25
+
     def test_converges_when_errors_within_tolerance(self) -> None:
         action = DeorbitToTargetAction()
         seed = _orbit_state(universal_time=1_000.0, apoapsis_time_to=600.0, period=1_800.0)
@@ -278,6 +309,80 @@ class TestDeorbitRefinement:
         commands, _original = self._node_then_refine(action, seed, impact)
         assert commands.create_node is None
         assert action._converged is False
+
+    def test_retrims_dv_when_periapsis_drifts_above_surface(self) -> None:
+        # Regression (log_20260605_215353): the longitude refinement slides the
+        # burn off apoapsis, where the apoapsis-sized dv under-lowers periapsis.
+        # The post-burn periapsis rose above the surface (+6 km), so there was no
+        # ground impact, the predictor returned None, and the action waited until
+        # it failed at the tick cap. It must re-size dv for the burn's actual
+        # radius so periapsis returns to target and a prediction reappears.
+        action = DeorbitToTargetAction()
+        seed = _orbit_state(
+            universal_time=1_000.0,
+            apoapsis_alt=200_000.0,
+            periapsis_alt=75_000.0,
+            apoapsis_time_to=600.0,
+            period=1_800.0,
+        )
+        action.start(seed, _params(target_periapsis_altitude=-5_000.0))
+        action.tick(seed, VesselCommands(), dt=0.5, log=ActionLogger())  # plan initial node
+        assert action._node_ut is not None
+
+        # The burn has been slid to near the current periapsis (r = 675 km), so
+        # the old apoapsis-sized dv leaves post-burn periapsis above the surface
+        # and there is no impact prediction.
+        node = ManeuverNode(
+            index=0,
+            ut=action._node_ut,
+            time_to=2_400.0,
+            delta_v=72.0,
+            delta_v_remaining=72.0,
+            prograde=-72.0,
+            normal=0.0,
+            radial=0.0,
+            burn_vector=(0.0, -72.0, 0.0),
+            burn_vector_remaining=(0.0, -72.0, 0.0),
+            burn_time_estimate=2.0,
+            post_burn_orbit_apoapsis=75_000.0,  # burn point ~ current periapsis radius
+            post_burn_orbit_periapsis=6_000.0,  # above sea level -> no impact
+            post_burn_orbit_eccentricity=0.06,
+            post_burn_orbit_inclination=math.radians(20.0),
+            post_burn_orbit_period=1_700.0,
+            post_burn_orbit_semi_major_axis=_KERBIN_RADIUS + 40_000.0,
+        )
+        refine_state = State(
+            **{
+                **_orbit_state(
+                    universal_time=1_001.0,
+                    apoapsis_alt=200_000.0,
+                    periapsis_alt=75_000.0,
+                    apoapsis_time_to=599.0,
+                    period=1_800.0,
+                ).__dict__,
+                "nodes": (node,),
+                "predicted_impact": None,
+            }
+        )
+        commands = VesselCommands()
+        result = action.tick(refine_state, commands, dt=0.5, log=ActionLogger())
+
+        assert result.status == ActionStatus.RUNNING
+        # Re-trim at the SAME burn UT (not a longitude shift).
+        assert commands.create_node is not None
+        assert commands.create_node.ut == pytest.approx(node.ut)
+        assert commands.remove_node_at_ut == pytest.approx(node.ut)
+        # New dv matches vis-viva for the burn radius (post-burn apoapsis), deeper
+        # (more retrograde) than the old apoapsis-sized dv.
+        r_burn = node.post_burn_orbit_apoapsis + _KERBIN_RADIUS
+        r_target = -5_000.0 + _KERBIN_RADIUS
+        sma_pre = refine_state.orbit_semi_major_axis
+        new_sma = (r_burn + r_target) / 2.0
+        v_current = math.sqrt(_KERBIN_GM * (2.0 / r_burn - 1.0 / sma_pre))
+        v_new = math.sqrt(_KERBIN_GM * (2.0 / r_burn - 1.0 / new_sma))
+        expected_dv = v_new - v_current
+        assert commands.create_node.prograde == pytest.approx(expected_dv, rel=1e-4)
+        assert commands.create_node.prograde < node.prograde
 
     def test_fails_after_max_planning_ticks_without_convergence(self) -> None:
         action = DeorbitToTargetAction()
@@ -503,3 +608,80 @@ class TestDeorbitWarpHandling:
     # see tests/test_action_runner.py for the centralized coverage. The
     # mid-tick "resume warp once refinement converged" call still belongs
     # to the action (see test_resumes_warp_once_converged above).
+
+
+class TestDeorbitLatitudeBurnPoint:
+    """The burn point is chosen so the impact lands at the target latitude."""
+
+    def test_travel_angle_is_half_orbit_when_periapsis_at_sea_level(self) -> None:
+        # Periapsis exactly at sea level: the crossing IS periapsis, half an
+        # orbit (180 deg) after the apoapsis burn.
+        assert _travel_angle_burn_to_impact_deg(700_000.0, 600_000.0, 600_000.0) == pytest.approx(180.0)
+
+    def test_travel_angle_shrinks_when_periapsis_below_sea_level(self) -> None:
+        # Hand-computed ellipse: r_burn=700km, r_peri=6.3e6/11 m (~572.7km)
+        # around a 600km body -> e=0.1, p=630km, cos(nu0)=(630/600-1)/0.1=0.5
+        # -> nu0=60 deg: the trajectory reaches sea level 120 deg after the
+        # burn, well short of the 180-deg antipode.
+        assert _travel_angle_burn_to_impact_deg(700_000.0, 6_300_000.0 / 11.0, 600_000.0) == pytest.approx(120.0)
+
+    def test_burn_point_plus_travel_angle_sits_at_target_latitude(self) -> None:
+        # The helper must return a burn whose orbital position, one travel
+        # angle later (the sea-level crossing), is at the target latitude.
+        # Checked as a property for the apex case (|target| == inclination)
+        # and both hemispheres. Geometry as above: travel angle = 120 deg.
+        inclination_deg = 10.0
+        an_ut = 5_000.0
+        period = 1_800.0
+        target_periapsis_alt = 6_300_000.0 / 11.0 - _KERBIN_RADIUS
+        state = State(
+            orbit_inclination=math.radians(inclination_deg),
+            orbit_ascending_node_ut=an_ut,
+            orbit_period=period,
+            orbit_apoapsis=100_000.0,
+            body_radius=_KERBIN_RADIUS,
+        )
+        for target_lat in (-10.0, -6.6, 7.3):
+            burn_ut = _burn_ut_for_target_latitude(state, target_lat, target_periapsis_alt)
+            assert burn_ut is not None
+            u_burn_deg = ((burn_ut - an_ut) / period) * 360.0
+            u_impact_rad = math.radians(u_burn_deg + 120.0)
+            impact_lat = math.degrees(math.asin(math.sin(math.radians(inclination_deg)) * math.sin(u_impact_rad)))
+            assert abs(impact_lat - target_lat) < 0.01
+
+    def test_returns_none_when_equatorial(self) -> None:
+        state = State(orbit_inclination=0.0, orbit_ascending_node_ut=5_000.0, orbit_period=1_800.0)
+        assert _burn_ut_for_target_latitude(state, -6.6, -5_000.0) is None
+
+    def test_returns_none_when_ascending_node_unavailable(self) -> None:
+        # Inclined but AN unknown (defaults to inf): cannot place the burn.
+        state = State(orbit_inclination=math.radians(10.0), orbit_period=1_800.0)
+        assert _burn_ut_for_target_latitude(state, -6.6, -5_000.0) is None
+
+    def test_initial_node_uses_latitude_burn_point_not_apoapsis(self) -> None:
+        action = DeorbitToTargetAction()
+        an_ut = 5_000.0
+        period = 1_800.0
+        state = State(
+            orbit_inclination=math.radians(10.0),
+            orbit_ascending_node_ut=an_ut,
+            orbit_period=period,
+            orbit_apoapsis=100_000.0,
+            orbit_periapsis=95_000.0,
+            orbit_apoapsis_time_to=400.0,
+            orbit_semi_major_axis=_KERBIN_RADIUS + 97_500.0,
+            universal_time=1_000.0,
+            body_radius=_KERBIN_RADIUS,
+            body_gm=_KERBIN_GM,
+            body_rotational_period=_KERBIN_ROTATIONAL_PERIOD,
+        )
+        action.start(state, _params(target_latitude=-6.6, target_periapsis_altitude=-5_000.0))
+
+        commands = VesselCommands()
+        action.tick(state, commands, dt=0.5, log=ActionLogger())
+        assert commands.create_node is not None
+        expected = _burn_ut_for_target_latitude(state, -6.6, -5_000.0) + _INITIAL_LAP_BUFFER * period
+        assert commands.create_node.ut == pytest.approx(expected)
+        # NOT the old "apoapsis one orbit out" schedule.
+        apoapsis_ut = state.universal_time + state.orbit_apoapsis_time_to + period
+        assert commands.create_node.ut != pytest.approx(apoapsis_ut)
