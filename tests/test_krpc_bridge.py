@@ -1721,6 +1721,7 @@ class TestReadVesselStateImpactPrediction:
             return 5_000.0 - 10.0 * (ut_local - current_ut)
 
         orbit.position_at = lambda ut, _frame: (ut, 0.0, 0.0)
+        orbit.ut_at_true_anomaly = lambda _nu: current_ut + 900.0  # periapsis, after the crossing
 
         _patch_body_for_impact(
             conn,
@@ -1750,6 +1751,7 @@ class TestReadVesselStateImpactPrediction:
             period=1_800.0,
             semi_major_axis=670_000.0,
             position_at=lambda ut, _frame: (ut, 0.0, 0.0),
+            ut_at_true_anomaly=lambda _nu, _peri=current_ut + 960.0: _peri,  # periapsis half a period after the node
         )
         node = _make_mock_krpc_node(ut=current_ut + 60.0)
         node.orbit = post_orbit
@@ -1773,12 +1775,61 @@ class TestReadVesselStateImpactPrediction:
         # time_to measured from current_ut; impact at current_ut + 60 + 300.
         assert abs(state.predicted_impact.time_to_ballistic_impact - 360.0) < 1.0
 
+    def test_post_node_orbit_window_capped_at_periapsis(self) -> None:
+        # Realistic geometry: a deorbit node sits at apoapsis, so the post-burn
+        # orbit is high (apoapsis) at the node, dips below sea level at periapsis
+        # half a period later, and returns high one full period later. A
+        # full-period search window reads "above sea level" at both ends and
+        # misses the periapsis dip, so the window must be capped at periapsis.
+        conn = _make_mock_conn()
+        current_ut = float(conn.space_center.ut)
+        node_ut = current_ut + 60.0
+        period = 1_800.0
+        periapsis_ut = node_ut + period / 2.0  # apoapsis -> periapsis is half an orbit
+
+        post_orbit = SimpleNamespace(
+            apoapsis_altitude=85_000.0,
+            periapsis_altitude=-5_000.0,
+            eccentricity=0.07,
+            inclination=0.1,
+            period=period,
+            semi_major_axis=640_000.0,
+            position_at=lambda ut, _frame: (ut, 0.0, 0.0),
+            ut_at_true_anomaly=lambda _nu, _peri=periapsis_ut: _peri,
+        )
+        node = _make_mock_krpc_node(ut=node_ut, post_orbit=post_orbit)
+        conn.space_center.active_vessel.control.nodes = [node]
+
+        # Altitude as an upward parabola in time: -5 km at periapsis (mid-window),
+        # +85 km at the node and one full period later. The descending sea-level
+        # crossing lies between node_ut and periapsis_ut.
+        def altitude_at_position(pos: tuple[float, float, float], _frame: object) -> float:
+            ut_local: float = pos[0]
+            t = ut_local - periapsis_ut  # 0 at periapsis
+            return -5_000.0 + 90_000.0 * (t / (period / 2.0)) ** 2
+
+        _patch_body_for_impact(
+            conn,
+            altitude_at_position=altitude_at_position,
+            latitude_at_position=lambda _pos, _frame: -6.6,
+            longitude_at_position=lambda _pos, _frame: -144.0,
+        )
+
+        state = read_vessel_state(conn)
+        assert state.predicted_impact is not None
+        assert state.predicted_impact.source == "next_node_orbit"
+        assert state.predicted_impact.latitude == -6.6
+        # Crossing solves -5000 + 90000*(t/900)^2 = 0 -> t ~ -212s before periapsis.
+        expected_impact_ut = periapsis_ut - 900.0 * math.sqrt(5_000.0 / 90_000.0)
+        assert abs(state.predicted_impact.time_to_ballistic_impact - (expected_impact_ut - current_ut)) < 2.0
+
     def test_longitude_wrapped_to_signed_range(self) -> None:
         conn = _make_mock_conn()
         orbit = conn.space_center.active_vessel.orbit
         orbit.periapsis_altitude = -1_000.0
         orbit.period = 1_800.0
         orbit.position_at = lambda _ut, _frame: (0.0, 0.0, 0.0)
+        orbit.ut_at_true_anomaly = lambda _nu, _peri=float(conn.space_center.ut) + 900.0: _peri
 
         _patch_body_for_impact(
             conn,

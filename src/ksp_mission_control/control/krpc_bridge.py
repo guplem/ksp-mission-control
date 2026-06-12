@@ -325,7 +325,17 @@ def _compute_impact_prediction(vessel: object, body: object, current_ut: float) 
             position = target_orbit.position_at(ut, frame)  # type: ignore[attr-defined]
             return float(body.altitude_at_position(position, frame))  # type: ignore[attr-defined]
 
-        impact_ut = find_impact_ut(sample_altitude, start_ut=start_ut, end_ut=start_ut + period)
+        # Cap the search window at periapsis, the orbit's lowest point.
+        # find_impact_ut assumes a monotone descent to a single sea-level
+        # crossing and only inspects the endpoints; a full-period window starts
+        # and ends at the same point (a deorbit node sits at apoapsis, so both
+        # ends read above sea level) and the periapsis dip in between is missed.
+        # Periapsis is true anomaly 0; bump past start_ut to get the next one.
+        periapsis_ut = float(target_orbit.ut_at_true_anomaly(0.0))  # type: ignore[attr-defined]
+        while periapsis_ut <= start_ut and period > 0.0:
+            periapsis_ut += period
+
+        impact_ut = find_impact_ut(sample_altitude, start_ut=start_ut, end_ut=periapsis_ut)
         if impact_ut is None:
             return None
         impact_position = target_orbit.position_at(impact_ut, frame)  # type: ignore[attr-defined]
