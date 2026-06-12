@@ -298,8 +298,8 @@ def _compute_impact_prediction(vessel: object, body: object, current_ut: float) 
     start_ut: float
     source: str
     if nodes and float(getattr(nodes[0], "ut", current_ut)) > current_ut:
-        target_orbit = nodes[0].orbit  # type: ignore[attr-defined]
-        start_ut = float(nodes[0].ut)  # type: ignore[attr-defined]
+        target_orbit = nodes[0].orbit
+        start_ut = float(nodes[0].ut)
         source = "next_node_orbit"
     else:
         target_orbit = vessel.orbit  # type: ignore[attr-defined]
