@@ -71,12 +71,15 @@ _STANDARD_GRAVITY: float = 9.80665
 
 # Throttle taper margin. Throttle starts tapering when the remaining burn
 # at full thrust would take less than ``_TAPER_MARGIN * dt`` seconds, so
-# the engine ramps down over the last ~3 ticks instead of slamming to full
+# the engine ramps down over the last ~8 ticks instead of slamming to full
 # until the final tick. Wider margin = softer landing with more low-throttle
 # ticks near completion, trading a little burn-window efficiency for better
 # autopilot tracking at small remaining dv (where the burn vector is
 # noise-dominated and a misaligned full-tick impulse easily overshoots).
-_TAPER_MARGIN: float = 3.0
+# Raised from 3 to 8 after two deorbit burns (~1.6s at full throttle on a
+# high-TWR stage, so the whole burn fit in 2-3 ticks) overshot by 5-10 m/s,
+# each worth ~80-100 km of landing error.
+_TAPER_MARGIN: float = 8.0
 
 # Maximum angular error (degrees) between the vessel's facing and the
 # remaining burn vector before the helper opens the throttle. The autopilot

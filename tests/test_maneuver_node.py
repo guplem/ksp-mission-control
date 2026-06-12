@@ -182,10 +182,22 @@ class TestExecuteNodeThrottle:
     def test_throttle_tapers_near_completion(self) -> None:
         """When burn_time_estimate < dt * _TAPER_MARGIN, throttle ramps down.
 
-        With dt=0.5s and _TAPER_MARGIN=3, the taper window is 1.5s of burn.
-        burn_time_estimate=0.6s -> throttle = 0.6 / (0.5 * 3) = 0.4.
+        With dt=0.5s and _TAPER_MARGIN=8, the taper window is 4s of burn.
+        burn_time_estimate=0.6s -> throttle = 0.6 / (0.5 * 8) = 0.15.
         """
         node = _make_node(ut=500.0, delta_v_remaining=8.0, burn_time_estimate=0.6)
+        commands = VesselCommands()
+        complete = execute_node(_make_burning_state(universal_time=500.0), commands, node, None, 0.5, ActionLogger())
+        assert complete is False
+        assert commands.throttle == pytest.approx(0.15)
+
+    def test_short_burn_throttle_spans_multiple_ticks(self) -> None:
+        # A ~1.6s full-throttle burn on a high-TWR stage fits in 2-3 ticks,
+        # so the old 3-tick taper still commanded near-full throttle and the
+        # deorbit burns overshot by 5-10 m/s (~80-100 km of landing error in
+        # log_20260612_141704 and log_20260612_153036). The taper must
+        # stretch a short burn across ~8 ticks: 1.6 / (0.5 * 8) = 0.4.
+        node = _make_node(ut=500.0, delta_v_remaining=100.0, burn_time_estimate=1.6)
         commands = VesselCommands()
         complete = execute_node(_make_burning_state(universal_time=500.0), commands, node, None, 0.5, ActionLogger())
         assert complete is False
