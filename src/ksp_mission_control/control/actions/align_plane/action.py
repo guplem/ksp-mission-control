@@ -59,9 +59,12 @@ from ksp_mission_control.control.actions.base import (
 )
 from ksp_mission_control.control.actions.helpers.controls import release_controls
 from ksp_mission_control.control.actions.helpers.maneuver_node import (
+    POINTING_PARAM,
+    PointingController,
     execute_node,
     fail_if_node_has_no_thrust,
     find_maneuver_node_by_ut,
+    parse_pointing,
 )
 from ksp_mission_control.control.actions.helpers.staging import (
     STAGING_MODE_PARAM,
@@ -157,6 +160,7 @@ class AlignPlaneAction(Action):
             unit="deg",
         ),
         STAGING_MODE_PARAM,
+        POINTING_PARAM,
     ]
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
@@ -176,6 +180,7 @@ class AlignPlaneAction(Action):
             raise ValueError(f"margin_deg must be non-negative, got {self._margin_deg}.")
 
         self._staging_mode: StagingMode | None = parse_staging_mode(param_values["staging_mode"])
+        self._pointing: PointingController = parse_pointing(param_values["pointing"])
         self._node_ut: float | None = None
 
     def tick(self, state: State, commands: VesselCommands, dt: float, log: ActionLogger) -> ActionResult:
@@ -208,7 +213,7 @@ class AlignPlaneAction(Action):
         if node is None:
             return self._plan_burn(state, commands, delta_inc_rad, log)
 
-        if execute_node(state, commands, node, self._staging_mode, dt, log):
+        if execute_node(state, commands, node, self._staging_mode, dt, log, pointing=self._pointing):
             commands.remove_node_at_ut = node.ut
             commands.autopilot = False
             commands.throttle = 0.0

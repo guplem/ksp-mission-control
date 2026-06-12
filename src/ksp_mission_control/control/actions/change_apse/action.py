@@ -52,9 +52,12 @@ from ksp_mission_control.control.actions.base import (
 )
 from ksp_mission_control.control.actions.helpers.controls import release_controls
 from ksp_mission_control.control.actions.helpers.maneuver_node import (
+    POINTING_PARAM,
+    PointingController,
     execute_node,
     fail_if_node_has_no_thrust,
     find_maneuver_node_by_ut,
+    parse_pointing,
 )
 from ksp_mission_control.control.actions.helpers.staging import (
     STAGING_MODE_PARAM,
@@ -81,12 +84,14 @@ class ChangeApseAction(Action):
             unit="m",
         ),
         STAGING_MODE_PARAM,
+        POINTING_PARAM,
     ]
 
     def start(self, state: State, param_values: dict[str, Any]) -> None:
         self._apse: Apse = parse_apse(param_values["apse"])
         self._target_altitude: float = float(param_values["target_altitude"])
         self._staging_mode: StagingMode | None = parse_staging_mode(param_values["staging_mode"])
+        self._pointing: PointingController = parse_pointing(param_values["pointing"])
 
         # ut of the node this action created, captured on first tick so we
         # can find it again across ticks even if other nodes get inserted.
@@ -116,7 +121,7 @@ class ChangeApseAction(Action):
         if node is None:
             return self._request_node(state, commands, log)
 
-        if execute_node(state, commands, node, self._staging_mode, dt, log):
+        if execute_node(state, commands, node, self._staging_mode, dt, log, pointing=self._pointing):
             commands.remove_node_at_ut = node.ut
             commands.autopilot = False
             commands.throttle = 0.0

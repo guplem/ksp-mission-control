@@ -25,12 +25,14 @@ def _params(
     crossing: str = "cheaper",
     margin_deg: float = 0.5,
     staging_mode: str | None = None,
+    pointing: str | None = None,
 ) -> dict[str, object]:
     return {
         "target_latitude": target_latitude,
         "crossing": crossing,
         "margin_deg": margin_deg,
         "staging_mode": staging_mode,
+        "pointing": pointing,
     }
 
 
@@ -350,7 +352,9 @@ class TestAlignPlaneExecutesNode:
         result = action.tick(burn_state, commands, dt=0.5, log=ActionLogger())
         assert result.status == ActionStatus.RUNNING
         assert commands.throttle == 1.0
-        assert commands.autopilot is True
+        # Default pointing is auto: SAS maneuver-hold steers, not the autopilot.
+        assert commands.autopilot is False
+        assert commands.sas is True
 
     def test_completion_succeeds_and_removes_node(self) -> None:
         action = AlignPlaneAction()

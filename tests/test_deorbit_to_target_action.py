@@ -35,6 +35,7 @@ def _params(
     tolerance_deg: float = 0.5,
     max_planning_ticks: int = 60,
     staging_mode: str | None = None,
+    pointing: str | None = None,
 ) -> dict[str, object]:
     return {
         "target_latitude": target_latitude,
@@ -44,6 +45,7 @@ def _params(
         "tolerance_deg": tolerance_deg,
         "max_planning_ticks": max_planning_ticks,
         "staging_mode": staging_mode,
+        "pointing": pointing,
     }
 
 
@@ -469,7 +471,9 @@ class TestDeorbitExecutePhase:
         assert result.status == ActionStatus.RUNNING
         # execute_node drives the burn.
         assert commands.throttle == 1.0
-        assert commands.autopilot is True
+        # Default pointing is auto: SAS maneuver-hold steers, not the autopilot.
+        assert commands.autopilot is False
+        assert commands.sas is True
 
     def test_succeeds_when_burn_completes(self) -> None:
         action = DeorbitToTargetAction()

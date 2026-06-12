@@ -4,14 +4,15 @@ Used by any action that drives the vessel through a kRPC maneuver node:
 circularize, raise/lower orbit, Hohmann transfers, etc. The helper is
 stateless. Callers pass the current ``State``, the ``ManeuverNode`` to
 execute, and a mutable ``VesselCommands`` buffer; the helper sets
-autopilot direction and throttle each tick and returns ``True`` once the
-burn is complete.
+steering (kRPC autopilot by default, or KSP SAS maneuver-hold via
+``NodePointing.SAS_MANEUVER``) and throttle each tick and returns
+``True`` once the burn is complete.
 
 Phases:
     Cold:    state.universal_time < burn_start_ut.
-             Autopilot points at burn_vector_remaining, throttle = 0.
+             Steering points at burn_vector_remaining, throttle = 0.
     Burn:    state.universal_time >= burn_start_ut.
-             Autopilot points at burn_vector_remaining. Throttle stays 0
+             Steering points at burn_vector_remaining. Throttle stays 0
              until the vessel's facing is within _BURN_ALIGNMENT_TOLERANCE_DEG
              of the burn vector (the alignment gate), so the engine never
              fires while the autopilot is still slewing onto the new
@@ -42,14 +43,18 @@ returns ``False``.
 from __future__ import annotations
 
 import math
+from enum import Enum
 
 from ksp_mission_control.control.actions.base import (
     ActionLogger,
+    ActionParam,
     ActionResult,
     ActionStatus,
     AutopilotDirection,
     ManeuverNode,
+    ParamType,
     ReferenceFrame,
+    SASMode,
     State,
     VesselCommands,
     angle_between,
@@ -114,6 +119,97 @@ _WARP_STEP_DOWN_GAME_SECONDS_SAFETY: float = 15.0
 _RAILS_WARP_LEVELS: tuple[int, ...] = (1, 5, 10, 50, 100, 1000, 10000, 100000)
 
 
+class NodePointing(Enum):
+    """What steers the vessel onto the burn vector during execute_node."""
+
+    AUTO = "auto"
+    SAS_MANEUVER = "sas_maneuver"
+    AUTOPILOT = "autopilot"
+
+
+# Ticks SAS may stay on at 1x warp without maneuver-hold latching before AUTO
+# gives up and falls back to the kRPC autopilot. Latching normally takes 1-2
+# ticks (the mode is held back one tick to dodge the same-frame race); 6 ticks
+# (~3s) is generous while still resolving well inside the 15s pre-burn coast.
+_SAS_MANEUVER_LATCH_TIMEOUT_TICKS: int = 6
+
+
+POINTING_PARAM: ActionParam = ActionParam(
+    param_id="pointing",
+    label="Pointing",
+    description=(
+        "What steers the vessel onto the burn vector: 'auto' (default: KSP's native SAS "
+        "maneuver-hold, falling back to the kRPC autopilot if the mode does not engage), "
+        "'sas_maneuver' (SAS maneuver-hold only; requires a pilot or probe core with maneuver "
+        "hold, otherwise the burn holds at zero throttle), or 'autopilot' (kRPC autopilot only)."
+    ),
+    required=False,
+    param_type=ParamType.STR,
+    default=NodePointing.AUTO.value,
+)
+
+
+class PointingController:
+    """Resolves which steering drives a node burn, across ticks.
+
+    ``AUTO`` tries SAS maneuver-hold and permanently falls back to the kRPC
+    autopilot when the mode does not latch within
+    ``_SAS_MANEUVER_LATCH_TIMEOUT_TICKS`` ticks of SAS being on at 1x warp
+    (no maneuver-capable pilot or probe core, or no comm link). Only those
+    ticks count: KSP disables SAS entirely during rails warp, so warped
+    coast ticks say nothing about availability. ``SAS_MANEUVER`` never
+    falls back; ``AUTOPILOT`` never tries SAS. One instance per action run
+    (created in ``start()`` via ``parse_pointing``).
+    """
+
+    def __init__(self, requested: NodePointing) -> None:
+        self.requested: NodePointing = requested
+        self._latched: bool = False
+        self._fell_back: bool = False
+        self._wait_ticks: int = 0
+
+    def steer_with_sas(self, state: State, log: ActionLogger) -> bool:
+        """Whether this tick should steer with SAS maneuver-hold."""
+        if self.requested is NodePointing.AUTOPILOT or self._fell_back:
+            return False
+        if self.requested is NodePointing.SAS_MANEUVER:
+            return True
+        if self._latched:
+            return True
+        if state.control_sas and state.control_sas_mode is SASMode.MANEUVER:
+            self._latched = True
+            return True
+        if state.control_sas and state.time_warp_rate <= 1.0:
+            self._wait_ticks += 1
+            if self._wait_ticks > _SAS_MANEUVER_LATCH_TIMEOUT_TICKS:
+                self._fell_back = True
+                log.warn(
+                    f"SAS maneuver-hold did not engage after {self._wait_ticks} ticks "
+                    "(pilot/probe core lacks maneuver hold?); steering with the kRPC autopilot instead."
+                )
+                return False
+        return True
+
+
+def parse_pointing(value: object) -> PointingController:
+    """Parse a plan-file ``pointing`` value into a PointingController.
+
+    Accepts a NodePointing value (case-insensitive) or empty/None for the
+    default (auto). Raises ``ValueError`` for unknown values, per the
+    ADR 0009 start() validation contract.
+    """
+    if value is None:
+        return PointingController(NodePointing.AUTO)
+    text = str(value).strip().lower()
+    if not text:
+        return PointingController(NodePointing.AUTO)
+    try:
+        return PointingController(NodePointing(text))
+    except ValueError:
+        valid = ", ".join(mode.value for mode in NodePointing)
+        raise ValueError(f"Unknown pointing '{value}'. Valid: {valid}.") from None
+
+
 def _next_lower_rails_warp_rate(current_rate: float) -> float:
     """Return the next rails-warp level strictly below ``current_rate``.
 
@@ -134,18 +230,22 @@ def execute_node(
     staging_mode: StagingMode | None,
     dt: float,
     log: ActionLogger,
+    pointing: PointingController | None = None,
 ) -> bool:
     """Drive the vessel through one maneuver node.
 
-    Sets ``commands.autopilot`` and ``commands.autopilot_direction`` to
-    point along the node's remaining burn vector every tick. Throttles to
-    0 while still coasting, and also once the burn window is entered until
-    the vessel is aligned within ``_BURN_ALIGNMENT_TOLERANCE_DEG`` of the
-    burn vector; only then does it throttle up. When ``staging_mode`` is
-    not ``None``, also delegates to
-    ``auto_stage`` so spent stages drop without caller wiring. Returns
-    ``True`` when ``node.delta_v_remaining`` falls below the completion
-    threshold.
+    Points the vessel along the node's remaining burn vector every tick:
+    via KSP's native SAS maneuver-hold (``commands.sas_mode``) when
+    ``pointing`` resolves to SAS (the param default, ``auto``, tries SAS
+    and falls back to the autopilot when the mode never latches), or via
+    ``commands.autopilot`` + ``commands.autopilot_direction`` otherwise
+    (including ``pointing=None``, the no-controller default). Throttles
+    to 0 while still coasting, and also once the burn window is entered
+    until the vessel is aligned within ``_BURN_ALIGNMENT_TOLERANCE_DEG``
+    of the burn vector; only then does it throttle up. When
+    ``staging_mode`` is not ``None``, also delegates to ``auto_stage`` so
+    spent stages drop without caller wiring. Returns ``True`` when
+    ``node.delta_v_remaining`` falls below the completion threshold.
 
     Warp restore is handled by the ``ActionRunner`` after ``stop()`` runs
     (ADR 0012), so this helper does not write ``time_warp_rate`` on the
@@ -155,14 +255,23 @@ def execute_node(
     completion: setting ``commands.remove_node_at_ut`` and disengaging the
     autopilot.
     """
-    # Always orient toward the remaining burn direction. Using the
-    # remaining vector (not the initial one) means orientation tracks the
-    # corrected direction if part of the burn has already executed.
-    commands.autopilot = True
-    commands.autopilot_direction = AutopilotDirection(
-        vector=node.burn_vector_remaining,
-        reference_frame=ReferenceFrame.BODY_NON_ROTATING,
-    )
+    if pointing is not None and pointing.steer_with_sas(state, log):
+        # KSP's SAS maneuver-hold tracks the node vector natively. Mirror
+        # the sas action: hold the mode back until SAS reads on, because a
+        # mode selected in the same tick that enables SAS gets overridden.
+        commands.autopilot = False
+        commands.sas = True
+        if state.control_sas:
+            commands.sas_mode = SASMode.MANEUVER
+    else:
+        # Always orient toward the remaining burn direction. Using the
+        # remaining vector (not the initial one) means orientation tracks the
+        # corrected direction if part of the burn has already executed.
+        commands.autopilot = True
+        commands.autopilot_direction = AutopilotDirection(
+            vector=node.burn_vector_remaining,
+            reference_frame=ReferenceFrame.BODY_NON_ROTATING,
+        )
 
     if node.delta_v_remaining <= _BURN_COMPLETE_DV:
         commands.throttle = 0.0

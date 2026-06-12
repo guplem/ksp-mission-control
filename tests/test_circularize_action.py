@@ -13,6 +13,7 @@ from ksp_mission_control.control.actions.base import (
     ManeuverNode,
     PartInfo,
     Parts,
+    SASMode,
     State,
     VesselCommands,
 )
@@ -84,22 +85,22 @@ class TestCircularizeMetadata:
 class TestCircularizeStartValidation:
     def test_accepts_valid_apse_values(self) -> None:
         action = CircularizeAction()
-        action.start(State(), {"apse": "apoapsis", "staging_mode": None})
+        action.start(State(), {"apse": "apoapsis", "staging_mode": None, "pointing": None})
         assert action._apse.value == Apse.APOAPSIS.value
 
         action_p = CircularizeAction()
-        action_p.start(State(), {"apse": "periapsis", "staging_mode": None})
+        action_p.start(State(), {"apse": "periapsis", "staging_mode": None, "pointing": None})
         assert action_p._apse.value == Apse.PERIAPSIS.value
 
     def test_normalizes_case(self) -> None:
         action = CircularizeAction()
-        action.start(State(), {"apse": "APOAPSIS", "staging_mode": None})
+        action.start(State(), {"apse": "APOAPSIS", "staging_mode": None, "pointing": None})
         assert action._apse.value == Apse.APOAPSIS.value
 
     def test_raises_on_invalid_apse(self) -> None:
         action = CircularizeAction()
         with pytest.raises(ValueError, match="Unknown apse"):
-            action.start(State(), {"apse": "ascending_node", "staging_mode": None})
+            action.start(State(), {"apse": "ascending_node", "staging_mode": None, "pointing": None})
 
 
 class TestCircularizeRequestsNode:
@@ -108,7 +109,7 @@ class TestCircularizeRequestsNode:
     def test_apoapsis_dv_is_positive_and_matches_vis_viva(self) -> None:
         action = CircularizeAction()
         state = _orbit_state(apoapsis_alt=100_000.0, periapsis_alt=70_000.0, time_to_apoapsis=300.0)
-        action.start(state, {"apse": "apoapsis", "staging_mode": None})
+        action.start(state, {"apse": "apoapsis", "staging_mode": None, "pointing": None})
 
         commands = VesselCommands()
         result = action.tick(state, commands, dt=0.5, log=ActionLogger())
@@ -127,7 +128,7 @@ class TestCircularizeRequestsNode:
     def test_periapsis_dv_is_negative(self) -> None:
         action = CircularizeAction()
         state = _orbit_state(apoapsis_alt=100_000.0, periapsis_alt=70_000.0, time_to_periapsis=500.0)
-        action.start(state, {"apse": "periapsis", "staging_mode": None})
+        action.start(state, {"apse": "periapsis", "staging_mode": None, "pointing": None})
 
         commands = VesselCommands()
         action.tick(state, commands, dt=0.5, log=ActionLogger())
@@ -139,7 +140,7 @@ class TestCircularizeRequestsNode:
     def test_records_node_ut_for_later_matching(self) -> None:
         action = CircularizeAction()
         state = _orbit_state(time_to_apoapsis=60.0, universal_time=1_000.0)
-        action.start(state, {"apse": "apoapsis", "staging_mode": None})
+        action.start(state, {"apse": "apoapsis", "staging_mode": None, "pointing": None})
 
         commands = VesselCommands()
         action.tick(state, commands, dt=0.5, log=ActionLogger())
@@ -148,7 +149,7 @@ class TestCircularizeRequestsNode:
     def test_fails_when_body_gm_is_zero(self) -> None:
         action = CircularizeAction()
         state = State(orbit_semi_major_axis=680_000.0, body_radius=_KERBIN_RADIUS, body_gm=0.0)
-        action.start(state, {"apse": "apoapsis", "staging_mode": None})
+        action.start(state, {"apse": "apoapsis", "staging_mode": None, "pointing": None})
 
         commands = VesselCommands()
         result = action.tick(state, commands, dt=0.5, log=ActionLogger())
@@ -162,7 +163,7 @@ class TestCircularizeExecutesNode:
     def test_running_burn_returns_running(self) -> None:
         action = CircularizeAction()
         state = _orbit_state()
-        action.start(state, {"apse": "apoapsis", "staging_mode": None})
+        action.start(state, {"apse": "apoapsis", "staging_mode": None, "pointing": None})
         # First tick: requests node creation, records ut.
         action.tick(state, VesselCommands(), dt=0.5, log=ActionLogger())
 
@@ -184,12 +185,38 @@ class TestCircularizeExecutesNode:
 
         assert result.status == ActionStatus.RUNNING
         assert commands.throttle == 1.0
-        assert commands.autopilot is True
+        # Default pointing is auto: SAS maneuver-hold steers, not the autopilot.
+        assert commands.autopilot is False
+        assert commands.sas is True
+
+    def test_sas_maneuver_pointing_forwarded_to_execute_node(self) -> None:
+        action = CircularizeAction()
+        state = _orbit_state()
+        action.start(state, {"apse": "apoapsis", "staging_mode": None, "pointing": "sas_maneuver"})
+        action.tick(state, VesselCommands(), dt=0.5, log=ActionLogger())
+
+        node = _node_for(action, delta_v_remaining=100.0)
+        burn_state = State(
+            universal_time=action._node_ut or 0.0,
+            thrust_available=50_000.0,
+            engine_impulse_specific_vacuum=300.0,
+            mass=5_000.0,
+            body_radius=_KERBIN_RADIUS,
+            body_gm=_KERBIN_GM,
+            orbit_semi_major_axis=680_000.0,
+            nodes=(node,),
+            control_sas=True,
+        )
+        commands = VesselCommands()
+        action.tick(burn_state, commands, dt=0.5, log=ActionLogger())
+        assert commands.autopilot is False
+        assert commands.sas is True
+        assert commands.sas_mode is SASMode.MANEUVER
 
     def test_completion_succeeds_and_removes_node(self) -> None:
         action = CircularizeAction()
         seed_state = _orbit_state()
-        action.start(seed_state, {"apse": "apoapsis", "staging_mode": None})
+        action.start(seed_state, {"apse": "apoapsis", "staging_mode": None, "pointing": None})
         action.tick(seed_state, VesselCommands(), dt=0.5, log=ActionLogger())
 
         # Node remains but its delta-v is exhausted; helper returns True.
@@ -241,7 +268,7 @@ class TestCircularizeStaging:
     def test_no_staging_when_mode_is_none(self) -> None:
         action = CircularizeAction()
         seed = _orbit_state()
-        action.start(seed, {"apse": "apoapsis", "staging_mode": None})
+        action.start(seed, {"apse": "apoapsis", "staging_mode": None, "pointing": None})
         action.tick(seed, VesselCommands(), dt=0.5, log=ActionLogger())
 
         commands = VesselCommands()
@@ -251,7 +278,7 @@ class TestCircularizeStaging:
     def test_any_flameout_stages_mid_burn(self) -> None:
         action = CircularizeAction()
         seed = _orbit_state()
-        action.start(seed, {"apse": "apoapsis", "staging_mode": "any_flameout"})
+        action.start(seed, {"apse": "apoapsis", "staging_mode": "any_flameout", "pointing": None})
         action.tick(seed, VesselCommands(), dt=0.5, log=ActionLogger())
 
         commands = VesselCommands()
@@ -261,7 +288,7 @@ class TestCircularizeStaging:
     def test_staging_mode_rejects_unknown_value(self) -> None:
         action = CircularizeAction()
         with pytest.raises(ValueError, match="Unknown staging_mode"):
-            action.start(_orbit_state(), {"apse": "apoapsis", "staging_mode": "bogus"})
+            action.start(_orbit_state(), {"apse": "apoapsis", "staging_mode": "bogus", "pointing": None})
 
     def test_zero_thrust_with_pending_stage_returns_running(self) -> None:
         """auto_stage queues a stage in the same tick the engine flames out;
@@ -269,7 +296,7 @@ class TestCircularizeStaging:
         so the action must defer the no-thrust failure to the next tick."""
         action = CircularizeAction()
         seed = _orbit_state()
-        action.start(seed, {"apse": "apoapsis", "staging_mode": "any_flameout"})
+        action.start(seed, {"apse": "apoapsis", "staging_mode": "any_flameout", "pointing": None})
         action.tick(seed, VesselCommands(), dt=0.5, log=ActionLogger())
 
         commands = VesselCommands()
@@ -288,7 +315,7 @@ class TestCircularizeStaging:
         so the action correctly fails on thrust exhaustion."""
         action = CircularizeAction()
         seed = _orbit_state()
-        action.start(seed, {"apse": "apoapsis", "staging_mode": "any_flameout"})
+        action.start(seed, {"apse": "apoapsis", "staging_mode": "any_flameout", "pointing": None})
         action.tick(seed, VesselCommands(), dt=0.5, log=ActionLogger())
 
         commands = VesselCommands()
@@ -307,7 +334,7 @@ class TestCircularizeStop:
     def test_stop_removes_node_and_idles(self) -> None:
         action = CircularizeAction()
         state = _orbit_state()
-        action.start(state, {"apse": "apoapsis", "staging_mode": None})
+        action.start(state, {"apse": "apoapsis", "staging_mode": None, "pointing": None})
         action.tick(state, VesselCommands(), dt=0.5, log=ActionLogger())
 
         commands = VesselCommands()
@@ -319,7 +346,7 @@ class TestCircularizeStop:
     def test_stop_before_node_was_requested_is_safe(self) -> None:
         """If start() ran but tick() did not, stop() should not try to remove a node."""
         action = CircularizeAction()
-        action.start(State(), {"apse": "apoapsis", "staging_mode": None})
+        action.start(State(), {"apse": "apoapsis", "staging_mode": None, "pointing": None})
         commands = VesselCommands()
         action.stop(State(), commands, log=ActionLogger())
         assert commands.throttle == 0.0

@@ -10,10 +10,16 @@ from ksp_mission_control.control.actions.base import (
     PartInfo,
     Parts,
     ReferenceFrame,
+    SASMode,
     State,
     VesselCommands,
 )
-from ksp_mission_control.control.actions.helpers.maneuver_node import execute_node
+from ksp_mission_control.control.actions.helpers.maneuver_node import (
+    NodePointing,
+    PointingController,
+    execute_node,
+    parse_pointing,
+)
 from ksp_mission_control.control.actions.helpers.staging import StagingMode
 
 
@@ -58,6 +64,7 @@ def _make_burning_state(
     time_warp_rate: float = 1.0,
     user_target_warp_rate: float = 1.0,
     orientation_facing: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    control_sas: bool = False,
 ) -> State:
     """Build a State with vessel parameters that yield a finite burn time.
 
@@ -77,6 +84,7 @@ def _make_burning_state(
         time_warp_rate=time_warp_rate,
         user_target_warp_rate=user_target_warp_rate,
         orientation_direction_body_non_rotating=orientation_facing,
+        control_sas=control_sas,
     )
 
 
@@ -100,6 +108,124 @@ class TestExecuteNodeOrientation:
         execute_node(_make_burning_state(universal_time=0.0), commands, node, None, 0.5, ActionLogger())
         assert commands.autopilot is True
         assert commands.autopilot_direction is not None
+
+
+class TestExecuteNodePointing:
+    """SAS maneuver-hold steers the burn unless pointing resolves to autopilot."""
+
+    def test_sas_maneuver_pointing_uses_sas_not_autopilot(self) -> None:
+        node = _make_node()
+        commands = VesselCommands()
+        execute_node(_make_burning_state(), commands, node, None, 0.5, ActionLogger(), pointing=PointingController(NodePointing.SAS_MANEUVER))
+        assert commands.autopilot is False
+        assert commands.autopilot_direction is None
+        assert commands.sas is True
+
+    def test_sas_maneuver_mode_held_back_until_sas_is_on(self) -> None:
+        # Same-frame race as the sas action: selecting a mode in the same
+        # tick that enables SAS gets overridden by KSP. Send the mode only
+        # once state confirms SAS is on.
+        node = _make_node()
+        pointing = PointingController(NodePointing.SAS_MANEUVER)
+        commands = VesselCommands()
+        execute_node(_make_burning_state(control_sas=False), commands, node, None, 0.5, ActionLogger(), pointing=pointing)
+        assert commands.sas_mode is None
+
+        commands = VesselCommands()
+        execute_node(_make_burning_state(control_sas=True), commands, node, None, 0.5, ActionLogger(), pointing=pointing)
+        assert commands.sas_mode is SASMode.MANEUVER
+
+    def test_auto_pointing_tries_sas_first(self) -> None:
+        node = _make_node()
+        commands = VesselCommands()
+        execute_node(_make_burning_state(control_sas=True), commands, node, None, 0.5, ActionLogger(), pointing=PointingController(NodePointing.AUTO))
+        assert commands.autopilot is False
+        assert commands.sas is True
+        assert commands.sas_mode is SASMode.MANEUVER
+
+    def test_no_pointing_defaults_to_autopilot(self) -> None:
+        node = _make_node()
+        commands = VesselCommands()
+        execute_node(_make_burning_state(), commands, node, None, 0.5, ActionLogger())
+        assert commands.autopilot is True
+        assert commands.autopilot_direction is not None
+        assert commands.sas is None
+
+    def test_alignment_gate_still_applies_with_sas_pointing(self) -> None:
+        # Facing 90 deg off the burn vector: throttle must stay closed no
+        # matter what steers the vessel.
+        node = _make_node(burn_vector_remaining=(0.0, 100.0, 0.0))
+        commands = VesselCommands()
+        state = _make_burning_state(universal_time=500.0, orientation_facing=(1.0, 0.0, 0.0), control_sas=True)
+        complete = execute_node(state, commands, node, None, 0.5, ActionLogger(), pointing=PointingController(NodePointing.SAS_MANEUVER))
+        assert complete is False
+        assert commands.throttle == 0.0
+
+
+class TestPointingController:
+    """AUTO falls back to the autopilot when SAS maneuver-hold never latches."""
+
+    def test_auto_falls_back_after_latch_timeout(self) -> None:
+        # SAS is on at 1x but the mode never latches (no capable pilot or
+        # probe core): after the timeout AUTO must switch to the autopilot
+        # and emit a WARN, instead of holding at zero throttle forever.
+        controller = PointingController(NodePointing.AUTO)
+        log = ActionLogger()
+        state = State(control_sas=True, control_sas_mode=SASMode.STABILITY_ASSIST, time_warp_rate=1.0)
+        results = [controller.steer_with_sas(state, log) for _ in range(10)]
+        assert results[0] is True  # keeps trying at first
+        assert results[-1] is False  # gave up
+        assert any("autopilot" in entry.message for entry in log.entries)
+
+    def test_auto_does_not_count_while_sas_is_off_or_warping(self) -> None:
+        # SAS reads off during rails warp (KSP disables it on rails), so
+        # those ticks say nothing about availability and must not count.
+        controller = PointingController(NodePointing.AUTO)
+        log = ActionLogger()
+        warp_state = State(control_sas=False, time_warp_rate=100.0)
+        for _ in range(50):
+            assert controller.steer_with_sas(warp_state, log) is True
+
+    def test_auto_stays_on_sas_once_latched(self) -> None:
+        controller = PointingController(NodePointing.AUTO)
+        log = ActionLogger()
+        latched = State(control_sas=True, control_sas_mode=SASMode.MANEUVER, time_warp_rate=1.0)
+        assert controller.steer_with_sas(latched, log) is True
+        # A later flicker in the read-back must not trigger the fallback.
+        flicker = State(control_sas=True, control_sas_mode=SASMode.STABILITY_ASSIST, time_warp_rate=1.0)
+        for _ in range(50):
+            assert controller.steer_with_sas(flicker, log) is True
+
+    def test_strict_sas_maneuver_never_falls_back(self) -> None:
+        controller = PointingController(NodePointing.SAS_MANEUVER)
+        log = ActionLogger()
+        state = State(control_sas=True, control_sas_mode=SASMode.STABILITY_ASSIST, time_warp_rate=1.0)
+        for _ in range(50):
+            assert controller.steer_with_sas(state, log) is True
+
+    def test_autopilot_never_uses_sas(self) -> None:
+        controller = PointingController(NodePointing.AUTOPILOT)
+        log = ActionLogger()
+        state = State(control_sas=True, control_sas_mode=SASMode.MANEUVER, time_warp_rate=1.0)
+        assert controller.steer_with_sas(state, log) is False
+
+
+class TestParsePointing:
+    """parse_pointing maps plan strings to a PointingController."""
+
+    def test_defaults_to_auto(self) -> None:
+        assert parse_pointing(None).requested is NodePointing.AUTO
+        assert parse_pointing("").requested is NodePointing.AUTO
+        assert parse_pointing("auto").requested is NodePointing.AUTO
+
+    def test_parses_explicit_modes_case_insensitive(self) -> None:
+        assert parse_pointing("autopilot").requested is NodePointing.AUTOPILOT
+        assert parse_pointing("sas_maneuver").requested is NodePointing.SAS_MANEUVER
+        assert parse_pointing("SAS_Maneuver").requested is NodePointing.SAS_MANEUVER
+
+    def test_rejects_unknown_value(self) -> None:
+        with pytest.raises(ValueError, match="pointing"):
+            parse_pointing("navball")
 
 
 class TestExecuteNodeThrottle:
