@@ -147,15 +147,31 @@ class TestAlignPlaneStartValidation:
 class TestAlignPlaneAlreadyAligned:
     """When inclination already matches target within margin, action succeeds without burning."""
 
-    def test_succeeds_when_inclination_within_margin(self) -> None:
+    def test_succeeds_when_inclination_at_or_above_target(self) -> None:
+        # Overshoot is fine for "pass over this latitude": a more inclined orbit
+        # still passes over the target, so the action succeeds without burning.
+        action = AlignPlaneAction()
+        state = _inclined_orbit_state(inclination_deg=10.3)
+        action.start(state, _params(target_latitude=10.0, margin_deg=0.5))
+
+        commands = VesselCommands()
+        result = action.tick(state, commands, dt=0.5, log=ActionLogger())
+        assert result.status == ActionStatus.SUCCEEDED
+        assert commands.create_node is None
+
+    def test_burns_when_below_target_even_within_old_margin(self) -> None:
+        # Regression: inclination is a floor. 10.0 is below a 10.2 target, so the
+        # orbit does NOT reach 10.2 latitude. The action must keep burning to
+        # raise inclination, not declare success. The old symmetric margin
+        # accepted this undershoot and stranded a downstream deorbit.
         action = AlignPlaneAction()
         state = _inclined_orbit_state(inclination_deg=10.0)
         action.start(state, _params(target_latitude=10.2, margin_deg=0.5))
 
         commands = VesselCommands()
         result = action.tick(state, commands, dt=0.5, log=ActionLogger())
-        assert result.status == ActionStatus.SUCCEEDED
-        assert commands.create_node is None
+        assert result.status == ActionStatus.RUNNING
+        assert commands.create_node is not None
 
     def test_proceeds_when_outside_margin(self) -> None:
         action = AlignPlaneAction()

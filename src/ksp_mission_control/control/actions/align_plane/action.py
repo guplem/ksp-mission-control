@@ -75,11 +75,17 @@ from ksp_mission_control.control.actions.helpers.staging import (
 # whether AN/DN are meaningful at all.
 _EQUATORIAL_INCLINATION_THRESHOLD: float = 0.001
 
-# Default angular margin: if the current inclination is within this many
-# degrees of the target, the action succeeds immediately without burning.
-# Loose on purpose: spending tens of m/s to shave a fraction of a degree
-# is never worth it for a Kerbin desert landing.
+# Default angular margin: how close to the target inclination counts as
+# aligned. Loose on purpose: spending tens of m/s to shave a fraction of a
+# degree is never worth it. Note this is a tolerance, but inclination is also
+# a floor (see tick): an undershoot within margin does NOT count as aligned,
+# because the orbit would not actually reach the target latitude.
 _DEFAULT_MARGIN_DEG: float = 0.5
+
+# Float-jitter tolerance for the inclination floor: the orbit counts as having
+# reached the target latitude once inclination is within this much below it.
+# Much tighter than the margin so a real undershoot still triggers more burn.
+_INCLINATION_REACHED_EPSILON_RAD: float = math.radians(0.05)
 
 
 class Crossing(Enum):
@@ -176,10 +182,16 @@ class AlignPlaneAction(Action):
         target_inc_rad = math.radians(abs(self._target_latitude_deg))
         delta_inc_rad = target_inc_rad - state.orbit_inclination
 
-        if abs(delta_inc_rad) <= math.radians(self._margin_deg):
-            # Inclination is on target. Clean up any leftover node we created
-            # before exiting (typical case: the burn just completed and the
-            # vessel is now aligned).
+        # Succeed only when within margin AND the orbit actually reaches the
+        # target latitude. Inclination is a floor: |target_latitude| must be
+        # reachable, so an undershoot (even within margin) keeps burning. The
+        # old check accepted an undershoot within margin, so the orbit never
+        # crossed the target and a downstream deorbit could not reach it.
+        # Overshoot beyond margin still falls through to a lowering burn.
+        reached_floor = state.orbit_inclination >= target_inc_rad - _INCLINATION_REACHED_EPSILON_RAD
+        if abs(delta_inc_rad) <= math.radians(self._margin_deg) and reached_floor:
+            # On target. Clean up any leftover node we created before exiting
+            # (typical case: the burn just completed and the vessel is aligned).
             commands.throttle = 0.0
             commands.autopilot = False
             if self._node_ut is not None:
@@ -188,7 +200,7 @@ class AlignPlaneAction(Action):
                 status=ActionStatus.SUCCEEDED,
                 message=(
                     f"Plane aligned: inclination {math.degrees(state.orbit_inclination):.2f}° "
-                    f"within {self._margin_deg:.2f}° of target {abs(self._target_latitude_deg):.2f}°."
+                    f"at or above target {abs(self._target_latitude_deg):.2f}°."
                 ),
             )
 
