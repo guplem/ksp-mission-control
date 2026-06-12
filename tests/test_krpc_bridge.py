@@ -1679,13 +1679,20 @@ def _patch_body_for_impact(
     latitude_at_position: object,
     longitude_at_position: object,
     surface_height: object = lambda _lat, _lon: 0.0,
+    rotational_period: float = math.inf,
 ) -> None:
-    """Attach the body-side queries the impact predictor uses."""
+    """Attach the body-side queries the impact predictor uses.
+
+    ``rotational_period`` defaults to infinity (a non-rotating body) so
+    tests that only care about other aspects of the prediction don't have
+    to reason about the rotation correction.
+    """
     body = conn.space_center.active_vessel.orbit.body
     body.altitude_at_position = altitude_at_position
     body.latitude_at_position = latitude_at_position
     body.longitude_at_position = longitude_at_position
     body.surface_height = surface_height
+    body.rotational_period = rotational_period
 
 
 class TestReadVesselStateImpactPrediction:
@@ -1822,6 +1829,38 @@ class TestReadVesselStateImpactPrediction:
         # Crossing solves -5000 + 90000*(t/900)^2 = 0 -> t ~ -212s before periapsis.
         expected_impact_ut = periapsis_ut - 900.0 * math.sqrt(5_000.0 / 90_000.0)
         assert abs(state.predicted_impact.time_to_ballistic_impact - (expected_impact_ut - current_ut)) < 2.0
+
+    def test_longitude_rotated_back_by_body_rotation_during_coast(self) -> None:
+        # kRPC's position_at(ut, frame) converts through the frame's rotation
+        # at CALL time (ReferenceFrame.PositionFromWorldSpace takes no time),
+        # so the raw longitude is where the impact point sits NOW. The body
+        # rotates east during the coast to impact, so the true impact
+        # longitude lies west by the rotation accrued in between.
+        conn = _make_mock_conn()
+        current_ut = float(conn.space_center.ut)
+        orbit = conn.space_center.active_vessel.orbit
+        orbit.periapsis_altitude = -2_000.0
+        orbit.period = 1_800.0
+        orbit.position_at = lambda ut, _frame: (ut, 0.0, 0.0)
+        orbit.ut_at_true_anomaly = lambda _nu: current_ut + 900.0
+
+        def altitude_at_position(pos: tuple[float, float, float], _frame: object) -> float:
+            ut_local: float = pos[0]
+            return 5_000.0 - 10.0 * (ut_local - current_ut)  # crosses 0 at +500s
+
+        _patch_body_for_impact(
+            conn,
+            altitude_at_position=altitude_at_position,
+            latitude_at_position=lambda _pos, _frame: -1.5,
+            longitude_at_position=lambda _pos, _frame: -71.9,
+            rotational_period=18_000.0,  # 0.02 deg/s -> 10 deg over the 500s coast
+        )
+
+        state = read_vessel_state(conn)
+        assert state.predicted_impact is not None
+        assert state.predicted_impact.longitude == pytest.approx(-81.9, abs=0.01)
+        # Latitude is unaffected: the body rotates about its polar axis.
+        assert state.predicted_impact.latitude == -1.5
 
     def test_longitude_wrapped_to_signed_range(self) -> None:
         conn = _make_mock_conn()

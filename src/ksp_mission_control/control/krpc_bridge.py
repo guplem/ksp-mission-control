@@ -40,6 +40,10 @@ _IMPACT_PREDICTION_MAX_PERIAPSIS: float = 10_000.0
 # are not well defined. 0.001 rad is roughly 0.057 degrees.
 _EQUATORIAL_INCLINATION_TOLERANCE: float = 0.001
 
+# Kerbin's sidereal rotational period (seconds). Fallback when kRPC does not
+# expose ``body.rotational_period``.
+_KERBIN_ROTATIONAL_PERIOD: float = 21_549.425
+
 # KSP rails-warp multipliers, indexed by ``space_center.rails_warp_factor``.
 # Used to translate a target multiplier into the highest factor whose
 # multiplier does not exceed the request.
@@ -343,6 +347,15 @@ def _compute_impact_prediction(vessel: object, body: object, current_ut: float) 
         longitude = float(body.longitude_at_position(impact_position, frame))  # type: ignore[attr-defined]
     except (AttributeError, Exception):
         return None
+
+    # kRPC converts position_at(ut, frame) through the frame's rotation at
+    # CALL time (ReferenceFrame.PositionFromWorldSpace takes no time
+    # parameter), so the raw longitude is where the impact point sits NOW.
+    # The body rotates east while the vessel coasts to impact, so the true
+    # impact longitude lies west by the rotation accrued in between.
+    rotational_period = float(getattr(body, "rotational_period", _KERBIN_ROTATIONAL_PERIOD))
+    if math.isfinite(rotational_period) and rotational_period != 0.0:
+        longitude -= 360.0 / rotational_period * (impact_ut - current_ut)
 
     # Wrap longitude into (-180, 180].
     longitude = ((longitude + 180.0) % 360.0) - 180.0
@@ -855,7 +868,7 @@ def read_vessel_state(conn: object) -> State:
         body_atmosphere_depth=orbit.body.atmosphere_depth if orbit.body.has_atmosphere else 0.0,
         body_gm=orbit.body.gravitational_parameter,
         body_soi=orbit.body.sphere_of_influence,
-        body_rotational_period=getattr(orbit.body, "rotational_period", 21549.425),
+        body_rotational_period=getattr(orbit.body, "rotational_period", _KERBIN_ROTATIONAL_PERIOD),
         position_biome=vessel.biome,
         position_latitude=flight.latitude,
         position_longitude=flight.longitude,
