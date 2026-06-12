@@ -18,6 +18,11 @@ autopilot_config restore_defaults=true
 
 circularize  apse=apoapsis
 
+# All node burns (including the circularize above) default to
+# pointing=auto: KSP's native SAS maneuver-hold steers, falling back to
+# the kRPC autopilot if maneuver-hold is unavailable. Validated in
+# log_20260612_162122.
+
 # Raise apoapsis to 260 km with a burn at periapsis.
 change_apse apse=apoapsis target_altitude=260_000
 
@@ -31,7 +36,13 @@ circularize  apse=periapsis
 align_plane  target_latitude=-6.6
 
 # Deorbit to the Desert Airfield (6 deg 35'58" S, 144 deg 02'26" W, 821 m terrain).
-deorbit_to_target target_latitude=-6.599 target_longitude=-144.041 drag_bias_km=100
+# Periapsis -40 km gives a steep, repeatable entry: a -5 km periapsis grazed the
+# atmosphere so shallowly that drag fell ~400 km short and every 1 m/s of burn
+# error moved the landing ~20 km. drag_bias_km=280 was measured on
+# log_20260612_162122: vacuum impact (-6.52, -119.98), actual landing
+# (-5.38, -147.04), ~282 km along-track. Tune it from
+# (vacuum impact - actual landing) after each flight.
+deorbit_to_target target_latitude=-6.599 target_longitude=-144.041 target_periapsis_altitude=-40_000 drag_bias_km=280
 
 # Get rid of all the remaining stages to be left with the heatshield exposed.
 sas        mode=prograde
