@@ -301,6 +301,19 @@ class ControlSession:
             with contextlib.suppress(Exception):
                 apply_controls(self._conn, result.commands)
 
+    def continue_track(self, track_name: str) -> None:
+        """Resume a track paused on failure (skip the failed step). Raises ValueError if not paused."""
+        self._executor.continue_track(track_name, self._last_state)
+
+    @property
+    def paused_on_failure(self) -> bool:
+        """Whether any track is paused waiting for a user decision after a failure."""
+        return self._executor.paused_on_failure
+
+    def paused_tracks(self) -> list[str]:
+        """Return the names of all tracks paused on failure."""
+        return self._executor.paused_tracks()
+
     def _wait_for_reconnect(self) -> None:
         """Wait before retrying. Returns early if shutdown is requested."""
         self._stop_event.wait(_RECONNECT_INTERVAL)

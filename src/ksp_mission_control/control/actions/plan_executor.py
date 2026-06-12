@@ -1,8 +1,10 @@
 """PlanExecutor - sequential flight plan executor wrapping ActionRunner.
 
 Manages executing a FlightPlan step-by-step. When the current action
-succeeds, automatically starts the next step. On failure, logs a warning
-and auto-continues to the next step.
+succeeds, automatically starts the next step. On failure, pauses the plan
+(``paused_on_failure``) and waits for the UI to resume it (``continue_plan``)
+or stop it. Auto-advancing past a failure once stranded a vessel by running
+a deorbit's later stage/parachute steps while still in orbit.
 
 ``ParallelStep`` entries are processed inline: when reached, the executor
 invokes ``spawn_parallel`` (provided by the caller, typically the
@@ -81,6 +83,9 @@ class PlanExecutor:
         self._step_index: int = 0
         self._step_statuses: list[StepStatus] = []
         self._emit_plan_started: bool = False
+        self._paused_on_failure: bool = False
+        """True when a step failed and the plan is waiting for the UI to
+        resume (continue_plan) or stop it. While set, step() is a no-op."""
         self._spawn_parallel: Callable[[str, State], None] | None = None
         self._queued_logs: list[LogEntry] = []
         """Logs produced outside of runner ticks (parallel spawns, PLAN_END from
@@ -126,6 +131,7 @@ class PlanExecutor:
         self._step_index = 0
         self._step_statuses = [StepStatus.PENDING] * len(plan.steps)
         self._emit_plan_started = True
+        self._paused_on_failure = False
         self._queued_logs = []
         self._plan_ended = False
 
@@ -207,6 +213,12 @@ class PlanExecutor:
         if self._plan is None:
             return result
 
+        # Paused on a failed step: do nothing until the UI resumes (continue_plan)
+        # or stops the plan. The runner is idle here (the failed action stopped),
+        # so we just hold position rather than advancing into later steps.
+        if self._paused_on_failure:
+            return result
+
         has_action = self._runner.snapshot().action_id is not None
 
         # Annotate logs with the action_id and plan_step of the step that
@@ -238,10 +250,14 @@ class PlanExecutor:
         if had_action and not has_action:
             if result.finished_status == ActionStatus.SUCCEEDED:
                 self._step_statuses[self._step_index] = StepStatus.SUCCEEDED
+                self._begin_from(vessel_state, self._step_index + 1)
             else:
+                # Step failed: mark it and pause for the user's decision instead
+                # of advancing. The screen shows PlanFailureDialog; the user can
+                # continue_plan() (resume from the next step) or stop the track.
                 self._step_statuses[self._step_index] = StepStatus.FAILED
+                self._paused_on_failure = True
 
-            self._begin_from(vessel_state, self._step_index + 1)
             if self._queued_logs:
                 result.logs.extend(self._queued_logs)
                 self._queued_logs = []
@@ -265,6 +281,23 @@ class PlanExecutor:
             result.logs.append(LogEntry(level=LogLevel.PLAN_END, message=plan_name))
         self._clear_plan()
         return result
+
+    def continue_plan(self, vessel_state: State) -> None:
+        """Resume a plan paused on failure: skip the failed step, start the next.
+
+        Called by the UI when the user chooses Continue. ``_begin_from`` walks
+        any parallel steps and emits PLAN_END if the failed step was the last
+        one. Raises ValueError if no plan is paused on failure.
+        """
+        if self._plan is None or not self._paused_on_failure:
+            raise ValueError("No paused plan to continue")
+        self._paused_on_failure = False
+        self._begin_from(vessel_state, self._step_index + 1)
+
+    @property
+    def paused_on_failure(self) -> bool:
+        """Whether the plan is paused waiting for a user decision after a failure."""
+        return self._paused_on_failure
 
     def snapshot(self) -> PlanSnapshot:
         """Return a thread-safe snapshot of plan + runner state."""
@@ -307,6 +340,7 @@ class PlanExecutor:
         self._step_actions = []
         self._step_index = 0
         self._step_statuses = []
+        self._paused_on_failure = False
         self._spawn_parallel = None
         self._queued_logs = []
         self._plan_ended = False

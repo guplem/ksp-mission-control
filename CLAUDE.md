@@ -58,7 +58,7 @@ src/ksp_mission_control/
 │   ├── flight_plan_picker.py  # FlightPlanPicker (modal for selecting .plan files)
 │   ├── paste_plan_dialog.py   # PastePlanDialog (modal for pasting and parsing inline plan text)
 │   ├── confirm_exit_dialog.py  # ConfirmExitDialog (leave control room confirmation)
-│   ├── plan_failure_dialog.py # PlanFailureDialog (continue/abort on step failure)
+│   ├── plan_failure_dialog.py # PlanFailureDialog (continue/stop on step failure)
 │   ├── manual_command_dialog.py   # ManualCommandDialog (one-shot manual VesselCommands)
 │   ├── science_command_dialog.py  # ScienceCommandDialog (targeted science experiment command)
 │   ├── tick_record.py        # TickRecord (per-tick snapshot for export)
@@ -239,7 +239,7 @@ kRPC --read--> krpc_bridge --> State --> MultiTrackExecutor.step() --> VesselCom
 - **Write path**: `krpc_bridge.apply_controls()` writes the filtered commands to kRPC.
 - **Session/screen split**: `ControlSession` owns the poll loop and calls `on_update`/`on_error` callbacks. `ControlScreen` wraps these callbacks with `call_from_thread()` to bridge to the UI thread.
 - **Models are pure (ADR 0004)**: `State` and `VesselCommands` have no kRPC or Textual imports. Actions are testable with constructed states.
-- **Flight plans**: Text files (`.plan`) parsed by `parse_flight_plan()`. Each line is `action_id key=value ...`. Plans are loaded via `FlightPlanPicker` modal. On step failure, `PlanFailureDialog` asks user to continue or abort.
+- **Flight plans**: Text files (`.plan`) parsed by `parse_flight_plan()`. Each line is `action_id key=value ...`. Plans are loaded via `FlightPlanPicker` modal. On step failure, the track pauses and `PlanFailureDialog` asks the user to continue or stop.
 
 ### Key patterns
 
@@ -251,7 +251,7 @@ kRPC --read--> krpc_bridge --> State --> MultiTrackExecutor.step() --> VesselCom
 - **Theme color resolution**: Widgets that need theme colors in Rich markup (where CSS variables aren't available) use `resolve_theme_colors(app, mapping)` from `formatting.py`. Results are cached after first call.
 - **CSS theming**: Keep static layout and visual styling in `.tcss`. Use Python style updates only for runtime-dependent values (state, measurements, animations, temporary overrides).
 - **Flight plan execution**: `PlanExecutor` wraps `ActionRunner` and manages step-to-step transitions. It detects action completion by comparing runner snapshots before/after `step()` and checking logs for "succeeded"/"failed". On success, it auto-starts the next step. On failure, it pauses and sets `paused_on_failure` for the UI to show a dialog. Plans are stored as `.plan` text files in the `plans/` directory.
-- **Parallel plan execution**: `MultiTrackExecutor` manages multiple `PlanExecutor` instances (one per track). Plans can include `@parallel path/to/sub.plan` directives to spawn parallel tracks. Nesting is recursive (sub-plans can have their own `@parallel`). Each tick, all tracks are stepped sequentially and their `VesselCommands` merged field-by-field (last-write-wins). Conflicts (two tracks setting the same field) produce a WARN-level log. Two fields override last-write-wins, silently: science commands concatenate, and `time_warp_rate` takes the minimum (slowest wins) so a track burning at 1x is never sped up by another track reasserting cruise warp. Track-level failure isolation: one track failing does not stop others. The UI shows per-track step sections and offers Continue/Abort Track/Abort All on failure.
+- **Parallel plan execution**: `MultiTrackExecutor` manages multiple `PlanExecutor` instances (one per track). Plans can include `@parallel path/to/sub.plan` directives to spawn parallel tracks. Nesting is recursive (sub-plans can have their own `@parallel`). Each tick, all tracks are stepped sequentially and their `VesselCommands` merged field-by-field (last-write-wins). Conflicts (two tracks setting the same field) produce a WARN-level log. Two fields override last-write-wins, silently: science commands concatenate, and `time_warp_rate` takes the minimum (slowest wins) so a track burning at 1x is never sped up by another track reasserting cruise warp. Track-level failure isolation: one track failing pauses only that track (the others keep running). The UI shows per-track step sections and offers Continue/Stop Track/Stop All on failure.
 
 ### Textual UI composition and styling rules (ADR 0001)
 

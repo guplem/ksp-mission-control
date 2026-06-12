@@ -180,7 +180,7 @@ class TestPlanExecutorPlan:
         snap = executor.snapshot()
         assert snap.plan_name is None
 
-    def test_auto_continues_on_failure(self) -> None:
+    def test_plan_pauses_on_failure(self) -> None:
         executor = PlanExecutor()
         plan, actions = _make_plan(2)
         state = State()
@@ -189,19 +189,54 @@ class TestPlanExecutorPlan:
         actions[0].set_return_status(ActionStatus.FAILED)
         executor.step(state, dt=0.5)
 
+        assert executor.paused_on_failure is True
         snap = executor.snapshot()
         assert snap.step_statuses[0] == StepStatus.FAILED
-        assert snap.step_statuses[1] == StepStatus.RUNNING
+        assert snap.step_statuses[1] == StepStatus.PENDING
+        assert snap.current_step_index == 0
+
+    def test_continue_after_failure_starts_next_step(self) -> None:
+        executor = PlanExecutor()
+        plan, actions = _make_plan(2)
+        state = State()
+        executor.start_plan(plan, state, actions=actions)
+
+        actions[0].set_return_status(ActionStatus.FAILED)
+        executor.step(state, dt=0.5)
+        executor.continue_plan(state)
+
+        assert executor.paused_on_failure is False
+        snap = executor.snapshot()
         assert snap.current_step_index == 1
+        assert snap.step_statuses[1] == StepStatus.RUNNING
+
+    def test_paused_plan_does_not_advance(self) -> None:
+        executor = PlanExecutor()
+        plan, actions = _make_plan(2)
+        state = State()
+        executor.start_plan(plan, state, actions=actions)
+
+        actions[0].set_return_status(ActionStatus.FAILED)
+        executor.step(state, dt=0.5)
+        for _ in range(5):
+            executor.step(state, dt=0.5)
+
+        assert executor.paused_on_failure is True
+        assert executor.snapshot().current_step_index == 0
+
+    def test_continue_raises_when_no_paused_plan(self) -> None:
+        executor = PlanExecutor()
+        with pytest.raises(ValueError, match="No paused plan"):
+            executor.continue_plan(State())
 
     def test_completed_step_logs_keep_their_own_action_id(self) -> None:
-        """Regression: when a step finishes and the executor advances to
-        the next step in the same tick, the runner-produced logs
-        (ACTION_FAILED / ACTION_END for the step that just finished)
-        must carry the finished step's action_id and plan_step, not the
-        new step's. Previously self._step_index was advanced before the
-        annotation pass, so the failed step's logs were mis-tagged with
-        the next step's identity."""
+        """Regression: when a step finishes, the runner-produced logs
+        (ACTION_FAILED / ACTION_END for the step that just finished) must
+        carry that step's action_id and plan_step. The annotation pass runs
+        before the step-transition block, so it must tag with the finished
+        step's identity regardless of whether the executor then advances (on
+        success) or pauses (on failure). Previously self._step_index was
+        advanced before annotation, mis-tagging the logs."""
         executor = PlanExecutor()
         actions = [StubAction(), StubAction()]
         steps = (
@@ -215,29 +250,44 @@ class TestPlanExecutorPlan:
         # Tick 1: step 1 still running; consume PLAN_START and ACTION_START.
         executor.step(state, dt=0.5)
 
-        # Tick 2: step 1 fails, executor advances to step 2 in the same tick.
+        # Tick 2: step 1 fails; the executor pauses, but the failure logs
+        # still belong to step 1.
         actions[0].set_return_status(ActionStatus.FAILED)
         result = executor.step(state, dt=0.5)
 
         # ACTION_FAILED and ACTION_END describe the step that just finished
-        # ("first" / plan_step 1), not the freshly-started next step.
+        # ("first" / plan_step 1).
         terminal_logs = [log for log in result.logs if log.level in (LogLevel.ACTION_FAILED, LogLevel.ACTION_END)]
         assert len(terminal_logs) == 2
         for log in terminal_logs:
             assert log.action_id == "first", f"expected 'first', got {log.action_id!r}"
             assert log.plan_step == 1, f"expected plan_step 1, got {log.plan_step!r}"
 
-    def test_last_step_failure_ends_plan(self) -> None:
+    def test_last_step_failure_pauses(self) -> None:
         executor = PlanExecutor()
         plan, actions = _make_plan(1)
         state = State()
         executor.start_plan(plan, state, actions=actions)
 
         actions[0].set_return_status(ActionStatus.FAILED)
+        executor.step(state, dt=0.5)
+
+        assert executor.paused_on_failure is True
+        assert executor.snapshot().step_statuses[0] == StepStatus.FAILED
+
+    def test_continue_on_last_step_ends_plan(self) -> None:
+        executor = PlanExecutor()
+        plan, actions = _make_plan(1)
+        state = State()
+        executor.start_plan(plan, state, actions=actions)
+
+        actions[0].set_return_status(ActionStatus.FAILED)
+        executor.step(state, dt=0.5)
+        executor.continue_plan(state)
         result = executor.step(state, dt=0.5)
 
-        plan_end_logs = [log for log in result.logs if log.level == LogLevel.PLAN_END]
-        assert len(plan_end_logs) == 1
+        assert executor.paused_on_failure is False
+        assert any(log.level == LogLevel.PLAN_END for log in result.logs)
 
     def test_stop_cancels_remaining_steps(self) -> None:
         executor = PlanExecutor()

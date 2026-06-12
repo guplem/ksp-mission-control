@@ -286,7 +286,7 @@ class TestMultiTrackExecutorSinglePlan:
         assert snap.primary.step_statuses[0] == StepStatus.SUCCEEDED
         assert snap.primary.step_statuses[1] == StepStatus.RUNNING
 
-    def test_auto_continues_on_failure(self) -> None:
+    def test_plan_pauses_on_failure(self) -> None:
         executor = MultiTrackExecutor()
         plan, actions = _make_plan(num_steps=2)
         state = State()
@@ -295,10 +295,30 @@ class TestMultiTrackExecutorSinglePlan:
         actions[0].set_return_status(ActionStatus.FAILED)
         executor.step(state, dt=0.5)
 
+        assert executor.paused_on_failure is True
         snap = executor.snapshot()
         assert snap.primary.step_statuses[0] == StepStatus.FAILED
-        assert snap.primary.step_statuses[1] == StepStatus.RUNNING
-        assert snap.primary.current_step_index == 1
+        assert snap.primary.step_statuses[1] == StepStatus.PENDING
+        assert snap.primary.current_step_index == 0
+
+    def test_continue_after_failure_resumes_track(self) -> None:
+        executor = MultiTrackExecutor()
+        plan, actions = _make_plan(name="main", num_steps=2)
+        state = State()
+        executor.start_plan(plan, state, actions=actions)
+
+        actions[0].set_return_status(ActionStatus.FAILED)
+        executor.step(state, dt=0.5)
+        assert executor.paused_on_failure is True
+
+        executor.continue_track("main", state)
+        assert executor.paused_on_failure is False
+        assert executor.snapshot().primary.current_step_index == 1
+
+    def test_continue_track_raises_for_unknown(self) -> None:
+        executor = MultiTrackExecutor()
+        with pytest.raises(ValueError, match="Unknown track"):
+            executor.continue_track("nonexistent", State())
 
     def test_stop_plan(self) -> None:
         executor = MultiTrackExecutor()
@@ -392,9 +412,13 @@ class TestMultiTrackExecutorParallel:
         executor_b.start_plan(plan_b, state, actions=actions_b)
         executor._tracks.append(("science", executor_b))
 
-        # Fail science track - it auto-continues (no pause)
+        # Fail the science track: it pauses on failure, but the flight track
+        # is a separate executor and keeps running.
         actions_b[0].set_return_status(ActionStatus.FAILED)
         executor.step(state, dt=0.5)
+
+        assert executor.paused_on_failure is True
+        assert executor.paused_tracks() == ["science"]
 
         # Flight track should still be running
         snap = executor.snapshot()
